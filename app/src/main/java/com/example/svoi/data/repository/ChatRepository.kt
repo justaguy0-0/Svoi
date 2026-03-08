@@ -6,6 +6,7 @@ import com.example.svoi.data.model.ChatMember
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
+import android.util.Log
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
@@ -141,7 +142,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
                 bgColor = bgColor,
                 isGroup = chat.type == "group",
                 lastMessageText = lastMessageText,
-                lastMessageTime = lastMsg?.createdAt ?: chat.createdAt,
+                lastMessageTime = lastMsg?.createdAt ?: chat.createdAt ?: "",
                 unreadCount = 0, // TODO: implement proper unread counting
                 otherUserId = otherMember?.userId,
                 myRole = membership?.role ?: "member"
@@ -183,39 +184,45 @@ class ChatRepository(private val supabase: SupabaseClient) {
     /** Creates a personal chat between current user and another user */
     suspend fun createPersonalChat(otherUserId: String): String? {
         val userId = currentUserId()
+        val chatId = java.util.UUID.randomUUID().toString()
         return try {
-            val chat = supabase.from("chats")
-                .insert(mapOf("type" to "personal", "created_by" to userId))
-                .decodeSingle<Chat>()
-
+            supabase.from("chats").insert(
+                mapOf("id" to chatId, "type" to "personal", "created_by" to userId)
+            )
             supabase.from("chat_members").insert(
                 listOf(
-                    ChatMember(chatId = chat.id, userId = userId, role = "admin"),
-                    ChatMember(chatId = chat.id, userId = otherUserId, role = "member")
+                    mapOf("chat_id" to chatId, "user_id" to userId, "role" to "admin"),
+                    mapOf("chat_id" to chatId, "user_id" to otherUserId, "role" to "member")
                 )
             )
-            chat.id
-        } catch (e: Exception) { null }
+            chatId
+        } catch (e: Exception) {
+            Log.e("ChatRepo", "createPersonalChat FAILED", e)
+            null
+        }
     }
 
     /** Creates a group chat */
     suspend fun createGroupChat(name: String, memberIds: List<String>): String? {
         val userId = currentUserId()
+        val chatId = java.util.UUID.randomUUID().toString()
         return try {
-            val chat = supabase.from("chats")
-                .insert(mapOf("type" to "group", "name" to name, "created_by" to userId))
-                .decodeSingle<Chat>()
-
+            supabase.from("chats").insert(
+                mapOf("id" to chatId, "type" to "group", "name" to name, "created_by" to userId)
+            )
             val members = (memberIds + userId).distinct().map { memberId ->
-                ChatMember(
-                    chatId = chat.id,
-                    userId = memberId,
-                    role = if (memberId == userId) "admin" else "member"
+                mapOf(
+                    "chat_id" to chatId,
+                    "user_id" to memberId,
+                    "role" to if (memberId == userId) "admin" else "member"
                 )
             }
             supabase.from("chat_members").insert(members)
-            chat.id
-        } catch (e: Exception) { null }
+            chatId
+        } catch (e: Exception) {
+            Log.e("ChatRepo", "createGroupChat FAILED", e)
+            null
+        }
     }
 
     suspend fun getChat(chatId: String): Chat? {

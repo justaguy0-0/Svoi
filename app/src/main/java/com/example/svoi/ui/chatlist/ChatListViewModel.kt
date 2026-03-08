@@ -39,7 +39,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         // We subscribe to a broad channel and refresh on any insert
         viewModelScope.launch {
             try {
-                messageRepo.messageInsertFlow("").collect {
+                messageRepo.messageInsertFlowAll().collect {
                     loadChats()
                 }
             } catch (_: Exception) {}

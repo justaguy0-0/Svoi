@@ -11,11 +11,15 @@ import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.decodeRecord
 import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.realtime.realtime
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 
 class UserRepository(private val supabase: SupabaseClient) {
 
@@ -86,9 +90,13 @@ class UserRepository(private val supabase: SupabaseClient) {
     suspend fun setOnline(online: Boolean) {
         val userId = supabase.auth.currentUserOrNull()?.id ?: return
         try {
-            supabase.from("user_presence").upsert(
-                UserPresence(userId = userId, online = online)
-            )
+            val data = if (online) {
+                mapOf("user_id" to userId, "online" to true)
+            } else {
+                mapOf("user_id" to userId, "online" to false,
+                    "last_seen" to java.time.Instant.now().toString())
+            }
+            supabase.from("user_presence").upsert(data)
         } catch (_: Exception) {}
     }
 
@@ -109,6 +117,11 @@ class UserRepository(private val supabase: SupabaseClient) {
             filter("user_id", FilterOperator.EQ, userId)
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
-        awaitClose { }
+        awaitClose {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { channel.unsubscribe() }
+                runCatching { supabase.realtime.removeChannel(channel) }
+            }
+        }
     }
 }

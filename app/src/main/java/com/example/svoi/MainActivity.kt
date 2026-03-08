@@ -47,8 +47,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (app.authRepository.isLoggedIn()) {
+            scope.launch { app.userRepository.setOnline(true) }
+        }
+    }
+
     override fun onStop() {
         super.onStop()
-        scope.launch { app.userRepository.setOnline(false) }
+        if (app.authRepository.isLoggedIn()) {
+            scope.launch { app.userRepository.setOnline(false) }
+        }
     }
 }

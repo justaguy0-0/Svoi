@@ -17,15 +17,15 @@ data class Message(
     @SerialName("forwarded_from_id") val forwardedFromId: String? = null,
     @SerialName("edited_at") val editedAt: String? = null,
     @SerialName("deleted_for_all") val deletedForAll: Boolean = false,
-    @SerialName("created_at") val createdAt: String = "",
-    @SerialName("updated_at") val updatedAt: String = ""
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
 )
 
 @Serializable
 data class MessageRead(
     @SerialName("message_id") val messageId: String = "",
     @SerialName("user_id") val userId: String = "",
-    @SerialName("read_at") val readAt: String = ""
+    @SerialName("read_at") val readAt: String? = null
 )
 
 @Serializable
@@ -33,7 +33,7 @@ data class PinnedMessage(
     @SerialName("chat_id") val chatId: String = "",
     @SerialName("message_id") val messageId: String = "",
     @SerialName("pinned_by") val pinnedBy: String? = null,
-    @SerialName("pinned_at") val pinnedAt: String = ""
+    @SerialName("pinned_at") val pinnedAt: String? = null
 )
 
 /** UI model combining message + sender profile + read status */

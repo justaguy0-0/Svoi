@@ -14,11 +14,15 @@ import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.decodeRecord
 import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.realtime.realtime
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 
 class MessageRepository(private val supabase: SupabaseClient) {
 
@@ -187,6 +191,21 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { false }
     }
 
+    /** Supabase Realtime flow — any new message (no chat filter, for chat list refresh) */
+    fun messageInsertFlowAll(): Flow<Message> = channelFlow {
+        val channel = supabase.channel("messages-insert-all")
+        channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+            table = "messages"
+        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
+        channel.subscribe()
+        awaitClose {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { channel.unsubscribe() }
+                runCatching { supabase.realtime.removeChannel(channel) }
+            }
+        }
+    }
+
     /** Supabase Realtime flow — new messages in a chat */
     fun messageInsertFlow(chatId: String): Flow<Message> = channelFlow {
         val channel = supabase.channel("messages-insert-$chatId")
@@ -195,7 +214,12 @@ class MessageRepository(private val supabase: SupabaseClient) {
             filter("chat_id", FilterOperator.EQ, chatId)
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
-        awaitClose { }
+        awaitClose {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { channel.unsubscribe() }
+                runCatching { supabase.realtime.removeChannel(channel) }
+            }
+        }
     }
 
     /** Supabase Realtime flow — updated messages in a chat (edits, deletes) */
@@ -206,7 +230,12 @@ class MessageRepository(private val supabase: SupabaseClient) {
             filter("chat_id", FilterOperator.EQ, chatId)
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
-        awaitClose { }
+        awaitClose {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { channel.unsubscribe() }
+                runCatching { supabase.realtime.removeChannel(channel) }
+            }
+        }
     }
 
     /** Supabase Realtime flow for message_reads (to show read receipts) */
@@ -216,7 +245,12 @@ class MessageRepository(private val supabase: SupabaseClient) {
             table = "message_reads"
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
-        awaitClose { }
+        awaitClose {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { channel.unsubscribe() }
+                runCatching { supabase.realtime.removeChannel(channel) }
+            }
+        }
     }
 
     /** Upload a file/image to Supabase Storage and return the public URL */

@@ -54,6 +54,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error
+
     private val currentUserId get() = authRepo.currentUserId() ?: ""
 
     private var chatId: String = ""
@@ -146,11 +149,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         userRepo.getProfile(id) ?: Profile(id = id)
                     }
                 }
+                val replyMsg = newMsg.replyToId?.let { messageRepo.getMessage(it) }
                 val item = MessageUiItem(
                     message = newMsg,
                     senderProfile = profile,
                     isOwn = newMsg.senderId == currentUserId,
-                    isRead = false
+                    isRead = false,
+                    replyToMessage = replyMsg
                 )
                 _messages.value = _messages.value + item
                 markAsRead()
@@ -195,18 +200,56 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun sendPhoto(uri: Uri, context: Context) {
         viewModelScope.launch {
             _isSending.value = true
-            val bytes = context.contentResolver.openInputStream(uri)?.readBytes()
-            if (bytes != null) {
+            try {
+                val bytes = compressImage(uri, context)
+                if (bytes == null) {
+                    _error.value = "Не удалось прочитать изображение"
+                    return@launch
+                }
                 val fileName = "photo_${System.currentTimeMillis()}.jpg"
                 val url = messageRepo.uploadFile(chatId, fileName, bytes)
                 if (url != null) {
                     messageRepo.sendPhotoMessage(chatId, url, _replyTo.value?.id)
                     _replyTo.value = null
+                } else {
+                    _error.value = "Ошибка загрузки. Проверьте Storage bucket."
                 }
+            } catch (e: Exception) {
+                _error.value = "Ошибка: ${e.message}"
+            } finally {
+                _isSending.value = false
             }
-            _isSending.value = false
         }
     }
+
+    private fun compressImage(uri: Uri, context: Context): ByteArray? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val original = android.graphics.BitmapFactory.decodeStream(inputStream)
+            inputStream.close()
+            if (original == null) return null
+            // Scale down if too large
+            val maxDim = 1280
+            val scaled = if (original.width > maxDim || original.height > maxDim) {
+                val ratio = minOf(maxDim.toFloat() / original.width, maxDim.toFloat() / original.height)
+                android.graphics.Bitmap.createScaledBitmap(
+                    original,
+                    (original.width * ratio).toInt(),
+                    (original.height * ratio).toInt(),
+                    true
+                )
+            } else original
+            val out = java.io.ByteArrayOutputStream()
+            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+            if (scaled != original) scaled.recycle()
+            original.recycle()
+            out.toByteArray()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun clearError() { _error.value = null }
 
     fun deleteMessage(messageId: String, forEveryone: Boolean) {
         viewModelScope.launch {

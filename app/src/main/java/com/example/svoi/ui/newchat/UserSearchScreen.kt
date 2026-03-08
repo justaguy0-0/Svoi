@@ -51,6 +51,7 @@ fun UserSearchScreen(
     val results by viewModel.searchResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
     Scaffold(
         topBar = {
@@ -88,6 +89,19 @@ fun UserSearchScreen(
                 leadingIcon = { Icon(Icons.Default.Search, null) }
             ) {}
 
+            // Error snack below search bar
+            error?.let { msg ->
+                Text(
+                    text = msg,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center
+                )
+            }
+
             Box(modifier = Modifier.weight(1f)) {
                 when {
                     isLoading || isSearching -> {
@@ -95,14 +109,17 @@ fun UserSearchScreen(
                     }
                     query.isBlank() -> {
                         Column(
-                            modifier = Modifier.align(Alignment.Center),
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("🔍", fontSize = 40.sp)
+                            Text("🔍", fontSize = 40.sp, textAlign = TextAlign.Center)
                             Text(
                                 "Введите имя для поиска",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }

@@ -10,13 +10,13 @@ data class Profile(
     @SerialName("status_text") val statusText: String = "",
     val emoji: String = "😊",
     @SerialName("bg_color") val bgColor: String = "#5C6BC0",
-    @SerialName("created_at") val createdAt: String = "",
-    @SerialName("updated_at") val updatedAt: String = ""
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
 )
 
 @Serializable
 data class UserPresence(
     @SerialName("user_id") val userId: String = "",
     val online: Boolean = false,
-    @SerialName("last_seen") val lastSeen: String = ""
+    @SerialName("last_seen") val lastSeen: String? = null
 )

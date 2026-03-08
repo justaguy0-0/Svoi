@@ -9,7 +9,7 @@ data class Chat(
     val type: String = "personal", // "personal" | "group"
     val name: String? = null,
     @SerialName("created_by") val createdBy: String? = null,
-    @SerialName("created_at") val createdAt: String = ""
+    @SerialName("created_at") val createdAt: String? = null
 )
 
 @Serializable
@@ -18,7 +18,7 @@ data class ChatMember(
     @SerialName("user_id") val userId: String = "",
     val role: String = "member", // "member" | "admin"
     val muted: Boolean = false,
-    @SerialName("joined_at") val joinedAt: String = ""
+    @SerialName("joined_at") val joinedAt: String? = null
 )
 
 /** UI model combining chat + last message + unread + other user info */

@@ -73,6 +73,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
@@ -108,6 +109,7 @@ fun ChatScreen(
     val replyTo by viewModel.replyTo.collectAsState()
     val editingMessage by viewModel.editingMessage.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -133,7 +135,7 @@ fun ChatScreen(
     val presenceText = when {
         presence == null -> ""
         presence!!.online -> "в сети"
-        presence!!.lastSeen.isNotBlank() -> presence!!.lastSeen.toLastSeen()
+        !presence!!.lastSeen.isNullOrBlank() -> presence!!.lastSeen!!.toLastSeen()
         else -> ""
     }
 
@@ -211,8 +213,22 @@ fun ChatScreen(
                 .padding(padding)
                 .imePadding()
         ) {
+            // Error banner
+            error?.let { msg ->
+                Text(
+                    text = msg,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .clickable { viewModel.clearError() },
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
             // Messages
-            Box(modifier = Modifier.weight(1f)) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 } else {
@@ -226,10 +242,10 @@ fun ChatScreen(
                         itemsIndexed(messages) { index, item ->
                             val prevItem = if (index > 0) messages[index - 1] else null
                             val showDateSeparator = prevItem == null ||
-                                !item.message.createdAt.contains(prevItem.message.createdAt.take(10))
+                                item.message.createdAt?.take(10) != prevItem.message.createdAt?.take(10)
 
-                            if (showDateSeparator && item.message.createdAt.isNotBlank()) {
-                                DateSeparator(date = item.message.createdAt.toDateSeparator())
+                            if (showDateSeparator && !item.message.createdAt.isNullOrBlank()) {
+                                DateSeparator(date = item.message.createdAt!!.toDateSeparator())
                             }
 
                             MessageItem(
@@ -485,13 +501,19 @@ private fun MessageItem(
                         // Message content
                         when (msg.type) {
                             "photo" -> {
-                                AsyncImage(
-                                    model = msg.fileUrl,
-                                    contentDescription = "Фото",
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .widthIn(max = 220.dp)
-                                )
+                                if (msg.fileUrl != null) {
+                                    AsyncImage(
+                                        model = msg.fileUrl,
+                                        contentDescription = "Фото",
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .widthIn(min = 120.dp, max = 220.dp)
+                                            .height(160.dp),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Text("📷 Фото", color = textColor)
+                                }
                             }
                             "file" -> {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -544,7 +566,7 @@ private fun MessageItem(
                                 )
                             }
                             Text(
-                                text = msg.createdAt.toMessageTime(),
+                                text = msg.createdAt?.toMessageTime() ?: "",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = textColor.copy(0.7f),
                                 fontSize = 10.sp
@@ -574,7 +596,7 @@ private fun MessageItem(
                     )
                     if (item.isOwn) {
                         val canEdit = runCatching {
-                            val msgTime = java.time.Instant.parse(msg.createdAt)
+                            val msgTime = java.time.Instant.parse(msg.createdAt ?: "")
                             java.time.Instant.now().epochSecond - msgTime.epochSecond < 86400
                         }.getOrDefault(false)
 
