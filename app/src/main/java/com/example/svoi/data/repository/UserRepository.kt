@@ -6,6 +6,15 @@ import com.example.svoi.data.model.UserPresence
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+@Serializable
+private data class PresenceUpdate(
+    @SerialName("user_id") val userId: String,
+    val online: Boolean,
+    @SerialName("last_seen") val lastSeen: String? = null
+)
 
 class UserRepository(private val supabase: SupabaseClient) {
 
@@ -81,15 +90,11 @@ class UserRepository(private val supabase: SupabaseClient) {
         }
         Log.d("Presence", "setOnline($online) userId=$userId")
         try {
-            val data = if (online) {
-                mapOf("user_id" to userId, "online" to true)
-            } else {
-                mapOf(
-                    "user_id" to userId,
-                    "online" to false,
-                    "last_seen" to java.time.Instant.now().toString()
-                )
-            }
+            val data = PresenceUpdate(
+                userId = userId,
+                online = online,
+                lastSeen = if (!online) java.time.Instant.now().toString() else null
+            )
             supabase.from("user_presence").upsert(data)
             Log.d("Presence", "setOnline($online) SUCCESS")
         } catch (e: Exception) {
