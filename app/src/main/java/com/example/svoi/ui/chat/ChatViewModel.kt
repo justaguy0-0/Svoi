@@ -84,7 +84,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             observeNewMessages()
             observeUpdatedMessages()
-            observeReadReceipts()
+            startReadReceiptPolling()
         }
     }
 
@@ -190,18 +190,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun observeReadReceipts() {
+    private fun startReadReceiptPolling() {
         viewModelScope.launch {
-            messageRepo.messageReadFlow(chatId).collect { read ->
-                // When someone reads a message, mark that message as read in UI
-                val myId = currentUserId
-                _messages.value = _messages.value.map { item ->
-                    if (item.message.id == read.messageId &&
-                        item.isOwn &&
-                        read.userId != myId
-                    ) {
-                        item.copy(isRead = true)
-                    } else item
+            while (true) {
+                delay(8_000L)
+                val unreadOwnIds = _messages.value
+                    .filter { it.isOwn && !it.isRead }
+                    .map { it.message.id }
+                if (unreadOwnIds.isNotEmpty()) {
+                    val readIds = messageRepo.getReadMessageIds(unreadOwnIds)
+                    if (readIds.isNotEmpty()) {
+                        _messages.value = _messages.value.map { item ->
+                            if (item.message.id in readIds) item.copy(isRead = true) else item
+                        }
+                    }
                 }
             }
         }
