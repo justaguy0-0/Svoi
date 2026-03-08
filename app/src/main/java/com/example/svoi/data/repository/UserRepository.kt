@@ -6,6 +6,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.decodeRecord
@@ -105,7 +106,7 @@ class UserRepository(private val supabase: SupabaseClient) {
         val channel = supabase.channel("presence-$userId")
         channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
             table = "user_presence"
-            filter = "user_id=eq.$userId"
+            filter("user_id", FilterOperator.EQ, userId)
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
         awaitClose { }

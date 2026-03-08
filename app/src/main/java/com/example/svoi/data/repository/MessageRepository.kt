@@ -8,6 +8,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Order
+import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import io.github.jan.supabase.storage.storage
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.channel
@@ -32,8 +33,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
                         eq("deleted_for_all", false)
                     }
                     order("created_at", Order.DESCENDING)
-                    limit(limit.toLong())
-                    offset(offset.toLong())
+                    range(offset.toLong(), (offset + limit - 1).toLong())
                 }
                 .decodeList<Message>()
                 .reversed()
@@ -192,7 +192,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
         val channel = supabase.channel("messages-insert-$chatId")
         channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
             table = "messages"
-            filter = "chat_id=eq.$chatId"
+            filter("chat_id", FilterOperator.EQ, chatId)
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
         awaitClose { }
@@ -203,7 +203,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
         val channel = supabase.channel("messages-update-$chatId")
         channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
             table = "messages"
-            filter = "chat_id=eq.$chatId"
+            filter("chat_id", FilterOperator.EQ, chatId)
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
         awaitClose { }

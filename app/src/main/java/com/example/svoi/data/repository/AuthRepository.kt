@@ -8,9 +8,7 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.user.UserSession
 import io.github.jan.supabase.postgrest.from
-import io.github.jan.supabase.postgrest.query.filter.FilterOperation
-import io.github.jan.supabase.postgrest.query.filter.FilterOperator
-import kotlinx.coroutines.flow.first
+import kotlinx.datetime.Instant
 
 class AuthRepository(
     private val supabase: SupabaseClient,
@@ -27,7 +25,7 @@ class AuthRepository(
                     accessToken = accessToken,
                     tokenType = "bearer",
                     expiresIn = 3600,
-                    expiresAt = prefs.getExpiresAt(),
+                    expiresAt = Instant.fromEpochSeconds(prefs.getExpiresAt()),
                     refreshToken = refreshToken
                 )
             )
@@ -99,7 +97,7 @@ class AuthRepository(
             prefs.saveSession(
                 accessToken = session.accessToken,
                 refreshToken = session.refreshToken,
-                expiresAt = session.expiresAt
+                expiresAt = session.expiresAt.epochSeconds
             )
 
             null // success
@@ -120,7 +118,7 @@ class AuthRepository(
             prefs.saveSession(
                 accessToken = session.accessToken,
                 refreshToken = session.refreshToken,
-                expiresAt = session.expiresAt
+                expiresAt = session.expiresAt.epochSeconds
             )
             null
         } catch (e: Exception) {

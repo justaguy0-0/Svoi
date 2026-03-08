@@ -13,7 +13,7 @@ lifecycleViewmodelCompose = "2.8.7"
 supabase = "3.1.2"
 ktor = "3.1.1"
 coil = "2.6.0"
-securityCrypto = "1.0.0"
+securityCrypto = "1.1.0-alpha06"
 kotlinxSerialization = "1.7.3"
 coroutines = "1.8.1"
 
