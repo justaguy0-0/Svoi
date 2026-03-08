@@ -76,8 +76,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
-    // Supabase BOM
-    implementation(platform(libs.supabase.bom))
+    // Supabase (explicit versions, no BOM)
     implementation(libs.supabase.postgrest)
     implementation(libs.supabase.auth)
     implementation(libs.supabase.realtime)

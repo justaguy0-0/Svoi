@@ -8,12 +8,16 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Order
+import io.github.jan.supabase.storage.storage
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.decodeRecord
 import io.github.jan.supabase.realtime.postgresChangeFlow
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 class MessageRepository(private val supabase: SupabaseClient) {
 
@@ -184,35 +188,35 @@ class MessageRepository(private val supabase: SupabaseClient) {
     }
 
     /** Supabase Realtime flow — new messages in a chat */
-    fun messageInsertFlow(chatId: String): Flow<Message> {
+    fun messageInsertFlow(chatId: String): Flow<Message> = channelFlow {
         val channel = supabase.channel("messages-insert-$chatId")
-        val flow = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+        channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
             table = "messages"
             filter = "chat_id=eq.$chatId"
-        }
+        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
-        return flow.map { it.decodeRecord<Message>() }
+        awaitClose { }
     }
 
     /** Supabase Realtime flow — updated messages in a chat (edits, deletes) */
-    fun messageUpdateFlow(chatId: String): Flow<Message> {
+    fun messageUpdateFlow(chatId: String): Flow<Message> = channelFlow {
         val channel = supabase.channel("messages-update-$chatId")
-        val flow = channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
+        channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
             table = "messages"
             filter = "chat_id=eq.$chatId"
-        }
+        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
-        return flow.map { it.decodeRecord<Message>() }
+        awaitClose { }
     }
 
     /** Supabase Realtime flow for message_reads (to show read receipts) */
-    fun messageReadFlow(chatId: String): Flow<MessageRead> {
+    fun messageReadFlow(chatId: String): Flow<MessageRead> = channelFlow {
         val channel = supabase.channel("message-reads-$chatId")
-        val flow = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+        channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
             table = "message_reads"
-        }
+        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
-        return flow.map { it.decodeRecord<MessageRead>() }
+        awaitClose { }
     }
 
     /** Upload a file/image to Supabase Storage and return the public URL */

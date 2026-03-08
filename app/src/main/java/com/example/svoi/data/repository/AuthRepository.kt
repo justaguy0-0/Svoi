@@ -99,7 +99,7 @@ class AuthRepository(
             prefs.saveSession(
                 accessToken = session.accessToken,
                 refreshToken = session.refreshToken,
-                expiresAt = session.expiresAt ?: 0L
+                expiresAt = session.expiresAt
             )
 
             null // success
@@ -120,7 +120,7 @@ class AuthRepository(
             prefs.saveSession(
                 accessToken = session.accessToken,
                 refreshToken = session.refreshToken,
-                expiresAt = session.expiresAt ?: 0L
+                expiresAt = session.expiresAt
             )
             null
         } catch (e: Exception) {

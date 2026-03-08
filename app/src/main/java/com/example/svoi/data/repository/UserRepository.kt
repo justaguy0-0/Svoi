@@ -10,9 +10,11 @@ import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.decodeRecord
 import io.github.jan.supabase.realtime.postgresChangeFlow
-import io.github.jan.supabase.realtime.realtime
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 class UserRepository(private val supabase: SupabaseClient) {
 
@@ -99,13 +101,13 @@ class UserRepository(private val supabase: SupabaseClient) {
         }
     }
 
-    fun presenceFlow(userId: String): Flow<UserPresence> {
+    fun presenceFlow(userId: String): Flow<UserPresence> = channelFlow {
         val channel = supabase.channel("presence-$userId")
-        val flow = channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
+        channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
             table = "user_presence"
             filter = "user_id=eq.$userId"
-        }
+        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
-        return flow.map { it.decodeRecord<UserPresence>() }
+        awaitClose { }
     }
 }
