@@ -1,25 +1,11 @@
 package com.example.svoi.data.repository
 
+import android.util.Log
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.UserPresence
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
-import io.github.jan.supabase.postgrest.query.Columns
-import io.github.jan.supabase.postgrest.query.filter.FilterOperator
-import io.github.jan.supabase.realtime.PostgresAction
-import io.github.jan.supabase.realtime.channel
-import io.github.jan.supabase.realtime.decodeRecord
-import io.github.jan.supabase.realtime.postgresChangeFlow
-import io.github.jan.supabase.realtime.realtime
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
 
 class UserRepository(private val supabase: SupabaseClient) {
 
@@ -88,40 +74,39 @@ class UserRepository(private val supabase: SupabaseClient) {
     }
 
     suspend fun setOnline(online: Boolean) {
-        val userId = supabase.auth.currentUserOrNull()?.id ?: return
+        val userId = supabase.auth.currentUserOrNull()?.id
+        if (userId == null) {
+            Log.w("Presence", "setOnline($online): no authenticated user")
+            return
+        }
+        Log.d("Presence", "setOnline($online) userId=$userId")
         try {
             val data = if (online) {
                 mapOf("user_id" to userId, "online" to true)
             } else {
-                mapOf("user_id" to userId, "online" to false,
-                    "last_seen" to java.time.Instant.now().toString())
+                mapOf(
+                    "user_id" to userId,
+                    "online" to false,
+                    "last_seen" to java.time.Instant.now().toString()
+                )
             }
             supabase.from("user_presence").upsert(data)
-        } catch (_: Exception) {}
+            Log.d("Presence", "setOnline($online) SUCCESS")
+        } catch (e: Exception) {
+            Log.e("Presence", "setOnline($online) FAILED: ${e.message}", e)
+        }
     }
 
     suspend fun getPresence(userId: String): UserPresence? {
         return try {
-            supabase.from("user_presence")
+            val result = supabase.from("user_presence")
                 .select { filter { eq("user_id", userId) } }
                 .decodeSingleOrNull<UserPresence>()
+            Log.d("Presence", "getPresence($userId) = $result")
+            result
         } catch (e: Exception) {
+            Log.e("Presence", "getPresence($userId) FAILED: ${e.message}")
             null
-        }
-    }
-
-    fun presenceFlow(userId: String): Flow<UserPresence> = channelFlow {
-        val channel = supabase.channel("presence-$userId")
-        channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
-            table = "user_presence"
-            filter("user_id", FilterOperator.EQ, userId)
-        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
-        channel.subscribe()
-        awaitClose {
-            CoroutineScope(Dispatchers.IO).launch {
-                runCatching { channel.unsubscribe() }
-                runCatching { supabase.realtime.removeChannel(channel) }
-            }
         }
     }
 }

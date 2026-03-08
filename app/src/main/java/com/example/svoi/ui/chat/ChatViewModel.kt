@@ -3,6 +3,7 @@ package com.example.svoi.ui.chat
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.svoi.SvoiApp
@@ -12,6 +13,7 @@ import com.example.svoi.data.model.MessageUiItem
 import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.UserPresence
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -57,10 +59,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    // Signals ChatScreen to scroll to bottom (incremented on initial load + new messages)
+    private val _scrollToBottomEvent = MutableStateFlow(0)
+    val scrollToBottomEvent: StateFlow<Int> = _scrollToBottomEvent
+
     private val currentUserId get() = authRepo.currentUserId() ?: ""
 
     private var chatId: String = ""
     private val profileCache = mutableMapOf<String, Profile>()
+    private var otherUserId: String? = null
 
     fun init(chatId: String) {
         if (this.chatId == chatId) return
@@ -73,10 +80,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             markAsRead()
             loadPinnedMessage()
             _isLoading.value = false
+            _scrollToBottomEvent.value++
 
-            // Start realtime
             observeNewMessages()
             observeUpdatedMessages()
+            observeReadReceipts()
         }
     }
 
@@ -94,16 +102,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val other = profiles.firstOrNull { it.id != myId }
             _chatName.value = other?.displayName ?: "Пользователь"
             other?.let { otherProfile ->
-                // Observe presence
-                viewModelScope.launch {
-                    _otherUserPresence.value = userRepo.getPresence(otherProfile.id)
-                    userRepo.presenceFlow(otherProfile.id).collect {
-                        _otherUserPresence.value = it
-                    }
-                }
+                otherUserId = otherProfile.id
+                startPresencePolling(otherProfile.id)
             }
         } else {
             _chatName.value = chat.name ?: "Группа"
+        }
+    }
+
+    private fun startPresencePolling(userId: String) {
+        viewModelScope.launch {
+            while (true) {
+                val presence = userRepo.getPresence(userId)
+                Log.d("Presence", "poll result for $userId: $presence")
+                _otherUserPresence.value = presence
+                delay(10_000L)
+            }
         }
     }
 
@@ -113,7 +127,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun enrichMessages(raw: List<Message>): List<MessageUiItem> {
-        // Load any missing profiles
         val senderIds = raw.mapNotNull { it.senderId }.distinct()
         val missing = senderIds.filter { it !in profileCache }
         if (missing.isNotEmpty()) {
@@ -121,13 +134,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val myId = currentUserId
+        val myMessageIds = raw.filter { it.senderId == myId }.map { it.id }
+        val readIds = messageRepo.getReadMessageIds(myMessageIds)
+
         return raw.map { msg ->
             val replyMsg = msg.replyToId?.let { messageRepo.getMessage(it) }
             MessageUiItem(
                 message = msg,
                 senderProfile = msg.senderId?.let { profileCache[it] },
                 isOwn = msg.senderId == myId,
-                isRead = false, // TODO: load per-message read status
+                isRead = msg.id in readIds,
                 replyToMessage = replyMsg
             )
         }
@@ -158,6 +174,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     replyToMessage = replyMsg
                 )
                 _messages.value = _messages.value + item
+                _scrollToBottomEvent.value++
                 markAsRead()
             }
         }
@@ -168,6 +185,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             messageRepo.messageUpdateFlow(chatId).collect { updated ->
                 _messages.value = _messages.value.map { item ->
                     if (item.message.id == updated.id) item.copy(message = updated) else item
+                }
+            }
+        }
+    }
+
+    private fun observeReadReceipts() {
+        viewModelScope.launch {
+            messageRepo.messageReadFlow(chatId).collect { read ->
+                // When someone reads a message, mark that message as read in UI
+                val myId = currentUserId
+                _messages.value = _messages.value.map { item ->
+                    if (item.message.id == read.messageId &&
+                        item.isOwn &&
+                        read.userId != myId
+                    ) {
+                        item.copy(isRead = true)
+                    } else item
                 }
             }
         }
@@ -228,7 +262,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val original = android.graphics.BitmapFactory.decodeStream(inputStream)
             inputStream.close()
             if (original == null) return null
-            // Scale down if too large
             val maxDim = 1280
             val scaled = if (original.width > maxDim || original.height > maxDim) {
                 val ratio = minOf(maxDim.toFloat() / original.width, maxDim.toFloat() / original.height)
@@ -256,7 +289,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (forEveryone) {
                 messageRepo.deleteMessageForAll(messageId)
             } else {
-                // Delete for self: just hide locally
                 _messages.value = _messages.value.filter { it.message.id != messageId }
             }
         }

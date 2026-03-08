@@ -110,15 +110,18 @@ fun ChatScreen(
     val editingMessage by viewModel.editingMessage.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val scrollToBottomEvent by viewModel.scrollToBottomEvent.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    // Scroll to bottom when new message arrives
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    // Scroll to bottom on initial load and new messages
+    LaunchedEffect(scrollToBottomEvent) {
+        if (messages.isNotEmpty()) {
+            listState.scrollToItem(messages.size - 1)
+        }
     }
 
     // When editing, populate the text field

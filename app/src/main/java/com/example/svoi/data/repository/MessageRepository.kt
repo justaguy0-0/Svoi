@@ -168,6 +168,20 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (_: Exception) {}
     }
 
+    /** Returns set of message IDs (from the given list) that have been read by someone */
+    suspend fun getReadMessageIds(messageIds: List<String>): Set<String> {
+        if (messageIds.isEmpty()) return emptySet()
+        return try {
+            supabase.from("message_reads")
+                .select {
+                    filter { isIn("message_id", messageIds) }
+                }
+                .decodeList<MessageRead>()
+                .map { it.messageId }
+                .toSet()
+        } catch (e: Exception) { emptySet() }
+    }
+
     suspend fun getReadUserIds(messageId: String): List<String> {
         return try {
             supabase.from("message_reads")
