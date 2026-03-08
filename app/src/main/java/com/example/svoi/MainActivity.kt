@@ -16,6 +16,8 @@ import com.example.svoi.ui.theme.SvoiTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 
 class MainActivity : ComponentActivity() {
 
@@ -57,7 +59,13 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (app.authRepository.isLoggedIn()) {
-            scope.launch { app.userRepository.setOnline(false) }
+            // runBlocking гарантирует, что запрос успеет выполниться до того,
+            // как ОС может убить процесс после onStop
+            runBlocking {
+                try {
+                    withTimeout(3000) { app.userRepository.setOnline(false) }
+                } catch (_: Exception) {}
+            }
         }
     }
 }
