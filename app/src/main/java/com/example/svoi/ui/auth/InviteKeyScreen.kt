@@ -93,7 +93,7 @@ fun InviteKeyScreen(
 
             OutlinedTextField(
                 value = key,
-                onValueChange = { key = it.uppercase(); viewModel.clearError() },
+                onValueChange = { key = it; viewModel.clearError() },
                 label = { Text("Ключ приглашения") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
