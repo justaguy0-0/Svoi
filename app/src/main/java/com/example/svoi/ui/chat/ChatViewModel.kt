@@ -197,9 +197,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val unreadOwnIds = _messages.value
                     .filter { it.isOwn && !it.isRead }
                     .map { it.message.id }
+                Log.d("ReadReceipts", "poll: ${unreadOwnIds.size} unread own messages")
                 if (unreadOwnIds.isNotEmpty()) {
                     val readIds = messageRepo.getReadMessageIds(unreadOwnIds)
                     if (readIds.isNotEmpty()) {
+                        Log.d("ReadReceipts", "poll: marking ${readIds.size} as read")
                         _messages.value = _messages.value.map { item ->
                             if (item.message.id in readIds) item.copy(isRead = true) else item
                         }

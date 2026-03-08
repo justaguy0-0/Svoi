@@ -1,5 +1,6 @@
 package com.example.svoi.data.repository
 
+import android.util.Log
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageRead
 import com.example.svoi.data.model.MessageUiItem
@@ -7,6 +8,8 @@ import com.example.svoi.data.model.Profile
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import io.github.jan.supabase.storage.storage
@@ -23,6 +26,12 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+
+@Serializable
+private data class MessageReadInsert(
+    @SerialName("message_id") val messageId: String,
+    @SerialName("user_id") val userId: String
+)
 
 class MessageRepository(private val supabase: SupabaseClient) {
 
@@ -150,7 +159,6 @@ class MessageRepository(private val supabase: SupabaseClient) {
     suspend fun markMessagesAsRead(chatId: String) {
         val userId = currentUserId()
         try {
-            // Get all unread messages in this chat not sent by current user
             val messages = supabase.from("messages")
                 .select {
                     filter {
@@ -161,25 +169,32 @@ class MessageRepository(private val supabase: SupabaseClient) {
                 }
                 .decodeList<Message>()
 
+            Log.d("ReadReceipts", "markMessagesAsRead: chatId=$chatId, found ${messages.size} messages to mark, userId=$userId")
             if (messages.isEmpty()) return
 
-            val reads = messages.map { MessageRead(messageId = it.id, userId = userId) }
+            val reads = messages.map { MessageReadInsert(messageId = it.id, userId = userId) }
             supabase.from("message_reads").upsert(reads)
-        } catch (_: Exception) {}
+            Log.d("ReadReceipts", "markMessagesAsRead: upsert SUCCESS for ${reads.size} rows")
+        } catch (e: Exception) {
+            Log.e("ReadReceipts", "markMessagesAsRead FAILED: ${e.message}", e)
+        }
     }
 
     /** Returns set of message IDs (from the given list) that have been read by someone */
     suspend fun getReadMessageIds(messageIds: List<String>): Set<String> {
         if (messageIds.isEmpty()) return emptySet()
         return try {
-            supabase.from("message_reads")
+            val rows = supabase.from("message_reads")
                 .select {
                     filter { isIn("message_id", messageIds) }
                 }
                 .decodeList<MessageRead>()
-                .map { it.messageId }
-                .toSet()
-        } catch (e: Exception) { emptySet() }
+            Log.d("ReadReceipts", "getReadMessageIds(${messageIds.size} ids) → ${rows.size} rows: $rows")
+            rows.map { it.messageId }.toSet()
+        } catch (e: Exception) {
+            Log.e("ReadReceipts", "getReadMessageIds FAILED: ${e.message}", e)
+            emptySet()
+        }
     }
 
     suspend fun getReadUserIds(messageId: String): List<String> {
