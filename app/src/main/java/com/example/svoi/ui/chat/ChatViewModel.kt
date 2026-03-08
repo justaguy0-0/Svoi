@@ -1,0 +1,237 @@
+package com.example.svoi.ui.chat
+
+import android.app.Application
+import android.content.Context
+import android.net.Uri
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.svoi.SvoiApp
+import com.example.svoi.data.model.Chat
+import com.example.svoi.data.model.Message
+import com.example.svoi.data.model.MessageUiItem
+import com.example.svoi.data.model.PinnedMessage
+import com.example.svoi.data.model.Profile
+import com.example.svoi.data.model.UserPresence
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+
+class ChatViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val app = application as SvoiApp
+    private val messageRepo = app.messageRepository
+    private val chatRepo = app.chatRepository
+    private val userRepo = app.userRepository
+    private val authRepo = app.authRepository
+
+    private val _messages = MutableStateFlow<List<MessageUiItem>>(emptyList())
+    val messages: StateFlow<List<MessageUiItem>> = _messages
+
+    private val _chat = MutableStateFlow<Chat?>(null)
+    val chat: StateFlow<Chat?> = _chat
+
+    private val _isGroup = MutableStateFlow(false)
+    val isGroup: StateFlow<Boolean> = _isGroup
+
+    private val _chatName = MutableStateFlow("")
+    val chatName: StateFlow<String> = _chatName
+
+    private val _otherUserPresence = MutableStateFlow<UserPresence?>(null)
+    val otherUserPresence: StateFlow<UserPresence?> = _otherUserPresence
+
+    private val _pinnedMessage = MutableStateFlow<PinnedMessage?>(null)
+    val pinnedMessage: StateFlow<PinnedMessage?> = _pinnedMessage
+
+    private val _replyTo = MutableStateFlow<Message?>(null)
+    val replyTo: StateFlow<Message?> = _replyTo
+
+    private val _editingMessage = MutableStateFlow<Message?>(null)
+    val editingMessage: StateFlow<Message?> = _editingMessage
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading
+
+    private val _isSending = MutableStateFlow(false)
+    val isSending: StateFlow<Boolean> = _isSending
+
+    private val currentUserId get() = authRepo.currentUserId() ?: ""
+
+    private var chatId: String = ""
+    private val profileCache = mutableMapOf<String, Profile>()
+
+    fun init(chatId: String) {
+        if (this.chatId == chatId) return
+        this.chatId = chatId
+
+        viewModelScope.launch {
+            _isLoading.value = true
+            loadChatInfo()
+            loadMessages()
+            markAsRead()
+            loadPinnedMessage()
+            _isLoading.value = false
+
+            // Start realtime
+            observeNewMessages()
+            observeUpdatedMessages()
+        }
+    }
+
+    private suspend fun loadChatInfo() {
+        val chat = chatRepo.getChat(chatId) ?: return
+        _chat.value = chat
+        _isGroup.value = chat.type == "group"
+
+        val members = chatRepo.getChatMembers(chatId)
+        val profiles = userRepo.getProfiles(members.map { it.userId })
+        profiles.forEach { profileCache[it.id] = it }
+
+        val myId = currentUserId
+        if (chat.type == "personal") {
+            val other = profiles.firstOrNull { it.id != myId }
+            _chatName.value = other?.displayName ?: "Пользователь"
+            other?.let { otherProfile ->
+                // Observe presence
+                viewModelScope.launch {
+                    _otherUserPresence.value = userRepo.getPresence(otherProfile.id)
+                    userRepo.presenceFlow(otherProfile.id).collect {
+                        _otherUserPresence.value = it
+                    }
+                }
+            }
+        } else {
+            _chatName.value = chat.name ?: "Группа"
+        }
+    }
+
+    private suspend fun loadMessages() {
+        val raw = messageRepo.getMessages(chatId, limit = 50)
+        _messages.value = enrichMessages(raw)
+    }
+
+    private suspend fun enrichMessages(raw: List<Message>): List<MessageUiItem> {
+        // Load any missing profiles
+        val senderIds = raw.mapNotNull { it.senderId }.distinct()
+        val missing = senderIds.filter { it !in profileCache }
+        if (missing.isNotEmpty()) {
+            userRepo.getProfiles(missing).forEach { profileCache[it.id] = it }
+        }
+
+        val myId = currentUserId
+        return raw.map { msg ->
+            val replyMsg = msg.replyToId?.let { messageRepo.getMessage(it) }
+            MessageUiItem(
+                message = msg,
+                senderProfile = msg.senderId?.let { profileCache[it] },
+                isOwn = msg.senderId == myId,
+                isRead = false, // TODO: load per-message read status
+                replyToMessage = replyMsg
+            )
+        }
+    }
+
+    private suspend fun markAsRead() {
+        messageRepo.markMessagesAsRead(chatId)
+    }
+
+    private suspend fun loadPinnedMessage() {
+        _pinnedMessage.value = chatRepo.getPinnedMessage(chatId)
+    }
+
+    private fun observeNewMessages() {
+        viewModelScope.launch {
+            messageRepo.messageInsertFlow(chatId).collect { newMsg ->
+                val profile = newMsg.senderId?.let { id ->
+                    profileCache.getOrPut(id) {
+                        userRepo.getProfile(id) ?: Profile(id = id)
+                    }
+                }
+                val item = MessageUiItem(
+                    message = newMsg,
+                    senderProfile = profile,
+                    isOwn = newMsg.senderId == currentUserId,
+                    isRead = false
+                )
+                _messages.value = _messages.value + item
+                markAsRead()
+            }
+        }
+    }
+
+    private fun observeUpdatedMessages() {
+        viewModelScope.launch {
+            messageRepo.messageUpdateFlow(chatId).collect { updated ->
+                _messages.value = _messages.value.map { item ->
+                    if (item.message.id == updated.id) item.copy(message = updated) else item
+                }
+            }
+        }
+    }
+
+    fun setReplyTo(message: Message?) { _replyTo.value = message }
+    fun setEditing(message: Message?) {
+        _editingMessage.value = message
+        if (message != null) _replyTo.value = null
+    }
+
+    fun sendText(content: String) {
+        if (content.isBlank()) return
+        val replyId = _replyTo.value?.id
+        val editing = _editingMessage.value
+
+        viewModelScope.launch {
+            _isSending.value = true
+            if (editing != null) {
+                messageRepo.editMessage(editing.id, content.trim())
+                _editingMessage.value = null
+            } else {
+                messageRepo.sendTextMessage(chatId, content.trim(), replyId)
+                _replyTo.value = null
+            }
+            _isSending.value = false
+        }
+    }
+
+    fun sendPhoto(uri: Uri, context: Context) {
+        viewModelScope.launch {
+            _isSending.value = true
+            val bytes = context.contentResolver.openInputStream(uri)?.readBytes()
+            if (bytes != null) {
+                val fileName = "photo_${System.currentTimeMillis()}.jpg"
+                val url = messageRepo.uploadFile(chatId, fileName, bytes)
+                if (url != null) {
+                    messageRepo.sendPhotoMessage(chatId, url, _replyTo.value?.id)
+                    _replyTo.value = null
+                }
+            }
+            _isSending.value = false
+        }
+    }
+
+    fun deleteMessage(messageId: String, forEveryone: Boolean) {
+        viewModelScope.launch {
+            if (forEveryone) {
+                messageRepo.deleteMessageForAll(messageId)
+            } else {
+                // Delete for self: just hide locally
+                _messages.value = _messages.value.filter { it.message.id != messageId }
+            }
+        }
+    }
+
+    fun forwardMessage(messageId: String, toChatId: String) {
+        viewModelScope.launch {
+            messageRepo.forwardMessage(messageId, toChatId)
+        }
+    }
+
+    fun loadMoreMessages() {
+        viewModelScope.launch {
+            val current = _messages.value
+            val older = messageRepo.getMessages(chatId, limit = 30, offset = current.size)
+            if (older.isNotEmpty()) {
+                _messages.value = enrichMessages(older) + current
+            }
+        }
+    }
+}

@@ -1,0 +1,32 @@
+# ── Secrets & local config (НЕ коммитить!) ────────────────────
+local.properties
+
+# ── Android build output ───────────────────────────────────────
+*.iml
+.gradle/
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.ap_
+
+# ── Kotlin / Java ──────────────────────────────────────────────
+*.class
+*.jar
+*.war
+
+# ── OS files ───────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+
+# ── Android Studio ─────────────────────────────────────────────
+*.orig
