@@ -118,7 +118,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
     suspend fun sendSystemMessage(chatId: String, content: String, replyToId: String? = null): Message? {
         val userId = currentUserId()
         return try {
-            supabase.from("messages").insert(
+            val result = supabase.from("messages").insert(
                 buildMap {
                     put("chat_id", chatId)
                     put("sender_id", userId)
@@ -127,7 +127,12 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     if (replyToId != null) put("reply_to_id", replyToId)
                 }
             ).decodeSingle<Message>()
-        } catch (e: Exception) { null }
+            android.util.Log.d("SystemMsg", "sendSystemMessage OK: $content")
+            result
+        } catch (e: Exception) {
+            android.util.Log.e("SystemMsg", "sendSystemMessage FAILED: $content", e)
+            null
+        }
     }
 
     suspend fun forwardMessage(fromMessageId: String, toChatId: String): Message? {

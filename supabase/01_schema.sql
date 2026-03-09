@@ -48,7 +48,7 @@ CREATE TABLE messages (
   chat_id             UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
   sender_id           UUID REFERENCES auth.users(id),
   content             TEXT,
-  type                TEXT NOT NULL DEFAULT 'text' CHECK (type IN ('text', 'photo', 'file')),
+  type                TEXT NOT NULL DEFAULT 'text' CHECK (type IN ('text', 'photo', 'file', 'system')),
   file_url            TEXT,
   file_name           TEXT,
   file_size           BIGINT,

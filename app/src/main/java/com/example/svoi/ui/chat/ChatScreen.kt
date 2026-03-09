@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.Check
@@ -51,6 +52,7 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,6 +70,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -400,6 +403,28 @@ fun ChatScreen(
                                 ChatEntry.UnreadDivider -> UnreadMessagesDivider()
                             }
                         }
+                    }
+                }
+
+                // Scroll to bottom button
+                val showScrollToBottom by remember { derivedStateOf { listState.canScrollForward } }
+                if (showScrollToBottom) {
+                    FloatingActionButton(
+                        onClick = {
+                            scope.launch { listState.animateScrollToItem(displayEntries.size - 1) }
+                        },
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 12.dp, bottom = 12.dp)
+                            .size(40.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Вниз",
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 }
             }
