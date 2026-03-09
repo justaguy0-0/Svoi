@@ -142,7 +142,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             observeNewMessages()
             observeUpdatedMessages()
-            startReadReceiptPolling()
+            observeReadReceipts()
             startTypingPolling()
         }
     }
@@ -194,11 +194,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startPresencePolling(userId: String) {
         viewModelScope.launch {
-            while (true) {
-                val presence = userRepo.getPresence(userId)
-                Log.d("Presence", "poll result for $userId: $presence")
-                _otherUserPresence.value = presence
-                delay(10_000L)
+            // Initial load
+            _otherUserPresence.value = userRepo.getPresence(userId)
+            // Realtime updates
+            try {
+                userRepo.presenceUpdateFlow(userId).collect { presence ->
+                    Log.d("Presence", "realtime update for $userId: $presence")
+                    _otherUserPresence.value = presence
+                }
+            } catch (_: Exception) {
+                // Realtime unavailable — fall back to polling
+                while (true) {
+                    delay(15_000L)
+                    val presence = userRepo.getPresence(userId)
+                    Log.d("Presence", "poll fallback for $userId: $presence")
+                    _otherUserPresence.value = presence
+                }
             }
         }
     }
@@ -315,20 +326,30 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun startReadReceiptPolling() {
+    private fun observeReadReceipts() {
         viewModelScope.launch {
-            while (true) {
-                delay(8_000L)
-                val unreadOwnIds = _messages.value
-                    .filter { it.isOwn && !it.isRead }
-                    .map { it.message.id }
-                Log.d("ReadReceipts", "poll: ${unreadOwnIds.size} unread own messages")
-                if (unreadOwnIds.isNotEmpty()) {
-                    val readIds = messageRepo.getReadMessageIds(unreadOwnIds)
-                    if (readIds.isNotEmpty()) {
-                        Log.d("ReadReceipts", "poll: marking ${readIds.size} as read")
-                        _messages.value = _messages.value.map { item ->
-                            if (item.message.id in readIds) item.copy(isRead = true) else item
+            try {
+                messageRepo.messageReadFlow(chatId).collect { read ->
+                    // Only update if it's one of our messages being read
+                    val idx = _messages.value.indexOfFirst { it.message.id == read.messageId && it.isOwn }
+                    if (idx >= 0 && !_messages.value[idx].isRead) {
+                        Log.d("ReadReceipts", "realtime: message ${read.messageId} marked read by ${read.userId}")
+                        _messages.value = _messages.value.toMutableList().also {
+                            it[idx] = it[idx].copy(isRead = true)
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // Realtime unavailable — fall back to polling
+                while (true) {
+                    delay(10_000L)
+                    val unreadOwnIds = _messages.value.filter { it.isOwn && !it.isRead }.map { it.message.id }
+                    if (unreadOwnIds.isNotEmpty()) {
+                        val readIds = messageRepo.getReadMessageIds(unreadOwnIds)
+                        if (readIds.isNotEmpty()) {
+                            _messages.value = _messages.value.map { item ->
+                                if (item.message.id in readIds) item.copy(isRead = true) else item
+                            }
                         }
                     }
                 }

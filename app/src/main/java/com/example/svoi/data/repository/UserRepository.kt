@@ -6,6 +6,7 @@ import com.example.svoi.data.model.UserPresence
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.decodeRecord
@@ -144,6 +145,22 @@ class UserRepository(private val supabase: SupabaseClient) {
         val channel = supabase.channel("user-presence-updates-all")
         channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
             table = "user_presence"
+        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
+        channel.subscribe()
+        awaitClose {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { channel.unsubscribe() }
+                runCatching { supabase.realtime.removeChannel(channel) }
+            }
+        }
+    }
+
+    /** Realtime flow — fires when a specific user's presence changes */
+    fun presenceUpdateFlow(userId: String): Flow<UserPresence> = channelFlow {
+        val channel = supabase.channel("user-presence-$userId")
+        channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
+            table = "user_presence"
+            filter("user_id", FilterOperator.EQ, userId)
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
         channel.subscribe()
         awaitClose {

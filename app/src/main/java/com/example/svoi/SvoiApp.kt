@@ -13,6 +13,11 @@ import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.storage.Storage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class SvoiApp : Application() {
 
@@ -36,4 +41,25 @@ class SvoiApp : Application() {
     val userRepository by lazy { UserRepository(supabase) }
     val chatRepository by lazy { ChatRepository(supabase) }
     val messageRepository by lazy { MessageRepository(supabase) }
+
+    // Heartbeat: keeps online=true while app is in foreground
+    private val heartbeatScope = CoroutineScope(Dispatchers.IO)
+    private var heartbeatJob: Job? = null
+
+    fun startPresenceHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = heartbeatScope.launch {
+            while (true) {
+                delay(30_000L)
+                if (authRepository.isLoggedIn()) {
+                    userRepository.setOnline(true)
+                }
+            }
+        }
+    }
+
+    fun stopPresenceHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+    }
 }

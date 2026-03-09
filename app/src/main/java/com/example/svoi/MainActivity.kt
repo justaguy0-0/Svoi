@@ -49,21 +49,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
+    override fun onResume() {
+        super.onResume()
         if (app.authRepository.isLoggedIn()) {
             scope.launch { app.userRepository.setOnline(true) }
+            app.startPresenceHeartbeat()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        app.stopPresenceHeartbeat()
+        if (app.authRepository.isLoggedIn()) {
+            scope.launch { app.userRepository.setOnline(false) }
         }
     }
 
     override fun onStop() {
         super.onStop()
+        // Fallback: runBlocking guarantees the request fires before the process is killed
         if (app.authRepository.isLoggedIn()) {
-            // runBlocking гарантирует, что запрос успеет выполниться до того,
-            // как ОС может убить процесс после onStop
             runBlocking {
                 try {
-                    withTimeout(3000) { app.userRepository.setOnline(false) }
+                    withTimeout(1500) { app.userRepository.setOnline(false) }
                 } catch (_: Exception) {}
             }
         }
