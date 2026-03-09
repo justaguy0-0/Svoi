@@ -22,6 +22,7 @@ data class ChatMember(
 )
 
 /** UI model combining chat + last message + unread + other user info */
+@Serializable
 data class ChatListItem(
     val chatId: String,
     val type: String,

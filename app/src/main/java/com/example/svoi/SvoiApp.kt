@@ -1,6 +1,8 @@
 package com.example.svoi
 
 import android.app.Application
+import com.example.svoi.data.NetworkMonitor
+import com.example.svoi.data.local.CacheManager
 import com.example.svoi.data.local.EncryptedPrefsManager
 import com.example.svoi.data.repository.AuthRepository
 import com.example.svoi.data.repository.ChatRepository
@@ -27,6 +29,8 @@ class SvoiApp : Application() {
     }
 
     val prefs by lazy { EncryptedPrefsManager(this) }
+    val cacheManager by lazy { CacheManager(this) }
+    val networkMonitor by lazy { NetworkMonitor(this) }
 
     val authRepository by lazy { AuthRepository(supabase, prefs) }
     val userRepository by lazy { UserRepository(supabase) }

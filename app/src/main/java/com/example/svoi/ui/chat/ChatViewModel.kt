@@ -25,6 +25,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val chatRepo = app.chatRepository
     private val userRepo = app.userRepository
     private val authRepo = app.authRepository
+    private val cache = app.cacheManager
 
     private val _messages = MutableStateFlow<List<MessageUiItem>>(emptyList())
     val messages: StateFlow<List<MessageUiItem>> = _messages
@@ -74,17 +75,41 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         this.chatId = chatId
 
         viewModelScope.launch {
-            _isLoading.value = true
+            // 1. Load cached messages instantly
+            val cachedMessages = cache.loadMessages(chatId)
+            val cachedProfiles = cache.loadProfileMap()
+            if (cachedMessages != null) {
+                cachedProfiles.forEach { profileCache[it.key] = it.value }
+                _messages.value = buildUiItems(cachedMessages)
+                _isLoading.value = false
+                _scrollToBottomEvent.value++
+            } else {
+                _isLoading.value = true
+            }
+
+            // 2. Load fresh from network
             loadChatInfo()
             loadMessages()
             markAsRead()
             loadPinnedMessage()
             _isLoading.value = false
-            _scrollToBottomEvent.value++
+            if (cachedMessages == null) _scrollToBottomEvent.value++
 
             observeNewMessages()
             observeUpdatedMessages()
             startReadReceiptPolling()
+        }
+    }
+
+    private fun buildUiItems(raw: List<Message>): List<MessageUiItem> {
+        val myId = currentUserId
+        return raw.map { msg ->
+            MessageUiItem(
+                message = msg,
+                senderProfile = msg.senderId?.let { profileCache[it] },
+                isOwn = msg.senderId == myId,
+                isRead = false // will be updated when network loads
+            )
         }
     }
 
@@ -124,6 +149,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun loadMessages() {
         val raw = messageRepo.getMessages(chatId, limit = 50)
         _messages.value = enrichMessages(raw)
+        // Save to cache
+        if (raw.isNotEmpty()) {
+            cache.saveMessages(chatId, raw)
+            cache.saveProfiles(profileCache.values)
+        }
     }
 
     private suspend fun enrichMessages(raw: List<Message>): List<MessageUiItem> {

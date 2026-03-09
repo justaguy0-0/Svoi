@@ -1,5 +1,10 @@
 package com.example.svoi.ui.chatlist
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -45,6 +50,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,10 +90,28 @@ fun ChatListScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "Свои",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
+                    val isUpdating by viewModel.isUpdating.collectAsState()
+                    val isOnline by viewModel.isOnline.collectAsState()
+
+                    if (!isOnline || isUpdating) {
+                        val infiniteTransition = rememberInfiniteTransition(label = "title_pulse")
+                        val alpha by infiniteTransition.animateFloat(
+                            initialValue = 1f,
+                            targetValue = 0.4f,
+                            animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+                            label = "title_alpha"
+                        )
+                        Text(
+                            text = if (!isOnline) "Подключение..." else "Обновление...",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            modifier = Modifier.alpha(alpha)
+                        )
+                    } else {
+                        Text(
+                            "Свои",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
                 },
                 actions = {
                     IconButton(onClick = onProfileClick) {
