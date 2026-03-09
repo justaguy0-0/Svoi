@@ -19,14 +19,23 @@ class ChatRepository(private val supabase: SupabaseClient) {
     /** Returns all chats for the current user, enriched with last message + unread count */
     suspend fun getChatsForUser(): List<ChatListItem> {
         val userId = currentUserId()
+        Log.d("ChatRepo", "getChatsForUser: userId='$userId'")
+        if (userId.isEmpty()) {
+            Log.w("ChatRepo", "getChatsForUser: userId is empty, session not ready yet")
+            return emptyList()
+        }
 
         // 1. Get chat memberships
         val memberships = try {
             supabase.from("chat_members")
                 .select { filter { eq("user_id", userId) } }
                 .decodeList<ChatMember>()
-        } catch (e: Exception) { return emptyList() }
+        } catch (e: Exception) {
+            Log.e("ChatRepo", "getChatsForUser: failed to load memberships", e)
+            return emptyList()
+        }
 
+        Log.d("ChatRepo", "getChatsForUser: found ${memberships.size} memberships")
         if (memberships.isEmpty()) return emptyList()
         val chatIds = memberships.map { it.chatId }
 
@@ -35,14 +44,22 @@ class ChatRepository(private val supabase: SupabaseClient) {
             supabase.from("chats")
                 .select { filter { isIn("id", chatIds) } }
                 .decodeList<Chat>()
-        } catch (e: Exception) { return emptyList() }
+        } catch (e: Exception) {
+            Log.e("ChatRepo", "getChatsForUser: failed to load chats", e)
+            return emptyList()
+        }
+
+        Log.d("ChatRepo", "getChatsForUser: found ${chats.size} chats")
 
         // 3. Get all chat members for personal chats (to find the other user)
         val allMembers = try {
             supabase.from("chat_members")
                 .select { filter { isIn("chat_id", chatIds) } }
                 .decodeList<ChatMember>()
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) {
+            Log.e("ChatRepo", "getChatsForUser: failed to load allMembers", e)
+            emptyList()
+        }
 
         // 4. Get profiles of other users in personal chats
         val otherUserIds = allMembers

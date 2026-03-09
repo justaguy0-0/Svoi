@@ -1,5 +1,6 @@
 package com.example.svoi.data.repository
 
+import android.util.Log
 import com.example.svoi.data.local.EncryptedPrefsManager
 import com.example.svoi.data.model.InviteKey
 import com.example.svoi.data.model.Profile
@@ -17,8 +18,14 @@ class AuthRepository(
 
     /** Returns true if a saved session was successfully restored */
     suspend fun restoreSession(): Boolean {
-        val accessToken = prefs.getAccessToken() ?: return false
-        val refreshToken = prefs.getRefreshToken() ?: return false
+        val accessToken = prefs.getAccessToken() ?: run {
+            Log.w("Auth", "restoreSession: no access token saved")
+            return false
+        }
+        val refreshToken = prefs.getRefreshToken() ?: run {
+            Log.w("Auth", "restoreSession: no refresh token saved")
+            return false
+        }
         return try {
             supabase.auth.importSession(
                 UserSession(
@@ -29,8 +36,11 @@ class AuthRepository(
                     refreshToken = refreshToken
                 )
             )
+            val userId = supabase.auth.currentUserOrNull()?.id
+            Log.d("Auth", "restoreSession: SUCCESS, userId=$userId")
             true
         } catch (e: Exception) {
+            Log.e("Auth", "restoreSession: FAILED — ${e.message}", e)
             prefs.clearSession()
             false
         }
@@ -145,5 +155,5 @@ class AuthRepository(
 
     fun currentUserId(): String? = supabase.auth.currentUserOrNull()?.id
 
-    fun isLoggedIn(): Boolean = supabase.auth.currentSessionOrNull() != null
+    fun isLoggedIn(): Boolean = supabase.auth.currentUserOrNull() != null
 }
