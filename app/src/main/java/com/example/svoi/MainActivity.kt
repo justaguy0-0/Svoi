@@ -59,15 +59,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        // Only stop the heartbeat here — do NOT send setOnline(false) asynchronously.
+        // An async false launched here can complete AFTER onResume's async true,
+        // leaving the status stuck at false. onStop handles the actual offline write
+        // synchronously via runBlocking, which always completes before onResume fires.
         app.stopPresenceHeartbeat()
-        if (app.authRepository.isLoggedIn()) {
-            scope.launch { app.userRepository.setOnline(false) }
-        }
     }
 
     override fun onStop() {
         super.onStop()
-        // Fallback: runBlocking guarantees the request fires before the process is killed
+        // runBlocking guarantees this completes before the process can be killed,
+        // and always completes before the next onResume can run on the main thread.
         if (app.authRepository.isLoggedIn()) {
             runBlocking {
                 try {
