@@ -46,6 +46,11 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private var initialLoad = true
     private var wasOffline = false
 
+    // Mutex ensures only one getChatsForUser() runs at a time — prevents partial/stale overwrites
+    private val refreshMutex = Mutex()
+    private var refreshJob: Job? = null
+    private var loadJob: Job? = null
+
     init {
         // Watch for going offline so we show "Обновление..." when reconnecting
         viewModelScope.launch {
@@ -96,11 +101,6 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             _isLoading.value = false
         }
     }
-
-    // Mutex ensures only one getChatsForUser() runs at a time — prevents partial/stale overwrites
-    private val refreshMutex = Mutex()
-    private var refreshJob: Job? = null
-    private var loadJob: Job? = null
 
     // Debounced silent refresh — skips if a full loadChats() is already running
     fun silentRefresh() {
