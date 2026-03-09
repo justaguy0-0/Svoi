@@ -117,20 +117,20 @@ CREATE POLICY "pinned_messages: member can read"
   TO authenticated
   USING (is_chat_member(chat_id));
 
-CREATE POLICY "pinned_messages: admin can insert"
+CREATE POLICY "pinned_messages: member can insert"
   ON pinned_messages FOR INSERT
   TO authenticated
-  WITH CHECK (is_chat_admin(chat_id));
+  WITH CHECK (is_chat_member(chat_id));
 
-CREATE POLICY "pinned_messages: admin can update"
+CREATE POLICY "pinned_messages: member can update"
   ON pinned_messages FOR UPDATE
   TO authenticated
-  USING (is_chat_admin(chat_id));
+  USING (is_chat_member(chat_id));
 
-CREATE POLICY "pinned_messages: admin can delete"
+CREATE POLICY "pinned_messages: member can delete"
   ON pinned_messages FOR DELETE
   TO authenticated
-  USING (is_chat_admin(chat_id));
+  USING (is_chat_member(chat_id));
 
 -- ── user_presence ────────────────────────────────────────────
 ALTER TABLE user_presence ENABLE ROW LEVEL SECURITY;

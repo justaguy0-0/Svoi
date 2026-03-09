@@ -295,22 +295,37 @@ class ChatRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { null }
     }
 
+    @kotlinx.serialization.Serializable
+    private data class PinnedMessageInsert(
+        @kotlinx.serialization.SerialName("chat_id") val chatId: String,
+        @kotlinx.serialization.SerialName("message_id") val messageId: String,
+        @kotlinx.serialization.SerialName("pinned_by") val pinnedBy: String
+    )
+
     suspend fun pinMessage(chatId: String, messageId: String): Boolean {
         val userId = currentUserId()
         return try {
             supabase.from("pinned_messages").upsert(
-                PinnedMessage(chatId = chatId, messageId = messageId, pinnedBy = userId)
+                PinnedMessageInsert(chatId = chatId, messageId = messageId, pinnedBy = userId)
             )
+            Log.d("Pin", "pinMessage SUCCESS chatId=$chatId messageId=$messageId")
             true
-        } catch (e: Exception) { false }
+        } catch (e: Exception) {
+            Log.e("Pin", "pinMessage FAILED chatId=$chatId", e)
+            false
+        }
     }
 
     suspend fun unpinMessage(chatId: String): Boolean {
         return try {
             supabase.from("pinned_messages")
                 .delete { filter { eq("chat_id", chatId) } }
+            Log.d("Pin", "unpinMessage SUCCESS chatId=$chatId")
             true
-        } catch (e: Exception) { false }
+        } catch (e: Exception) {
+            Log.e("Pin", "unpinMessage FAILED chatId=$chatId", e)
+            false
+        }
     }
 
     suspend fun deleteChat(chatId: String): Boolean {
