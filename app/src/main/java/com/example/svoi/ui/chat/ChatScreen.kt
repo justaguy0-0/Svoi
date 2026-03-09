@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -100,6 +99,7 @@ import com.example.svoi.util.toDateSeparator
 import com.example.svoi.util.toLastSeen
 import com.example.svoi.util.toMessageTime
 import com.example.svoi.util.toReadableSize
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -134,20 +134,47 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    // Build entries list here so LaunchedEffect can reference it
+    val displayEntries = remember(messages, firstUnreadIndex) {
+        buildList {
+            messages.forEachIndexed { index, item ->
+                // Unread divider before first unread message
+                if (index == firstUnreadIndex && firstUnreadIndex >= 0) {
+                    add(ChatEntry.UnreadDivider)
+                }
+                // Date separator
+                val prev = if (index > 0) messages[index - 1] else null
+                val showDate = prev == null ||
+                    item.message.createdAt?.take(10) != prev.message.createdAt?.take(10)
+                if (showDate && !item.message.createdAt.isNullOrBlank()) {
+                    add(ChatEntry.DateDivider(item.message.createdAt!!.toDateSeparator()))
+                }
+                add(ChatEntry.Msg(item))
+            }
+        }
+    }
+
+    // Guard: only let user scroll clear the separator, not the auto-scroll
+    var allowClearSeparator by remember { mutableStateOf(false) }
+
     // Scroll to first unread (if many) or to bottom on initial load and new messages
     LaunchedEffect(scrollToBottomEvent) {
         if (messages.isNotEmpty()) {
-            val unreadIdx = firstUnreadIndex
-            val unreadCount = if (unreadIdx >= 0) messages.size - unreadIdx else 0
-            val target = if (unreadIdx > 0 && unreadCount >= 5) unreadIdx else messages.size - 1
+            allowClearSeparator = false
+            val unreadEntryIdx = displayEntries.indexOfFirst { it is ChatEntry.UnreadDivider }
+            val unreadCount = if (firstUnreadIndex >= 0) messages.size - firstUnreadIndex else 0
+            val target = if (unreadEntryIdx >= 0 && unreadCount >= 5) unreadEntryIdx
+                         else displayEntries.size - 1
             listState.scrollToItem(target)
+            delay(600)
+            allowClearSeparator = true
         }
     }
 
     // Remove unread separator when user starts scrolling
     val isScrollInProgress = listState.isScrollInProgress
     LaunchedEffect(isScrollInProgress) {
-        if (isScrollInProgress && firstUnreadIndex >= 0) {
+        if (isScrollInProgress && firstUnreadIndex >= 0 && allowClearSeparator) {
             viewModel.clearUnreadSeparator()
         }
     }
@@ -295,24 +322,6 @@ fun ChatScreen(
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 } else {
-                    val displayEntries = remember(messages, firstUnreadIndex) {
-                        buildList {
-                            messages.forEachIndexed { index, item ->
-                                // Unread divider before first unread message
-                                if (index == firstUnreadIndex && firstUnreadIndex >= 0) {
-                                    add(ChatEntry.UnreadDivider)
-                                }
-                                // Date separator
-                                val prev = if (index > 0) messages[index - 1] else null
-                                val showDate = prev == null ||
-                                    item.message.createdAt?.take(10) != prev.message.createdAt?.take(10)
-                                if (showDate && !item.message.createdAt.isNullOrBlank()) {
-                                    add(ChatEntry.DateDivider(item.message.createdAt!!.toDateSeparator()))
-                                }
-                                add(ChatEntry.Msg(item))
-                            }
-                        }
-                    }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier

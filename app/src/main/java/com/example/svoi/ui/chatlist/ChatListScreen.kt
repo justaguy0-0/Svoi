@@ -344,6 +344,7 @@ private fun ChatListItem(
                             text = if (item.unreadCount > 99) "99+" else item.unreadCount.toString(),
                             color = Color.White,
                             fontSize = 10.sp,
+                            lineHeight = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }

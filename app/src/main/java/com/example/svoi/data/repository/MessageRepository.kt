@@ -198,6 +198,17 @@ class MessageRepository(private val supabase: SupabaseClient) {
         }
     }
 
+    /** Returns set of message IDs (from the given list) that have been read by a specific user */
+    suspend fun getReadMessageIdsByUser(messageIds: List<String>, userId: String): Set<String> {
+        if (messageIds.isEmpty()) return emptySet()
+        return try {
+            supabase.from("message_reads")
+                .select { filter { isIn("message_id", messageIds); eq("user_id", userId) } }
+                .decodeList<MessageRead>()
+                .map { it.messageId }.toSet()
+        } catch (e: Exception) { emptySet() }
+    }
+
     suspend fun getReadUserIds(messageId: String): List<String> {
         return try {
             supabase.from("message_reads")
@@ -288,7 +299,12 @@ class MessageRepository(private val supabase: SupabaseClient) {
     suspend fun setTyping(chatId: String, userId: String, displayName: String) {
         try {
             supabase.from("typing_status").upsert(
-                TypingStatus(chatId = chatId, userId = userId, displayName = displayName)
+                TypingStatus(
+                    chatId = chatId,
+                    userId = userId,
+                    displayName = displayName,
+                    updatedAt = java.time.Instant.now().toString()
+                )
             )
         } catch (_: Exception) {}
     }

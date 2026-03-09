@@ -202,11 +202,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val enriched = enrichMessages(raw)
         val newLastId = raw.lastOrNull()?.id
 
-        // Find first unread message (before markAsRead runs) — set only once on initial load
+        // Find first unread incoming message (before markAsRead runs) — set only once on initial load
         if (_firstUnreadIndex.value < 0) {
             val myId = currentUserId
-            val idx = enriched.indexOfFirst { !it.isOwn && !it.isRead }
+            val incomingIds = raw.filter { it.senderId != myId }.map { it.id }
+            val alreadyReadByMe = messageRepo.getReadMessageIdsByUser(incomingIds, myId)
+            val idx = raw.indexOfFirst { it.senderId != myId && it.id !in alreadyReadByMe }
             _firstUnreadIndex.value = idx
+            Log.d("UnreadSep", "firstUnreadIndex=$idx, incoming=${incomingIds.size}, alreadyRead=${alreadyReadByMe.size}")
         }
 
         // Smart merge: only replace items that actually changed
