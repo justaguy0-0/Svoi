@@ -5,6 +5,7 @@ import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageRead
 import com.example.svoi.data.model.MessageUiItem
 import com.example.svoi.data.model.Profile
+import com.example.svoi.data.model.TypingStatus
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
@@ -280,6 +281,42 @@ class MessageRepository(private val supabase: SupabaseClient) {
                 runCatching { supabase.realtime.removeChannel(channel) }
             }
         }
+    }
+
+    // ── Typing status ──────────────────────────────────────────────────────────
+
+    suspend fun setTyping(chatId: String, userId: String, displayName: String) {
+        try {
+            supabase.from("typing_status").upsert(
+                TypingStatus(chatId = chatId, userId = userId, displayName = displayName)
+            )
+        } catch (_: Exception) {}
+    }
+
+    suspend fun clearTyping(chatId: String, userId: String) {
+        try {
+            supabase.from("typing_status").delete {
+                filter { eq("chat_id", chatId); eq("user_id", userId) }
+            }
+        } catch (_: Exception) {}
+    }
+
+    /** Returns users currently typing in chatId, excluding self, max 5 seconds stale */
+    suspend fun getTypingUsers(chatId: String, excludeUserId: String): List<TypingStatus> {
+        return try {
+            supabase.from("typing_status")
+                .select { filter { eq("chat_id", chatId); neq("user_id", excludeUserId) } }
+                .decodeList<TypingStatus>()
+                .filter { status ->
+                    status.updatedAt?.let { ts ->
+                        runCatching {
+                            val updated = java.time.Instant.parse(ts)
+                            val ageSeconds = java.time.Instant.now().epochSecond - updated.epochSecond
+                            ageSeconds < 5
+                        }.getOrDefault(false)
+                    } ?: false
+                }
+        } catch (_: Exception) { emptyList() }
     }
 
     /** Upload a file/image to Supabase Storage and return the public URL */

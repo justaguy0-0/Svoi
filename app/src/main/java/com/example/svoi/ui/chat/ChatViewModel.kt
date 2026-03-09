@@ -14,12 +14,15 @@ import com.example.svoi.data.model.MessageUiItem
 import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.UserPresence
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+data class TypingInfo(val userId: String, val displayName: String)
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -70,10 +73,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    // Incremented to signal scroll to bottom
+    // Incremented to signal scroll
     private val _scrollToBottomEvent = MutableStateFlow(0)
     val scrollToBottomEvent: StateFlow<Int> = _scrollToBottomEvent
 
+    // Index of first unread message for the separator (-1 = none)
+    private val _firstUnreadIndex = MutableStateFlow(-1)
+    val firstUnreadIndex: StateFlow<Int> = _firstUnreadIndex
+
+    // Currently typing users (excluding self)
+    private val _typingUsers = MutableStateFlow<List<TypingInfo>>(emptyList())
+    val typingUsers: StateFlow<List<TypingInfo>> = _typingUsers
 
     val isOnline: StateFlow<Boolean> = app.networkMonitor.isOnline
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
@@ -83,7 +93,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var chatId: String = ""
     private val profileCache = mutableMapOf<String, Profile>()
     private var otherUserId: String? = null
-    private var lastKnownMessageId: String? = null  // for smart scroll
+    private var lastKnownMessageId: String? = null
+    private var typingJob: Job? = null
 
     fun init(chatId: String) {
         if (this.chatId == chatId) return
@@ -108,11 +119,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _isLoading.value = false
                 _scrollToBottomEvent.value++
             } else {
-                _isLoading.value = cachedInfo == null  // spinner only if nothing cached
+                _isLoading.value = cachedInfo == null
             }
 
             // 2. Load fresh from network
-            // Only show "Обновление..." if no cache — avoids unnecessary recompose
             val hasFullCache = cachedInfo != null && cachedMessages != null
             if (!hasFullCache) _isUpdating.value = true
             loadChatInfo()
@@ -125,6 +135,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             observeNewMessages()
             observeUpdatedMessages()
             startReadReceiptPolling()
+            startTypingPolling()
         }
     }
 
@@ -191,7 +202,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val enriched = enrichMessages(raw)
         val newLastId = raw.lastOrNull()?.id
 
-        // Smart merge: only replace items that actually changed to avoid full-list recomposition
+        // Find first unread message (before markAsRead runs) — set only once on initial load
+        if (_firstUnreadIndex.value < 0) {
+            val myId = currentUserId
+            val idx = enriched.indexOfFirst { !it.isOwn && !it.isRead }
+            _firstUnreadIndex.value = idx
+        }
+
+        // Smart merge: only replace items that actually changed
         val current = _messages.value
         val merged = if (current.isNotEmpty() && current.map { it.message.id } == raw.map { it.id }) {
             val enrichedById = enriched.associateBy { it.message.id }
@@ -206,10 +224,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _messages.value = merged
         }
 
-        // Scroll to bottom only if newer messages arrived vs cache
+        // Scroll: to first unread if ≥5 unread, otherwise to bottom
         if (newLastId != null && newLastId != lastKnownMessageId) {
             lastKnownMessageId = newLastId
-            _scrollToBottomEvent.value++
+            val unreadIdx = _firstUnreadIndex.value
+            val unreadCount = if (unreadIdx >= 0) merged.size - unreadIdx else 0
+            if (unreadIdx > 0 && unreadCount >= 5) {
+                // Many unread — handled in ChatScreen via firstUnreadIndex
+            } else {
+                _scrollToBottomEvent.value++
+            }
+        } else if (newLastId == lastKnownMessageId) {
+            // Same messages as cache — scroll to first unread if many, else stay
+            val unreadIdx = _firstUnreadIndex.value
+            val unreadCount = if (unreadIdx >= 0) merged.size - unreadIdx else 0
+            if (unreadIdx <= 0 || unreadCount < 5) {
+                // Not many unread — ensure we're scrolled to bottom
+                // (cache already triggered scroll, skip)
+            }
         }
 
         cache.saveMessages(chatId, raw)
@@ -251,6 +283,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun observeNewMessages() {
         viewModelScope.launch {
             messageRepo.messageInsertFlow(chatId).collect { newMsg ->
+                // New incoming message — clear typing indicator for that user
+                if (newMsg.senderId != currentUserId) {
+                    _typingUsers.value = _typingUsers.value.filter { it.userId != newMsg.senderId }
+                }
+
                 val profile = newMsg.senderId?.let { id ->
                     profileCache.getOrPut(id) {
                         userRepo.getProfile(id) ?: Profile(id = id)
@@ -269,7 +306,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 lastKnownMessageId = newMsg.id
                 _scrollToBottomEvent.value++
                 markAsRead()
-                // Update message cache
                 cache.saveMessages(chatId, updated.map { it.message })
             }
         }
@@ -306,6 +342,44 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun startTypingPolling() {
+        viewModelScope.launch {
+            while (true) {
+                delay(2_000L)
+                if (chatId.isNotEmpty()) {
+                    val typing = messageRepo.getTypingUsers(chatId, currentUserId)
+                    _typingUsers.value = typing.map { TypingInfo(it.userId, it.displayName) }
+                }
+            }
+        }
+    }
+
+    /** Called when the user changes input text — sends/debounces typing indicator */
+    fun onInputTextChanged(text: String) {
+        typingJob?.cancel()
+        if (text.isBlank()) {
+            viewModelScope.launch { messageRepo.clearTyping(chatId, currentUserId) }
+            return
+        }
+        typingJob = viewModelScope.launch {
+            val displayName = profileCache[currentUserId]?.displayName ?: ""
+            messageRepo.setTyping(chatId, currentUserId, displayName)
+            delay(4_000L)
+            messageRepo.clearTyping(chatId, currentUserId)
+        }
+    }
+
+    fun clearUnreadSeparator() {
+        _firstUnreadIndex.value = -1
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        if (chatId.isNotEmpty()) {
+            viewModelScope.launch { messageRepo.clearTyping(chatId, currentUserId) }
+        }
+    }
+
     fun setReplyTo(message: Message?) { _replyTo.value = message }
     fun setEditing(message: Message?) {
         _editingMessage.value = message
@@ -319,6 +393,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             _isSending.value = true
+            // Clear typing indicator immediately on send
+            messageRepo.clearTyping(chatId, currentUserId)
+            typingJob?.cancel()
+
             if (editing != null) {
                 messageRepo.editMessage(editing.id, content.trim())
                 _editingMessage.value = null

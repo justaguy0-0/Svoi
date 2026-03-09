@@ -74,7 +74,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { emptyList() }
         val profileMap = profiles.associateBy { it.id }
 
-        // 5. Get last message for each chat
+        // 5. Get last message for each chat (one query per chat, but bounded by chat count)
         val lastMessages = mutableMapOf<String, Message>()
         for (chatId in chatIds) {
             try {
@@ -92,28 +92,27 @@ class ChatRepository(private val supabase: SupabaseClient) {
             } catch (_: Exception) {}
         }
 
-        // 6. Get unread counts
-        val unreadCounts = mutableMapOf<String, Int>()
-        for (chatId in chatIds) {
+        // 6. Unread counts — 2 queries total across all chats
+        val allOtherMessages = try {
+            supabase.from("messages")
+                .select { filter { isIn("chat_id", chatIds); neq("sender_id", userId); eq("deleted_for_all", false) } }
+                .decodeList<Message>()
+        } catch (_: Exception) { emptyList() }
+
+        val allOtherIds = allOtherMessages.map { it.id }
+        val readMessageIds: Set<String> = if (allOtherIds.isEmpty()) emptySet() else {
             try {
-                val count = supabase.from("messages")
-                    .select {
-                        filter {
-                            eq("chat_id", chatId)
-                            neq("sender_id", userId)
-                            eq("deleted_for_all", false)
-                        }
-                    }
-                    .decodeList<Message>()
-                    .count { msg ->
-                        // Simple in-memory unread check - ideally would join with message_reads
-                        true // TODO: join with message_reads for accurate count
-                    }
-                // A simpler approach: count messages where ID not in message_reads for this user
-                // For now use a basic count of non-own messages as approximation
-                unreadCounts[chatId] = 0 // Will be refined
-            } catch (_: Exception) {}
+                supabase.from("message_reads")
+                    .select { filter { isIn("message_id", allOtherIds); eq("user_id", userId) } }
+                    .decodeList<com.example.svoi.data.model.MessageRead>()
+                    .map { it.messageId }.toSet()
+            } catch (_: Exception) { emptySet() }
         }
+
+        val unreadCounts: Map<String, Int> = allOtherMessages
+            .filter { it.id !in readMessageIds }
+            .groupBy { it.chatId }
+            .mapValues { (_, msgs) -> msgs.size }
 
         val membershipMap = memberships.associateBy { it.chatId }
 
@@ -160,7 +159,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
                 isGroup = chat.type == "group",
                 lastMessageText = lastMessageText,
                 lastMessageTime = lastMsg?.createdAt ?: chat.createdAt ?: "",
-                unreadCount = 0, // TODO: implement proper unread counting
+                unreadCount = unreadCounts[chat.id] ?: 0,
                 otherUserId = otherMember?.userId,
                 myRole = membership?.role ?: "member"
             )

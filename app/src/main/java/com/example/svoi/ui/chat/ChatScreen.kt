@@ -28,7 +28,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -125,16 +126,29 @@ fun ChatScreen(
     val memberCount by viewModel.memberCount.collectAsState()
     val error by viewModel.error.collectAsState()
     val scrollToBottomEvent by viewModel.scrollToBottomEvent.collectAsState()
+    val firstUnreadIndex by viewModel.firstUnreadIndex.collectAsState()
+    val typingUsers by viewModel.typingUsers.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    // Scroll to bottom on initial load and new messages
+    // Scroll to first unread (if many) or to bottom on initial load and new messages
     LaunchedEffect(scrollToBottomEvent) {
         if (messages.isNotEmpty()) {
-            listState.scrollToItem(messages.size - 1)
+            val unreadIdx = firstUnreadIndex
+            val unreadCount = if (unreadIdx >= 0) messages.size - unreadIdx else 0
+            val target = if (unreadIdx > 0 && unreadCount >= 5) unreadIdx else messages.size - 1
+            listState.scrollToItem(target)
+        }
+    }
+
+    // Remove unread separator when user starts scrolling
+    val isScrollInProgress = listState.isScrollInProgress
+    LaunchedEffect(isScrollInProgress) {
+        if (isScrollInProgress && firstUnreadIndex >= 0) {
+            viewModel.clearUnreadSeparator()
         }
     }
 
@@ -168,7 +182,9 @@ fun ChatScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
+                            val typingText = typingIndicatorText(typingUsers, isGroup)
                             val subtitleText: String? = when {
+                                typingText != null -> typingText
                                 !isOnline -> "Подключение..."
                                 isUpdating && memberCount == 0 && presenceText.isBlank() -> "Обновление..."
                                 isGroup && memberCount > 0 -> memberCountText(memberCount)
@@ -176,8 +192,9 @@ fun ChatScreen(
                                 else -> null
                             }
                             val isStatusAnimated = !isOnline || (isUpdating && memberCount == 0 && presenceText.isBlank())
+                            val isTyping = typingText != null
                             if (subtitleText != null) {
-                                if (isStatusAnimated) {
+                                if (isStatusAnimated && !isTyping) {
                                     val infiniteTransition = rememberInfiniteTransition(label = "chat_subtitle_pulse")
                                     val alpha by infiniteTransition.animateFloat(
                                         initialValue = 1f,
@@ -195,7 +212,11 @@ fun ChatScreen(
                                     Text(
                                         text = subtitleText,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = if (!isGroup && presence?.online == true) Online else TextSecondary
+                                        color = when {
+                                            isTyping -> MaterialTheme.colorScheme.primary
+                                            !isGroup && presence?.online == true -> Online
+                                            else -> TextSecondary
+                                        }
                                     )
                                 }
                             }
@@ -274,6 +295,24 @@ fun ChatScreen(
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 } else {
+                    val displayEntries = remember(messages, firstUnreadIndex) {
+                        buildList {
+                            messages.forEachIndexed { index, item ->
+                                // Unread divider before first unread message
+                                if (index == firstUnreadIndex && firstUnreadIndex >= 0) {
+                                    add(ChatEntry.UnreadDivider)
+                                }
+                                // Date separator
+                                val prev = if (index > 0) messages[index - 1] else null
+                                val showDate = prev == null ||
+                                    item.message.createdAt?.take(10) != prev.message.createdAt?.take(10)
+                                if (showDate && !item.message.createdAt.isNullOrBlank()) {
+                                    add(ChatEntry.DateDivider(item.message.createdAt!!.toDateSeparator()))
+                                }
+                                add(ChatEntry.Msg(item))
+                            }
+                        }
+                    }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
@@ -281,25 +320,30 @@ fun ChatScreen(
                             .padding(horizontal = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        itemsIndexed(messages, key = { _, item -> item.message.id }) { index, item ->
-                            val prevItem = if (index > 0) messages[index - 1] else null
-                            val showDateSeparator = prevItem == null ||
-                                item.message.createdAt?.take(10) != prevItem.message.createdAt?.take(10)
-
-                            if (showDateSeparator && !item.message.createdAt.isNullOrBlank()) {
-                                DateSeparator(date = item.message.createdAt!!.toDateSeparator())
-                            }
-
-                            MessageItem(
-                                item = item,
-                                isGroup = isGroup,
-                                modifier = Modifier,
-                                onReply = { viewModel.setReplyTo(item.message) },
-                                onEdit = { viewModel.setEditing(item.message) },
-                                onDelete = { forAll ->
-                                    viewModel.deleteMessage(item.message.id, forAll)
+                        items(
+                            displayEntries,
+                            key = { entry ->
+                                when (entry) {
+                                    is ChatEntry.Msg -> entry.item.message.id
+                                    is ChatEntry.DateDivider -> "date_${entry.date}"
+                                    ChatEntry.UnreadDivider -> "unread_divider"
                                 }
-                            )
+                            }
+                        ) { entry ->
+                            when (entry) {
+                                is ChatEntry.Msg -> MessageItem(
+                                    item = entry.item,
+                                    isGroup = isGroup,
+                                    modifier = Modifier,
+                                    onReply = { viewModel.setReplyTo(entry.item.message) },
+                                    onEdit = { viewModel.setEditing(entry.item.message) },
+                                    onDelete = { forAll ->
+                                        viewModel.deleteMessage(entry.item.message.id, forAll)
+                                    }
+                                )
+                                is ChatEntry.DateDivider -> DateSeparator(date = entry.date)
+                                ChatEntry.UnreadDivider -> UnreadMessagesDivider()
+                            }
                         }
                     }
                 }
@@ -371,7 +415,7 @@ fun ChatScreen(
                     // Text field
                     TextField(
                         value = inputText,
-                        onValueChange = { inputText = it },
+                        onValueChange = { inputText = it; viewModel.onInputTextChanged(it) },
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(24.dp)),
@@ -435,6 +479,40 @@ private fun DateSeparator(date: String) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Composable
+private fun UnreadMessagesDivider() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+        )
+        Text(
+            text = "  Новые сообщения  ",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .background(
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    RoundedCornerShape(8.dp)
+                )
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+        )
     }
 }
 
@@ -693,4 +771,21 @@ private fun memberCountText(count: Int) = when {
     count % 10 == 1 -> "$count участник"
     count % 10 in 2..4 -> "$count участника"
     else -> "$count участников"
+}
+
+private sealed class ChatEntry {
+    data class Msg(val item: MessageUiItem) : ChatEntry()
+    data class DateDivider(val date: String) : ChatEntry()
+    object UnreadDivider : ChatEntry()
+}
+
+private fun typingIndicatorText(users: List<TypingInfo>, isGroup: Boolean): String? {
+    if (users.isEmpty()) return null
+    return if (!isGroup) {
+        "Печатает..."
+    } else when (users.size) {
+        1 -> "${users[0].displayName} печатает..."
+        2 -> "${users[0].displayName} и ${users[1].displayName} печатают..."
+        else -> "${users[0].displayName}, ${users[1].displayName} и ещё ${users.size - 2} печатают..."
+    }
 }

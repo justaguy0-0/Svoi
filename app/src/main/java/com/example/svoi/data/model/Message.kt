@@ -36,6 +36,14 @@ data class PinnedMessage(
     @SerialName("pinned_at") val pinnedAt: String? = null
 )
 
+@Serializable
+data class TypingStatus(
+    @SerialName("chat_id") val chatId: String = "",
+    @SerialName("user_id") val userId: String = "",
+    @SerialName("display_name") val displayName: String = "",
+    @SerialName("updated_at") val updatedAt: String? = null
+)
+
 /** UI model combining message + sender profile + read status */
 data class MessageUiItem(
     val message: Message,
