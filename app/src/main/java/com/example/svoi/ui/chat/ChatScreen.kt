@@ -1,6 +1,9 @@
 package com.example.svoi.ui.chat
 
+import android.app.DownloadManager
+import android.content.Context
 import android.net.Uri
+import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
@@ -36,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.BrokenImage
@@ -95,6 +99,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
@@ -153,6 +160,7 @@ fun ChatScreen(
 
     // Bottom sheet state
     var selectedMessage by remember { mutableStateOf<MessageUiItem?>(null) }
+    var lightboxUrl by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState()
 
     val screenHeightPx = with(LocalDensity.current) {
@@ -395,7 +403,8 @@ fun ChatScreen(
                                             isGroup = isGroup,
                                             isHighlighted = entry.item.message.id == highlightedMessageId,
                                             modifier = Modifier,
-                                            onLongClick = { selectedMessage = entry.item }
+                                            onLongClick = { selectedMessage = entry.item },
+                                            onPhotoClick = { url -> lightboxUrl = url }
                                         )
                                     }
                                 }
@@ -534,6 +543,26 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
+    // ── Image Lightbox ──────────────────────────────────────────────────────────
+    lightboxUrl?.let { url ->
+        val context = LocalContext.current
+        ImageLightbox(
+            url = url,
+            onDismiss = { lightboxUrl = null },
+            onDownload = {
+                val filename = "svoi_${System.currentTimeMillis()}.jpg"
+                val request = DownloadManager.Request(Uri.parse(url))
+                    .setTitle(filename)
+                    .setDescription("Сохранение изображения")
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_PICTURES, "Svoi/$filename")
+                    .setMimeType("image/jpeg")
+                val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                dm.enqueue(request)
+            }
+        )
     }
 
     // ── Bottom sheet for message actions ──────────────────────────────────────
@@ -744,7 +773,8 @@ private fun MessageItem(
     isGroup: Boolean,
     isHighlighted: Boolean,
     modifier: Modifier = Modifier,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onPhotoClick: (String) -> Unit = {}
 ) {
     val msg = item.message
     if (msg.deletedForAll) {
@@ -860,7 +890,8 @@ private fun MessageItem(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
                                         .widthIn(min = 120.dp, max = 220.dp)
-                                        .height(160.dp),
+                                        .height(160.dp)
+                                        .clickable { onPhotoClick(msg.fileUrl) },
                                     contentScale = ContentScale.Crop,
                                     loading = {
                                         Box(
@@ -976,6 +1007,92 @@ private sealed class ChatEntry {
     data class Msg(val item: MessageUiItem) : ChatEntry()
     data class DateDivider(val date: String, val triggerMsgId: String) : ChatEntry()
     object UnreadDivider : ChatEntry()
+}
+
+@Composable
+private fun ImageLightbox(
+    url: String,
+    onDismiss: () -> Unit,
+    onDownload: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.95f))
+        ) {
+            // Image with loading state
+            SubcomposeAsyncImage(
+                model = url,
+                contentDescription = "Изображение",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 72.dp, bottom = 96.dp),
+                contentScale = ContentScale.Fit,
+                loading = {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                },
+                error = {
+                    Icon(
+                        Icons.Default.BrokenImage,
+                        contentDescription = null,
+                        tint = Color.White.copy(0.5f),
+                        modifier = Modifier.align(Alignment.Center).size(48.dp)
+                    )
+                }
+            )
+
+            // Close button (top-right)
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 16.dp, end = 8.dp)
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Закрыть",
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            // Download button (bottom-center)
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp)
+                    .background(Color.White.copy(0.15f), RoundedCornerShape(24.dp))
+                    .clickable { onDownload() }
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Default.Download,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "Скачать",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
 }
 
 private fun typingIndicatorText(users: List<TypingInfo>, isGroup: Boolean): String? {
