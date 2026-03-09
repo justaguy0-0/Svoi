@@ -6,6 +6,19 @@ import com.example.svoi.data.model.UserPresence
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.realtime.PostgresAction
+import io.github.jan.supabase.realtime.channel
+import io.github.jan.supabase.realtime.decodeRecord
+import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.realtime.realtime
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -99,10 +112,12 @@ class UserRepository(private val supabase: SupabaseClient) {
         }
         Log.d("Presence", "setOnline($online) userId=$userId")
         try {
+            // Always update lastSeen — acts as heartbeat.
+            // If app crashes, isTrulyOnline() will return false after 60s of no updates.
             val data = PresenceUpdate(
                 userId = userId,
                 online = online,
-                lastSeen = if (!online) java.time.Instant.now().toString() else null
+                lastSeen = java.time.Instant.now().toString()
             )
             supabase.from("user_presence").upsert(data)
             Log.d("Presence", "setOnline($online) SUCCESS")
@@ -121,6 +136,21 @@ class UserRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) {
             Log.e("Presence", "getPresence($userId) FAILED: ${e.message}")
             null
+        }
+    }
+
+    /** Realtime flow — fires whenever any user_presence row is updated */
+    fun presenceUpdateFlowAll(): Flow<UserPresence> = channelFlow {
+        val channel = supabase.channel("user-presence-updates-all")
+        channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
+            table = "user_presence"
+        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
+        channel.subscribe()
+        awaitClose {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { channel.unsubscribe() }
+                runCatching { supabase.realtime.removeChannel(channel) }
+            }
         }
     }
 }

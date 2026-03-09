@@ -20,3 +20,18 @@ data class UserPresence(
     val online: Boolean = false,
     @SerialName("last_seen") val lastSeen: String? = null
 )
+
+/**
+ * True only if online=true AND last heartbeat was within 60 seconds.
+ * Handles crashes/sleep: if app dies without calling setOnline(false),
+ * the user will appear offline after 60s of no heartbeat.
+ */
+fun UserPresence.isTrulyOnline(): Boolean {
+    if (!online) return false
+    val ts = lastSeen ?: return false
+    return runCatching {
+        val ageSeconds = java.time.Instant.now().epochSecond -
+            java.time.Instant.parse(ts).epochSecond
+        ageSeconds < 60
+    }.getOrDefault(false)
+}

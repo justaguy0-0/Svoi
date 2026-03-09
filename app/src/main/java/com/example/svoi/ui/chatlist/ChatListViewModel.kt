@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.svoi.SvoiApp
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.TypingStatus
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -18,6 +19,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private val app = application as SvoiApp
     private val chatRepo = app.chatRepository
     private val messageRepo = app.messageRepository
+    private val userRepo = app.userRepository
     private val cache = app.cacheManager
 
     private val _chats = MutableStateFlow<List<ChatListItem>>(emptyList())
@@ -56,6 +58,8 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
         loadChats(showUpdating = true)  // initial load
         observeNewMessages()
+        observeReadReceipts()
+        observePresenceUpdates()
         startTypingPolling()
     }
 
@@ -87,9 +91,12 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Silent refresh — no animation, used for real-time new message events and on resume
+    // Debounced silent refresh — cancels previous if called again within the same "burst"
+    private var refreshJob: Job? = null
     fun silentRefresh() {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            delay(300) // debounce: ignore rapid-fire events
             val fresh = chatRepo.getChatsForUser()
             if (fresh.isNotEmpty()) {
                 _chats.value = fresh
@@ -101,9 +108,25 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private fun observeNewMessages() {
         viewModelScope.launch {
             try {
-                messageRepo.messageInsertFlowAll().collect {
-                    silentRefresh()
-                }
+                messageRepo.messageInsertFlowAll().collect { silentRefresh() }
+            } catch (_: Exception) {}
+        }
+    }
+
+    // Refresh when someone reads messages (unread badge update)
+    private fun observeReadReceipts() {
+        viewModelScope.launch {
+            try {
+                messageRepo.messageReadInsertFlowAll().collect { silentRefresh() }
+            } catch (_: Exception) {}
+        }
+    }
+
+    // Refresh when any user's presence changes (online dot update)
+    private fun observePresenceUpdates() {
+        viewModelScope.launch {
+            try {
+                userRepo.presenceUpdateFlowAll().collect { silentRefresh() }
             } catch (_: Exception) {}
         }
     }

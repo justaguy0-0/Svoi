@@ -87,6 +87,7 @@ import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
+import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.components.Avatar
 import androidx.compose.foundation.isSystemInDarkTheme
 import com.example.svoi.ui.theme.BubbleOther
@@ -192,7 +193,7 @@ fun ChatScreen(
 
     val presenceText = when {
         presence == null -> ""
-        presence!!.online -> "в сети"
+        presence!!.isTrulyOnline() -> "в сети"
         !presence!!.lastSeen.isNullOrBlank() -> presence!!.lastSeen!!.toLastSeen()
         else -> ""
     }
@@ -241,7 +242,7 @@ fun ChatScreen(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = when {
                                             isTyping -> MaterialTheme.colorScheme.primary
-                                            !isGroup && presence?.online == true -> Online
+                                            !isGroup && presence?.isTrulyOnline() == true -> Online
                                             else -> TextSecondary
                                         }
                                     )

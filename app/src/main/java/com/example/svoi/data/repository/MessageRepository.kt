@@ -232,6 +232,21 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { false }
     }
 
+    /** Realtime flow — any message_reads insert (to refresh unread badges in chat list) */
+    fun messageReadInsertFlowAll(): Flow<MessageRead> = channelFlow {
+        val channel = supabase.channel("message-reads-insert-all")
+        channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+            table = "message_reads"
+        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
+        channel.subscribe()
+        awaitClose {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { channel.unsubscribe() }
+                runCatching { supabase.realtime.removeChannel(channel) }
+            }
+        }
+    }
+
     /** Supabase Realtime flow — any new message (no chat filter, for chat list refresh) */
     fun messageInsertFlowAll(): Flow<Message> = channelFlow {
         val channel = supabase.channel("messages-insert-all")

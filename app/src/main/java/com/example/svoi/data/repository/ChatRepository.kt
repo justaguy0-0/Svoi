@@ -7,6 +7,7 @@ import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.UserPresence
+import com.example.svoi.data.model.isTrulyOnline
 import android.util.Log
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
@@ -134,7 +135,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
             val otherMember = chatMembers.firstOrNull { it.userId != userId }
             val otherProfile = otherMember?.userId?.let { profileMap[it] }
             val isOtherOnline = if (chat.type == "personal") {
-                otherMember?.userId?.let { presenceMap[it]?.online } ?: false
+                otherMember?.userId?.let { presenceMap[it]?.isTrulyOnline() } ?: false
             } else false
 
             val displayName = if (chat.type == "group") {
