@@ -190,9 +190,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val raw = messageRepo.getMessages(chatId, limit = 50)
         if (raw.isEmpty()) return  // offline — keep cached messages shown
 
-        val newLastId = raw.lastOrNull()?.id
         val enriched = enrichMessages(raw)
-        _messages.value = enriched
+        val newLastId = raw.lastOrNull()?.id
+
+        // Smart merge: only replace items that actually changed to avoid full-list recomposition
+        val current = _messages.value
+        val merged = if (current.isNotEmpty() && current.map { it.message.id } == raw.map { it.id }) {
+            val enrichedById = enriched.associateBy { it.message.id }
+            current.map { old ->
+                val updated = enrichedById[old.message.id]
+                if (updated != null && updated != old) updated else old
+            }
+        } else {
+            enriched
+        }
+        if (merged != current) {
+            _messages.value = merged
+        }
 
         // Scroll to bottom only if newer messages arrived vs cache
         if (newLastId != null && newLastId != lastKnownMessageId) {
