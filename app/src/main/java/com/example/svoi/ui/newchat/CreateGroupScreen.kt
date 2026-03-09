@@ -2,6 +2,7 @@ package com.example.svoi.ui.newchat
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -168,6 +169,7 @@ fun CreateGroupScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
+                windowInsets = WindowInsets(0),
                 placeholder = { Text("Добавить участников") },
                 leadingIcon = { Icon(Icons.Default.Search, null) }
             ) {}

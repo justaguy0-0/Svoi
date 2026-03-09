@@ -9,27 +9,39 @@ val Blue700 = Color(0xFF1565C0)
 val Blue200 = Color(0xFF90CAF9)
 val Blue100 = Color(0xFFBBDEFB)
 
-// Surface & background
+// ── Light theme ──────────────────────────────────────────────────────────────
+
 val Background = Color(0xFFF5F7FA)
 val Surface = Color(0xFFFFFFFF)
 val SurfaceVariant = Color(0xFFEEF2F6)
 
-// Message bubbles
 val BubbleOwn = Color(0xFF1E88E5)          // outgoing — blue
 val BubbleOther = Color(0xFFFFFFFF)        // incoming — white
 val BubbleOwnText = Color(0xFFFFFFFF)
 val BubbleOtherText = Color(0xFF1A1A2E)
 
-// Chat list & dividers
 val Divider = Color(0xFFE8ECF0)
-val Unread = Color(0xFF1E88E5)             // unread badge
+val Unread = Color(0xFF1E88E5)
 
-// Text hierarchy
 val TextPrimary = Color(0xFF1A1A2E)
 val TextSecondary = Color(0xFF6B7280)
 val TextHint = Color(0xFF9CA3AF)
 
-// Status colors
+// ── Dark theme ───────────────────────────────────────────────────────────────
+
+val DarkBackground = Color(0xFF111111)
+val DarkSurface = Color(0xFF1C1C1C)
+val DarkSurfaceVariant = Color(0xFF282828)
+
+val DarkBubbleOther = Color(0xFF262626)     // incoming bubble — dark
+val DarkBubbleOtherText = Color(0xFFE1E1E6)
+
+val DarkDivider = Color(0xFF2E2E2E)
+val DarkTextPrimary = Color(0xFFE1E1E6)
+val DarkTextSecondary = Color(0xFF9B9B9B)
+
+// ── Shared ───────────────────────────────────────────────────────────────────
+
 val Online = Color(0xFF4CAF50)
 val Error = Color(0xFFE53935)
 

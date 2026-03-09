@@ -78,10 +78,13 @@ import coil.compose.AsyncImage
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
 import com.example.svoi.ui.components.Avatar
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.example.svoi.ui.theme.BubbleOther
 import com.example.svoi.ui.theme.BubbleOtherText
 import com.example.svoi.ui.theme.BubbleOwn
 import com.example.svoi.ui.theme.BubbleOwnText
+import com.example.svoi.ui.theme.DarkBubbleOther
+import com.example.svoi.ui.theme.DarkBubbleOtherText
 import com.example.svoi.ui.theme.Online
 import com.example.svoi.ui.theme.TextSecondary
 import com.example.svoi.util.toDateSeparator
@@ -421,9 +424,10 @@ private fun MessageItem(
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
+    val isDark = isSystemInDarkTheme()
     val alignment = if (item.isOwn) Alignment.End else Alignment.Start
-    val bubbleColor = if (item.isOwn) BubbleOwn else BubbleOther
-    val textColor = if (item.isOwn) BubbleOwnText else BubbleOtherText
+    val bubbleColor = if (item.isOwn) BubbleOwn else if (isDark) DarkBubbleOther else BubbleOther
+    val textColor = if (item.isOwn) BubbleOwnText else if (isDark) DarkBubbleOtherText else BubbleOtherText
     val bubbleShape = if (item.isOwn) {
         RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 4.dp)
     } else {
@@ -451,7 +455,7 @@ private fun MessageItem(
             Box {
                 Surface(
                     shape = bubbleShape,
-                    color = if (item.isOwn) bubbleColor else BubbleOther,
+                    color = bubbleColor,
                     shadowElevation = if (item.isOwn) 0.dp else 1.dp,
                     modifier = Modifier
                         .combinedClickable(

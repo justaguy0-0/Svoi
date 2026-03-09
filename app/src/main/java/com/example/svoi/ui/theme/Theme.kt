@@ -1,9 +1,15 @@
 package com.example.svoi.ui.theme
 
+import android.app.Activity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 
 private val LightColorScheme = lightColorScheme(
     primary = Blue500,
@@ -23,10 +29,41 @@ private val LightColorScheme = lightColorScheme(
     onError = Color.White,
 )
 
+private val DarkColorScheme = darkColorScheme(
+    primary = Blue500,
+    onPrimary = Color.White,
+    primaryContainer = Blue700,
+    onPrimaryContainer = Blue100,
+    secondary = Blue200,
+    onSecondary = Color.White,
+    background = DarkBackground,
+    onBackground = DarkTextPrimary,
+    surface = DarkSurface,
+    onSurface = DarkTextPrimary,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkTextSecondary,
+    outline = DarkDivider,
+    error = Error,
+    onError = Color.White,
+)
+
 @Composable
 fun SvoiTheme(content: @Composable () -> Unit) {
+    val isDark = isSystemInDarkTheme()
+    val colorScheme = if (isDark) DarkColorScheme else LightColorScheme
+
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            val controller = WindowCompat.getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = !isDark
+            controller.isAppearanceLightNavigationBars = !isDark
+        }
+    }
+
     MaterialTheme(
-        colorScheme = LightColorScheme,
+        colorScheme = colorScheme,
         typography = Typography,
         content = content
     )
