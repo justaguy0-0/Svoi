@@ -302,7 +302,7 @@ fun ChatScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { viewModel.scrollToMessage(pinned.messageId) },
-                        color = MaterialTheme.colorScheme.primaryContainer
+                        color = MaterialTheme.colorScheme.surfaceVariant
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1033,7 +1033,7 @@ private fun ImageLightbox(
                 contentDescription = "Изображение",
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 72.dp, bottom = 96.dp),
+                    .padding(top = 72.dp, bottom = 24.dp),
                 contentScale = ContentScale.Fit,
                 loading = {
                     CircularProgressIndicator(
@@ -1052,44 +1052,29 @@ private fun ImageLightbox(
                 }
             )
 
-            // Close button (top-right)
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 16.dp, end = 8.dp)
-            ) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = "Закрыть",
-                    tint = Color.White,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-
-            // Download button (bottom-center)
+            // Top bar: download + close buttons
             Row(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 32.dp)
-                    .background(Color.White.copy(0.15f), RoundedCornerShape(24.dp))
-                    .clickable { onDownload() }
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .align(Alignment.TopEnd)
+                    .padding(top = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Default.Download,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-                Text(
-                    text = "Скачать",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
-                )
+                IconButton(onClick = onDownload) {
+                    Icon(
+                        Icons.Default.Download,
+                        contentDescription = "Скачать",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Закрыть",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
             }
         }
     }

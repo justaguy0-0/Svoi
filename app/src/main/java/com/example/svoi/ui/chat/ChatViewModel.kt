@@ -135,9 +135,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val hasFullCache = cachedInfo != null && cachedMessages != null
             if (!hasFullCache) _isUpdating.value = true
             loadChatInfo()
+            loadPinnedMessage()   // before loadMessages so banner height is stable when messages appear
             loadMessages()
             markAsRead()
-            loadPinnedMessage()
             _isUpdating.value = false
             _isLoading.value = false
 
