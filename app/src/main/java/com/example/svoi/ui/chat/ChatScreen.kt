@@ -1031,9 +1031,7 @@ private fun ImageLightbox(
             SubcomposeAsyncImage(
                 model = url,
                 contentDescription = "Изображение",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 72.dp, bottom = 24.dp),
+                modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
                 loading = {
                     CircularProgressIndicator(
