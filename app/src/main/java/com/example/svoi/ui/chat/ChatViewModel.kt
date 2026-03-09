@@ -74,6 +74,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _scrollToBottomEvent = MutableStateFlow(0)
     val scrollToBottomEvent: StateFlow<Int> = _scrollToBottomEvent
 
+    // true after the first full load — enables message animations
+    private val _initialLoadComplete = MutableStateFlow(false)
+    val initialLoadComplete: StateFlow<Boolean> = _initialLoadComplete
+
     val isOnline: StateFlow<Boolean> = app.networkMonitor.isOnline
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
@@ -119,6 +123,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isUpdating.value = false
             _isLoading.value = false
 
+            _initialLoadComplete.value = true
             observeNewMessages()
             observeUpdatedMessages()
             startReadReceiptPolling()
@@ -127,12 +132,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun buildUiItems(raw: List<Message>): List<MessageUiItem> {
         val myId = currentUserId
+        val messageMap = raw.associateBy { it.id }
         return raw.map { msg ->
             MessageUiItem(
                 message = msg,
                 senderProfile = msg.senderId?.let { profileCache[it] },
                 isOwn = msg.senderId == myId,
-                isRead = false
+                isRead = false,
+                replyToMessage = msg.replyToId?.let { messageMap[it] }
             )
         }
     }
@@ -181,9 +188,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun loadMessages() {
         val raw = messageRepo.getMessages(chatId, limit = 50)
-        val newLastId = raw.lastOrNull()?.id
+        if (raw.isEmpty()) return  // offline — keep cached messages shown
 
-        // Only update UI and scroll if data actually changed
+        val newLastId = raw.lastOrNull()?.id
         val enriched = enrichMessages(raw)
         _messages.value = enriched
 
@@ -193,10 +200,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _scrollToBottomEvent.value++
         }
 
-        if (raw.isNotEmpty()) {
-            cache.saveMessages(chatId, raw)
-            cache.saveProfiles(profileCache.values)
-        }
+        cache.saveMessages(chatId, raw)
+        cache.saveProfiles(profileCache.values)
     }
 
     private suspend fun enrichMessages(raw: List<Message>): List<MessageUiItem> {
@@ -210,8 +215,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val myMessageIds = raw.filter { it.senderId == myId }.map { it.id }
         val readIds = messageRepo.getReadMessageIds(myMessageIds)
 
+        val messageMap = raw.associateBy { it.id }
         return raw.map { msg ->
-            val replyMsg = msg.replyToId?.let { messageRepo.getMessage(it) }
+            val replyMsg = msg.replyToId?.let { messageMap[it] ?: messageRepo.getMessage(it) }
             MessageUiItem(
                 message = msg,
                 senderProfile = msg.senderId?.let { profileCache[it] },

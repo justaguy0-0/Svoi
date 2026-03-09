@@ -75,6 +75,7 @@ fun ProfileScreen(
     val profile by viewModel.profile.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isSaving by viewModel.isSaving.collectAsState()
+    val isOnline by viewModel.isOnline.collectAsState()
     val error by viewModel.error.collectAsState()
     val successMessage by viewModel.successMessage.collectAsState()
 
@@ -235,7 +236,7 @@ fun ProfileScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
-                enabled = !isSaving,
+                enabled = !isSaving && isOnline,
                 shape = MaterialTheme.shapes.medium
             ) {
                 if (isSaving) {
@@ -245,7 +246,16 @@ fun ProfileScreen(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Сохранить")
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Сохранить")
+                        if (!isOnline) {
+                            Text(
+                                "Нет подключения",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
                 }
             }
 

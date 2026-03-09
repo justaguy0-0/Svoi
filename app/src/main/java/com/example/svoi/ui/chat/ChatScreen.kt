@@ -123,6 +123,7 @@ fun ChatScreen(
     val memberCount by viewModel.memberCount.collectAsState()
     val error by viewModel.error.collectAsState()
     val scrollToBottomEvent by viewModel.scrollToBottomEvent.collectAsState()
+    val initialLoadComplete by viewModel.initialLoadComplete.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -290,7 +291,7 @@ fun ChatScreen(
                             MessageItem(
                                 item = item,
                                 isGroup = isGroup,
-                                modifier = Modifier.animateItem(fadeInSpec = tween(durationMillis = 150)),
+                                modifier = if (initialLoadComplete) Modifier.animateItem(fadeInSpec = tween(durationMillis = 150)) else Modifier,
                                 onReply = { viewModel.setReplyTo(item.message) },
                                 onEdit = { viewModel.setEditing(item.message) },
                                 onDelete = { forAll ->
