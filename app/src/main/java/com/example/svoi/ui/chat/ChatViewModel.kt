@@ -74,9 +74,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _scrollToBottomEvent = MutableStateFlow(0)
     val scrollToBottomEvent: StateFlow<Int> = _scrollToBottomEvent
 
-    // true after the first full load — enables message animations
-    private val _initialLoadComplete = MutableStateFlow(false)
-    val initialLoadComplete: StateFlow<Boolean> = _initialLoadComplete
 
     val isOnline: StateFlow<Boolean> = app.networkMonitor.isOnline
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
@@ -125,7 +122,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isUpdating.value = false
             _isLoading.value = false
 
-            _initialLoadComplete.value = true
             observeNewMessages()
             observeUpdatedMessages()
             startReadReceiptPolling()

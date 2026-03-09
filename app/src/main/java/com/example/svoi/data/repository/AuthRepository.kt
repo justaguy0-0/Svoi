@@ -29,6 +29,14 @@ class AuthRepository(
         }
         Log.d("Auth", "restoreSession: status=${status?.let { it::class.simpleName } ?: "timeout(offline?)"}")
 
+        // RefreshFailure = SDK loaded session from storage but couldn't refresh token (offline)
+        // Trust the in-memory session — it's still valid for reading cached data
+        if (status is SessionStatus.RefreshFailure) {
+            val hasSession = supabase.auth.currentSessionOrNull() != null
+            Log.w("Auth", "restoreSession: RefreshFailure (offline?), hasSession=$hasSession")
+            return hasSession
+        }
+
         if (status is SessionStatus.Authenticated) {
             if (supabase.auth.currentUserOrNull() == null) {
                 Log.w("Auth", "restoreSession: session loaded but user is null, fetching...")
