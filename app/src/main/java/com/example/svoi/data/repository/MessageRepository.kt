@@ -115,6 +115,21 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { null }
     }
 
+    suspend fun sendSystemMessage(chatId: String, content: String, replyToId: String? = null): Message? {
+        val userId = currentUserId()
+        return try {
+            supabase.from("messages").insert(
+                buildMap {
+                    put("chat_id", chatId)
+                    put("sender_id", userId)
+                    put("content", content)
+                    put("type", "system")
+                    if (replyToId != null) put("reply_to_id", replyToId)
+                }
+            ).decodeSingle<Message>()
+        } catch (e: Exception) { null }
+    }
+
     suspend fun forwardMessage(fromMessageId: String, toChatId: String): Message? {
         val userId = currentUserId()
         val original = getMessage(fromMessageId) ?: return null

@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.svoi.data.local.ThemeMode
 import androidx.navigation.compose.rememberNavController
 import com.example.svoi.navigation.NavGraph
 import com.example.svoi.navigation.Routes
@@ -29,7 +30,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            SvoiTheme {
+            var themeMode by remember { mutableStateOf(app.themeManager.getThemeMode()) }
+
+            SvoiTheme(themeMode = themeMode) {
                 val navController = rememberNavController()
                 var startDestination by remember { mutableStateOf<String?>(null) }
 
@@ -42,7 +45,12 @@ class MainActivity : ComponentActivity() {
                 startDestination?.let { start ->
                     NavGraph(
                         navController = navController,
-                        startDestination = start
+                        startDestination = start,
+                        onThemeChanged = { mode ->
+                            app.themeManager.setThemeMode(mode)
+                            themeMode = mode
+                        },
+                        currentThemeMode = themeMode
                     )
                 }
             }

@@ -10,6 +10,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.example.svoi.data.local.ThemeMode
 
 private val LightColorScheme = lightColorScheme(
     primary = Blue500,
@@ -48,8 +49,15 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun SvoiTheme(content: @Composable () -> Unit) {
-    val isDark = isSystemInDarkTheme()
+fun SvoiTheme(
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    content: @Composable () -> Unit
+) {
+    val isDark = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
     val colorScheme = if (isDark) DarkColorScheme else LightColorScheme
 
     val view = LocalView.current

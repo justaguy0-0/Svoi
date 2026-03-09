@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
@@ -74,6 +75,7 @@ fun ChatListScreen(
     onChatClick: (String) -> Unit,
     onNewChatClick: () -> Unit,
     onProfileClick: () -> Unit,
+    onSettingsClick: () -> Unit = {},
     viewModel: ChatListViewModel = viewModel()
 ) {
     val chats by viewModel.chats.collectAsState()
@@ -126,6 +128,9 @@ fun ChatListScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(Icons.Default.Settings, contentDescription = "Настройки")
+                    }
                     IconButton(onClick = onProfileClick) {
                         Icon(Icons.Default.Person, contentDescription = "Профиль")
                     }

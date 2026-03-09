@@ -6,6 +6,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.example.svoi.data.local.ThemeMode
 import com.example.svoi.ui.auth.InviteKeyScreen
 import com.example.svoi.ui.auth.LoginScreen
 import com.example.svoi.ui.auth.SetupProfileScreen
@@ -14,6 +15,7 @@ import com.example.svoi.ui.chatlist.ChatListScreen
 import com.example.svoi.ui.newchat.CreateGroupScreen
 import com.example.svoi.ui.newchat.UserSearchScreen
 import com.example.svoi.ui.profile.ProfileScreen
+import com.example.svoi.ui.settings.SettingsScreen
 
 object Routes {
     const val LOGIN = "login"
@@ -24,6 +26,7 @@ object Routes {
     const val USER_SEARCH = "user_search"
     const val CREATE_GROUP = "create_group"
     const val PROFILE = "profile"
+    const val SETTINGS = "settings"
 
     fun setupProfile(inviteKey: String) = "setup_profile/$inviteKey"
     fun chat(chatId: String) = "chat/$chatId"
@@ -32,7 +35,9 @@ object Routes {
 @Composable
 fun NavGraph(
     navController: NavHostController,
-    startDestination: String
+    startDestination: String,
+    onThemeChanged: (ThemeMode) -> Unit = {},
+    currentThemeMode: ThemeMode = ThemeMode.SYSTEM
 ) {
     NavHost(
         navController = navController,
@@ -86,6 +91,9 @@ fun NavGraph(
                 },
                 onProfileClick = {
                     navController.navigate(Routes.PROFILE)
+                },
+                onSettingsClick = {
+                    navController.navigate(Routes.SETTINGS)
                 }
             )
         }
@@ -137,6 +145,14 @@ fun NavGraph(
                         popUpTo(0) { inclusive = true }
                     }
                 }
+            )
+        }
+
+        composable(Routes.SETTINGS) {
+            SettingsScreen(
+                currentThemeMode = currentThemeMode,
+                onThemeChanged = onThemeChanged,
+                onBack = { navController.popBackStack() }
             )
         }
     }

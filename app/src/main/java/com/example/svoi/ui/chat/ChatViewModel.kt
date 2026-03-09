@@ -54,6 +54,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _pinnedMessage = MutableStateFlow<PinnedMessage?>(null)
     val pinnedMessage: StateFlow<PinnedMessage?> = _pinnedMessage
 
+    private val _pinnedMessageContent = MutableStateFlow<Message?>(null)
+    val pinnedMessageContent: StateFlow<Message?> = _pinnedMessageContent
+
+    private val _highlightedMessageId = MutableStateFlow<String?>(null)
+    val highlightedMessageId: StateFlow<String?> = _highlightedMessageId
+
+    private val _scrollToMessageEvent = MutableStateFlow<String?>(null)
+    val scrollToMessageEvent: StateFlow<String?> = _scrollToMessageEvent
+
     private val _replyTo = MutableStateFlow<Message?>(null)
     val replyTo: StateFlow<Message?> = _replyTo
 
@@ -282,7 +291,46 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun loadPinnedMessage() {
-        _pinnedMessage.value = chatRepo.getPinnedMessage(chatId)
+        val pinned = chatRepo.getPinnedMessage(chatId)
+        _pinnedMessage.value = pinned
+        _pinnedMessageContent.value = pinned?.let { messageRepo.getMessage(it.messageId) }
+    }
+
+    fun pinMessage(messageId: String) {
+        viewModelScope.launch {
+            val success = chatRepo.pinMessage(chatId, messageId)
+            if (success) {
+                val myName = profileCache[currentUserId]?.displayName ?: "Пользователь"
+                messageRepo.sendSystemMessage(chatId, "$myName закрепил(а) сообщение", messageId)
+                loadPinnedMessage()
+            }
+        }
+    }
+
+    fun unpinMessage() {
+        viewModelScope.launch {
+            val oldPinnedId = _pinnedMessage.value?.messageId
+            val success = chatRepo.unpinMessage(chatId)
+            if (success) {
+                val myName = profileCache[currentUserId]?.displayName ?: "Пользователь"
+                messageRepo.sendSystemMessage(chatId, "$myName открепил(а) сообщение", oldPinnedId)
+                _pinnedMessage.value = null
+                _pinnedMessageContent.value = null
+            }
+        }
+    }
+
+    fun scrollToMessage(messageId: String) {
+        _scrollToMessageEvent.value = messageId
+        _highlightedMessageId.value = messageId
+        viewModelScope.launch {
+            delay(2_000L)
+            _highlightedMessageId.value = null
+        }
+    }
+
+    fun clearScrollToMessageEvent() {
+        _scrollToMessageEvent.value = null
     }
 
     private fun observeNewMessages() {
