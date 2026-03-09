@@ -11,6 +11,7 @@ import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.user.UserSession
 import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.Instant
 
 class AuthRepository(
@@ -20,48 +21,53 @@ class AuthRepository(
 
     /** Returns true if a saved session was successfully restored */
     suspend fun restoreSession(): Boolean {
-        // Wait for Supabase SDK to finish loading its own session from storage
-        val status = supabase.auth.sessionStatus.first { it !is SessionStatus.Initializing }
+        // Wait for SDK to load session from storage — with timeout.
+        // Without timeout, the app hangs forever when offline + token needs refresh
+        // (SDK retries indefinitely, sessionStatus stays Initializing).
+        val status = withTimeoutOrNull(5_000L) {
+            supabase.auth.sessionStatus.first { it !is SessionStatus.Initializing }
+        }
+        Log.d("Auth", "restoreSession: status=${status?.let { it::class.simpleName } ?: "timeout(offline?)"}")
 
         if (status is SessionStatus.Authenticated) {
-            // User might be null if the session was previously saved without user info.
-            // Fetch it from the server and update the stored session.
             if (supabase.auth.currentUserOrNull() == null) {
-                Log.w("Auth", "restoreSession: session loaded but user is null, fetching from server...")
+                Log.w("Auth", "restoreSession: session loaded but user is null, fetching...")
                 try {
                     supabase.auth.retrieveUserForCurrentSession(updateSession = true)
                 } catch (e: Exception) {
-                    Log.e("Auth", "restoreSession: failed to retrieve user — ${e.message}", e)
-                    return false
+                    Log.w("Auth", "restoreSession: couldn't fetch user (offline?) — ${e.message}")
+                    // Session exists but server unreachable — trust it for offline mode
+                    return supabase.auth.currentSessionOrNull() != null
                 }
             }
             Log.d("Auth", "restoreSession: SDK authenticated, userId=${supabase.auth.currentUserOrNull()?.id}")
             return supabase.auth.currentUserOrNull() != null
         }
 
-        // SDK is not authenticated — fall back to our EncryptedPrefsManager
+        // SDK timed out (offline + expired token) or returned not-authenticated.
+        // Fall back to EncryptedPrefsManager.
         val accessToken = prefs.getAccessToken() ?: run {
-            Log.w("Auth", "restoreSession: no access token saved")
+            Log.w("Auth", "restoreSession: no saved tokens")
             return false
         }
-        val refreshToken = prefs.getRefreshToken() ?: run {
-            Log.w("Auth", "restoreSession: no refresh token saved")
-            return false
-        }
+        val refreshToken = prefs.getRefreshToken() ?: return false
+
         return try {
-            supabase.auth.importSession(
-                UserSession(
-                    accessToken = accessToken,
-                    tokenType = "bearer",
-                    expiresIn = 3600,
-                    expiresAt = Instant.fromEpochSeconds(prefs.getExpiresAt()),
-                    refreshToken = refreshToken
+            // Import with timeout — importSession also tries to refresh and can hang offline
+            withTimeoutOrNull(3_000L) {
+                supabase.auth.importSession(
+                    UserSession(
+                        accessToken = accessToken,
+                        tokenType = "bearer",
+                        expiresIn = 3600,
+                        expiresAt = Instant.fromEpochSeconds(prefs.getExpiresAt()),
+                        refreshToken = refreshToken
+                    )
                 )
-            )
-            // Wait for the session to be fully processed after import
-            val newStatus = supabase.auth.sessionStatus.first { it !is SessionStatus.Initializing }
-            val success = newStatus is SessionStatus.Authenticated
-            Log.d("Auth", "restoreSession: importSession result=$success, userId=${supabase.auth.currentUserOrNull()?.id}")
+            }
+            // After import (or timeout), check if session was set in memory
+            val success = supabase.auth.currentSessionOrNull() != null
+            Log.d("Auth", "restoreSession: importSession hasSession=$success, userId=${supabase.auth.currentUserOrNull()?.id}")
             if (!success) prefs.clearSession()
             success
         } catch (e: Exception) {

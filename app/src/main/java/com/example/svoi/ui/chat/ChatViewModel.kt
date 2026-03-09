@@ -115,7 +115,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // 2. Load fresh from network
-            _isUpdating.value = true
+            // Only show "Обновление..." if no cache — avoids unnecessary recompose
+            val hasFullCache = cachedInfo != null && cachedMessages != null
+            if (!hasFullCache) _isUpdating.value = true
             loadChatInfo()
             loadMessages()
             markAsRead()
