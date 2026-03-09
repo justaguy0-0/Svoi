@@ -73,7 +73,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -134,6 +136,11 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    // Pre-compute screen height for centering the unread divider
+    val screenHeightPx = with(LocalDensity.current) {
+        LocalConfiguration.current.screenHeightDp.dp.roundToPx()
+    }
+
     // Build entries list here so LaunchedEffect can reference it
     val displayEntries = remember(messages, firstUnreadIndex) {
         buildList {
@@ -147,7 +154,10 @@ fun ChatScreen(
                 val showDate = prev == null ||
                     item.message.createdAt?.take(10) != prev.message.createdAt?.take(10)
                 if (showDate && !item.message.createdAt.isNullOrBlank()) {
-                    add(ChatEntry.DateDivider(item.message.createdAt!!.toDateSeparator()))
+                    add(ChatEntry.DateDivider(
+                        date = item.message.createdAt!!.toDateSeparator(),
+                        triggerMsgId = item.message.id
+                    ))
                 }
                 add(ChatEntry.Msg(item))
             }
@@ -165,7 +175,14 @@ fun ChatScreen(
             val unreadCount = if (firstUnreadIndex >= 0) messages.size - firstUnreadIndex else 0
             val target = if (unreadEntryIdx >= 0 && unreadCount >= 5) unreadEntryIdx
                          else displayEntries.size - 1
-            if (target >= 0) listState.scrollToItem(target)
+            if (target >= 0) {
+                // Negative offset scrolls the item down from the top edge,
+                // placing the unread divider roughly in the upper third of the screen
+                val offset = if (unreadEntryIdx >= 0 && unreadCount >= 5)
+                    -(screenHeightPx / 3)
+                else 0
+                listState.scrollToItem(target, scrollOffset = offset)
+            }
             delay(600)
             allowClearSeparator = true
         }
@@ -334,7 +351,7 @@ fun ChatScreen(
                             key = { entry ->
                                 when (entry) {
                                     is ChatEntry.Msg -> entry.item.message.id
-                                    is ChatEntry.DateDivider -> "date_${entry.date}"
+                                    is ChatEntry.DateDivider -> "date_${entry.triggerMsgId}"
                                     ChatEntry.UnreadDivider -> "unread_divider"
                                 }
                             }
@@ -784,7 +801,8 @@ private fun memberCountText(count: Int) = when {
 
 private sealed class ChatEntry {
     data class Msg(val item: MessageUiItem) : ChatEntry()
-    data class DateDivider(val date: String) : ChatEntry()
+    // triggerMsgId = ID of the first message of that day — guarantees unique key
+    data class DateDivider(val date: String, val triggerMsgId: String) : ChatEntry()
     object UnreadDivider : ChatEntry()
 }
 

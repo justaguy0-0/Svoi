@@ -79,8 +79,8 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Silent refresh — no animation, used for real-time new message events
-    private fun silentRefresh() {
+    // Silent refresh — no animation, used for real-time new message events and on resume
+    fun silentRefresh() {
         viewModelScope.launch {
             val fresh = chatRepo.getChatsForUser()
             if (fresh.isNotEmpty()) {
