@@ -82,6 +82,15 @@ class UserRepository(private val supabase: SupabaseClient) {
         }
     }
 
+    suspend fun getPresences(userIds: List<String>): List<UserPresence> {
+        if (userIds.isEmpty()) return emptyList()
+        return try {
+            supabase.from("user_presence")
+                .select { filter { isIn("user_id", userIds) } }
+                .decodeList<UserPresence>()
+        } catch (e: Exception) { emptyList() }
+    }
+
     suspend fun setOnline(online: Boolean) {
         val userId = supabase.auth.currentUserOrNull()?.id
         if (userId == null) {

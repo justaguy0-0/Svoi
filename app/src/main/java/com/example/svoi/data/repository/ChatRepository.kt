@@ -6,6 +6,7 @@ import com.example.svoi.data.model.ChatMember
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
+import com.example.svoi.data.model.UserPresence
 import android.util.Log
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
@@ -74,6 +75,15 @@ class ChatRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { emptyList() }
         val profileMap = profiles.associateBy { it.id }
 
+        // 4b. Get online presence for other users
+        val presenceMap: Map<String, UserPresence> = try {
+            if (otherUserIds.isEmpty()) emptyMap()
+            else supabase.from("user_presence")
+                .select { filter { isIn("user_id", otherUserIds) } }
+                .decodeList<UserPresence>()
+                .associateBy { it.userId }
+        } catch (_: Exception) { emptyMap() }
+
         // 5. Get last message for each chat (one query per chat, but bounded by chat count)
         val lastMessages = mutableMapOf<String, Message>()
         for (chatId in chatIds) {
@@ -123,6 +133,9 @@ class ChatRepository(private val supabase: SupabaseClient) {
             val chatMembers = allMembers.filter { it.chatId == chat.id }
             val otherMember = chatMembers.firstOrNull { it.userId != userId }
             val otherProfile = otherMember?.userId?.let { profileMap[it] }
+            val isOtherOnline = if (chat.type == "personal") {
+                otherMember?.userId?.let { presenceMap[it]?.online } ?: false
+            } else false
 
             val displayName = if (chat.type == "group") {
                 chat.name ?: "Группа"
@@ -142,12 +155,20 @@ class ChatRepository(private val supabase: SupabaseClient) {
                 otherProfile?.bgColor ?: "#5C6BC0"
             }
 
+            val senderName: String? = if (chat.type == "group" && lastMsg != null) {
+                if (lastMsg.senderId == userId) "Вы"
+                else lastMsg.senderId?.let { profileMap[it]?.displayName } ?: ""
+            } else null
+
             val lastMessageText = when {
                 lastMsg == null -> ""
                 lastMsg.deletedForAll -> "Сообщение удалено"
-                lastMsg.type == "photo" -> "📷 Фото"
-                lastMsg.type == "file" -> "📎 ${lastMsg.fileName ?: "Файл"}"
-                else -> lastMsg.content ?: ""
+                lastMsg.type == "photo" -> if (senderName != null) "$senderName: 📷 Фото" else "📷 Фото"
+                lastMsg.type == "file" -> if (senderName != null) "$senderName: 📎 ${lastMsg.fileName ?: "Файл"}" else "📎 ${lastMsg.fileName ?: "Файл"}"
+                else -> {
+                    val text = lastMsg.content ?: ""
+                    if (senderName != null && text.isNotEmpty()) "$senderName: $text" else text
+                }
             }
 
             ChatListItem(
@@ -161,7 +182,8 @@ class ChatRepository(private val supabase: SupabaseClient) {
                 lastMessageTime = lastMsg?.createdAt ?: chat.createdAt ?: "",
                 unreadCount = unreadCounts[chat.id] ?: 0,
                 otherUserId = otherMember?.userId,
-                myRole = membership?.role ?: "member"
+                myRole = membership?.role ?: "member",
+                isOtherOnline = isOtherOnline
             )
         }.sortedByDescending { it.lastMessageTime }
     }

@@ -7,6 +7,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -77,6 +78,7 @@ fun ChatListScreen(
 ) {
     val chats by viewModel.chats.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val chatTyping by viewModel.chatTyping.collectAsState()
     val scope = rememberCoroutineScope()
 
     var selectedChat by remember { mutableStateOf<ChatListItem?>(null) }
@@ -172,6 +174,7 @@ fun ChatListScreen(
                     items(chats, key = { it.chatId }) { chat ->
                         ChatListItem(
                             item = chat,
+                            typingText = chatTyping[chat.chatId],
                             onClick = { onChatClick(chat.chatId) },
                             onLongClick = {
                                 selectedChat = chat
@@ -288,6 +291,7 @@ fun ChatListScreen(
 @Composable
 private fun ChatListItem(
     item: ChatListItem,
+    typingText: String?,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -298,15 +302,26 @@ private fun ChatListItem(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Avatar
-        Avatar(
-            emoji = item.emoji,
-            bgColor = item.bgColor,
-            isGroup = item.isGroup,
-            letter = item.displayName,
-            size = 52.dp,
-            fontSize = 24.sp
-        )
+        // Avatar with optional online dot
+        Box {
+            Avatar(
+                emoji = item.emoji,
+                bgColor = item.bgColor,
+                isGroup = item.isGroup,
+                letter = item.displayName,
+                size = 52.dp,
+                fontSize = 24.sp
+            )
+            if (!item.isGroup && item.isOtherOnline) {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .align(Alignment.BottomEnd)
+                        .background(Color(0xFF43A047), CircleShape)
+                        .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                )
+            }
+        }
 
         Spacer(Modifier.width(12.dp))
 
@@ -339,9 +354,10 @@ private fun ChatListItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = item.lastMessageText,
+                    text = typingText ?: item.lastMessageText,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (typingText != null) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)

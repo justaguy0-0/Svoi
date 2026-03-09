@@ -335,6 +335,26 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (_: Exception) { emptyList() }
     }
 
+    /** Returns typing users grouped by chat_id for multiple chats at once */
+    suspend fun getTypingForChats(chatIds: List<String>, excludeUserId: String): Map<String, List<TypingStatus>> {
+        if (chatIds.isEmpty()) return emptyMap()
+        return try {
+            supabase.from("typing_status")
+                .select { filter { isIn("chat_id", chatIds); neq("user_id", excludeUserId) } }
+                .decodeList<TypingStatus>()
+                .filter { status ->
+                    status.updatedAt?.let { ts ->
+                        runCatching {
+                            val updated = java.time.Instant.parse(ts)
+                            val ageSeconds = java.time.Instant.now().epochSecond - updated.epochSecond
+                            ageSeconds < 5
+                        }.getOrDefault(false)
+                    } ?: false
+                }
+                .groupBy { it.chatId }
+        } catch (_: Exception) { emptyMap() }
+    }
+
     /** Upload a file/image to Supabase Storage and return the public URL */
     suspend fun uploadFile(chatId: String, fileName: String, bytes: ByteArray): String? {
         return try {

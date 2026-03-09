@@ -101,7 +101,6 @@ import com.example.svoi.util.toDateSeparator
 import com.example.svoi.util.toLastSeen
 import com.example.svoi.util.toMessageTime
 import com.example.svoi.util.toReadableSize
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -164,35 +163,19 @@ fun ChatScreen(
         }
     }
 
-    // Guard: only let user scroll clear the separator, not the auto-scroll
-    var allowClearSeparator by remember { mutableStateOf(false) }
-
     // Scroll to first unread (if many) or to bottom on initial load and new messages
     LaunchedEffect(scrollToBottomEvent) {
-        if (messages.isNotEmpty()) {
-            allowClearSeparator = false
+        if (displayEntries.isNotEmpty()) {
             val unreadEntryIdx = displayEntries.indexOfFirst { it is ChatEntry.UnreadDivider }
             val unreadCount = if (firstUnreadIndex >= 0) messages.size - firstUnreadIndex else 0
             val target = if (unreadEntryIdx >= 0 && unreadCount >= 5) unreadEntryIdx
                          else displayEntries.size - 1
             if (target >= 0) {
-                // Negative offset scrolls the item down from the top edge,
-                // placing the unread divider roughly in the upper third of the screen
                 val offset = if (unreadEntryIdx >= 0 && unreadCount >= 5)
                     -(screenHeightPx / 3)
                 else 0
                 listState.scrollToItem(target, scrollOffset = offset)
             }
-            delay(600)
-            allowClearSeparator = true
-        }
-    }
-
-    // Remove unread separator when user starts scrolling
-    val isScrollInProgress = listState.isScrollInProgress
-    LaunchedEffect(isScrollInProgress) {
-        if (isScrollInProgress && firstUnreadIndex >= 0 && allowClearSeparator) {
-            viewModel.clearUnreadSeparator()
         }
     }
 

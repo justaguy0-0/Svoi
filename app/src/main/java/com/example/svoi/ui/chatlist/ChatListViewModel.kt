@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.svoi.SvoiApp
 import com.example.svoi.data.model.ChatListItem
+import com.example.svoi.data.model.TypingStatus
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +25,11 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    private val _chatTyping = MutableStateFlow<Map<String, String>>(emptyMap())
+    val chatTyping: StateFlow<Map<String, String>> = _chatTyping
+
+    private val currentUserId get() = app.authRepository.currentUserId() ?: ""
 
     // true only during initial app load or after reconnect — shown as "Обновление..."
     private val _isUpdating = MutableStateFlow(false)
@@ -49,6 +56,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
         loadChats(showUpdating = true)  // initial load
         observeNewMessages()
+        startTypingPolling()
     }
 
     fun loadChats(showUpdating: Boolean = false) {
@@ -114,6 +122,36 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             app.authRepository.signOut()
             onDone()
+        }
+    }
+
+    private fun startTypingPolling() {
+        viewModelScope.launch {
+            while (true) {
+                delay(2_000L)
+                val chats = _chats.value
+                if (chats.isNotEmpty()) {
+                    val chatIds = chats.map { it.chatId }
+                    val typingByChat = messageRepo.getTypingForChats(chatIds, currentUserId)
+                    val result = mutableMapOf<String, String>()
+                    for (chat in chats) {
+                        val users = typingByChat[chat.chatId] ?: continue
+                        val text = typingText(users, chat.isGroup) ?: continue
+                        result[chat.chatId] = text
+                    }
+                    _chatTyping.value = result
+                }
+            }
+        }
+    }
+
+    private fun typingText(users: List<TypingStatus>, isGroup: Boolean): String? {
+        if (users.isEmpty()) return null
+        return if (!isGroup) "Печатает..."
+        else when (users.size) {
+            1 -> "${users[0].displayName} печатает..."
+            2 -> "${users[0].displayName} и ${users[1].displayName} печатают..."
+            else -> "${users[0].displayName}, ${users[1].displayName} и ещё ${users.size - 2} печатают..."
         }
     }
 }

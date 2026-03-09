@@ -132,6 +132,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isUpdating.value = false
             _isLoading.value = false
 
+            // Clear separator after 5s — user has had time to read the context
+            if (_firstUnreadIndex.value >= 0) {
+                viewModelScope.launch {
+                    delay(5_000L)
+                    _firstUnreadIndex.value = -1
+                }
+            }
+
             observeNewMessages()
             observeUpdatedMessages()
             startReadReceiptPolling()
@@ -227,25 +235,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _messages.value = merged
         }
 
-        // Scroll: to first unread if ≥5 unread, otherwise to bottom
-        if (newLastId != null && newLastId != lastKnownMessageId) {
-            lastKnownMessageId = newLastId
-            val unreadIdx = _firstUnreadIndex.value
-            val unreadCount = if (unreadIdx >= 0) merged.size - unreadIdx else 0
-            if (unreadIdx > 0 && unreadCount >= 5) {
-                // Many unread — handled in ChatScreen via firstUnreadIndex
-            } else {
-                _scrollToBottomEvent.value++
-            }
-        } else if (newLastId == lastKnownMessageId) {
-            // Same messages as cache — scroll to first unread if many, else stay
-            val unreadIdx = _firstUnreadIndex.value
-            val unreadCount = if (unreadIdx >= 0) merged.size - unreadIdx else 0
-            if (unreadIdx <= 0 || unreadCount < 5) {
-                // Not many unread — ensure we're scrolled to bottom
-                // (cache already triggered scroll, skip)
-            }
-        }
+        lastKnownMessageId = newLastId
+        _scrollToBottomEvent.value++
 
         cache.saveMessages(chatId, raw)
         cache.saveProfiles(profileCache.values)
