@@ -75,10 +75,6 @@ fun ChatListScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        viewModel.loadChats()
-    }
-
     var selectedChat by remember { mutableStateOf<ChatListItem?>(null) }
     var showBottomSheet by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }

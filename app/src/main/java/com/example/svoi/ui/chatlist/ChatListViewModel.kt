@@ -21,25 +21,39 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private val _chats = MutableStateFlow<List<ChatListItem>>(emptyList())
     val chats: StateFlow<List<ChatListItem>> = _chats
 
-    // true while the initial spinner should show (no cached data yet)
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
-    // true while fetching fresh data from server (Telegram-style "Обновление")
+    // true only during initial app load or after reconnect — shown as "Обновление..."
     private val _isUpdating = MutableStateFlow(false)
     val isUpdating: StateFlow<Boolean> = _isUpdating
 
     val isOnline: StateFlow<Boolean> = app.networkMonitor.isOnline
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
+    // Track whether we need to show "Обновление..." on next refresh
+    private var initialLoad = true
+    private var wasOffline = false
+
     init {
-        loadChats()
+        // Watch for going offline so we show "Обновление..." when reconnecting
+        viewModelScope.launch {
+            isOnline.collect { online ->
+                if (!online) wasOffline = true
+                else if (wasOffline) {
+                    // Just came back online — do a visible refresh
+                    wasOffline = false
+                    loadChats(showUpdating = true)
+                }
+            }
+        }
+        loadChats(showUpdating = true)  // initial load
         observeNewMessages()
     }
 
-    fun loadChats() {
+    fun loadChats(showUpdating: Boolean = false) {
         viewModelScope.launch {
-            // 1. Show cache instantly if available
+            // 1. Show cache immediately
             val cached = cache.loadChatList()
             if (cached != null) {
                 _chats.value = cached
@@ -48,15 +62,31 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 _isLoading.value = true
             }
 
-            // 2. Fetch fresh from server
-            _isUpdating.value = true
+            // 2. Show "Обновление..." only on initial load or explicit refresh
+            val animate = showUpdating && (initialLoad || _chats.value.isEmpty())
+            if (animate) _isUpdating.value = true
+
+            // 3. Fetch fresh from server
             val fresh = chatRepo.getChatsForUser()
             if (fresh.isNotEmpty()) {
                 _chats.value = fresh
                 cache.saveChatList(fresh)
             }
+
+            initialLoad = false
             _isUpdating.value = false
             _isLoading.value = false
+        }
+    }
+
+    // Silent refresh — no animation, used for real-time new message events
+    private fun silentRefresh() {
+        viewModelScope.launch {
+            val fresh = chatRepo.getChatsForUser()
+            if (fresh.isNotEmpty()) {
+                _chats.value = fresh
+                cache.saveChatList(fresh)
+            }
         }
     }
 
@@ -64,7 +94,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             try {
                 messageRepo.messageInsertFlowAll().collect {
-                    loadChats()
+                    silentRefresh()
                 }
             } catch (_: Exception) {}
         }
@@ -72,12 +102,12 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
 
     suspend fun deleteChat(chatId: String) {
         chatRepo.deleteChat(chatId)
-        loadChats()
+        silentRefresh()
     }
 
     suspend fun clearHistory(chatId: String) {
         chatRepo.clearChatHistory(chatId)
-        loadChats()
+        silentRefresh()
     }
 
     fun signOut(onDone: () -> Unit) {

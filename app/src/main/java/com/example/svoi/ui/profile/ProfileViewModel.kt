@@ -14,6 +14,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     private val app = application as SvoiApp
     private val userRepo = app.userRepository
     private val authRepo = app.authRepository
+    private val cache = app.cacheManager
 
     private val _profile = MutableStateFlow<Profile?>(null)
     val profile: StateFlow<Profile?> = _profile
@@ -36,8 +37,20 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     fun loadProfile() {
         viewModelScope.launch {
-            _isLoading.value = true
-            _profile.value = userRepo.getCurrentProfile()
+            // Show cached profile immediately
+            val cached = cache.loadOwnProfile()
+            if (cached != null) {
+                _profile.value = cached
+                _isLoading.value = false
+            } else {
+                _isLoading.value = true
+            }
+            // Fetch fresh from network
+            val fresh = userRepo.getCurrentProfile()
+            if (fresh != null) {
+                _profile.value = fresh
+                cache.saveOwnProfile(fresh)
+            }
             _isLoading.value = false
         }
     }

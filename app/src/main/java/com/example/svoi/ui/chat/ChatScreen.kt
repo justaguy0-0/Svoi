@@ -3,6 +3,11 @@ package com.example.svoi.ui.chat
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -63,6 +68,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -93,7 +99,7 @@ import com.example.svoi.util.toMessageTime
 import com.example.svoi.util.toReadableSize
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(
     chatId: String,
@@ -112,6 +118,9 @@ fun ChatScreen(
     val replyTo by viewModel.replyTo.collectAsState()
     val editingMessage by viewModel.editingMessage.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isUpdating by viewModel.isUpdating.collectAsState()
+    val isOnline by viewModel.isOnline.collectAsState()
+    val memberCount by viewModel.memberCount.collectAsState()
     val error by viewModel.error.collectAsState()
     val scrollToBottomEvent by viewModel.scrollToBottomEvent.collectAsState()
 
@@ -156,12 +165,36 @@ fun ChatScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            if (presenceText.isNotBlank() && !isGroup) {
-                                Text(
-                                    text = presenceText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (presence?.online == true) Online else TextSecondary
-                                )
+                            val subtitleText: String? = when {
+                                !isOnline -> "Подключение..."
+                                isUpdating && memberCount == 0 && presenceText.isBlank() -> "Обновление..."
+                                isGroup && memberCount > 0 -> memberCountText(memberCount)
+                                !isGroup && presenceText.isNotBlank() -> presenceText
+                                else -> null
+                            }
+                            val isStatusAnimated = !isOnline || (isUpdating && memberCount == 0 && presenceText.isBlank())
+                            if (subtitleText != null) {
+                                if (isStatusAnimated) {
+                                    val infiniteTransition = rememberInfiniteTransition(label = "chat_subtitle_pulse")
+                                    val alpha by infiniteTransition.animateFloat(
+                                        initialValue = 1f,
+                                        targetValue = 0.4f,
+                                        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+                                        label = "chat_subtitle_alpha"
+                                    )
+                                    Text(
+                                        text = subtitleText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSecondary,
+                                        modifier = Modifier.alpha(alpha)
+                                    )
+                                } else {
+                                    Text(
+                                        text = subtitleText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (!isGroup && presence?.online == true) Online else TextSecondary
+                                    )
+                                }
                             }
                         }
                     },
@@ -245,7 +278,7 @@ fun ChatScreen(
                             .padding(horizontal = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        itemsIndexed(messages) { index, item ->
+                        itemsIndexed(messages, key = { _, item -> item.message.id }) { index, item ->
                             val prevItem = if (index > 0) messages[index - 1] else null
                             val showDateSeparator = prevItem == null ||
                                 item.message.createdAt?.take(10) != prevItem.message.createdAt?.take(10)
@@ -257,6 +290,7 @@ fun ChatScreen(
                             MessageItem(
                                 item = item,
                                 isGroup = isGroup,
+                                modifier = Modifier.animateItem(fadeInSpec = tween(durationMillis = 150)),
                                 onReply = { viewModel.setReplyTo(item.message) },
                                 onEdit = { viewModel.setEditing(item.message) },
                                 onDelete = { forAll ->
@@ -405,6 +439,7 @@ private fun DateSeparator(date: String) {
 private fun MessageItem(
     item: MessageUiItem,
     isGroup: Boolean,
+    modifier: Modifier = Modifier,
     onReply: () -> Unit,
     onEdit: () -> Unit,
     onDelete: (Boolean) -> Unit
@@ -413,7 +448,7 @@ private fun MessageItem(
     if (msg.deletedForAll) {
         Text(
             text = "Сообщение удалено",
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
@@ -431,10 +466,10 @@ private fun MessageItem(
     val bubbleShape = if (item.isOwn) {
         RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 4.dp)
     } else {
-        RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)
+        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 4.dp, bottomEnd = 18.dp)
     }
 
-    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
+    Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = alignment) {
         Row(
             modifier = Modifier.widthIn(max = 300.dp),
             verticalAlignment = Alignment.Bottom
@@ -647,4 +682,11 @@ private fun MessageItem(
             }
         )
     }
+}
+
+private fun memberCountText(count: Int) = when {
+    count % 100 in 11..19 -> "$count участников"
+    count % 10 == 1 -> "$count участник"
+    count % 10 in 2..4 -> "$count участника"
+    else -> "$count участников"
 }

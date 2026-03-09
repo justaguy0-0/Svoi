@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.svoi.SvoiApp
+import com.example.svoi.data.local.CacheManager.CachedChatInfo
 import com.example.svoi.data.model.Chat
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
@@ -15,7 +16,9 @@ import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.UserPresence
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -39,6 +42,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _chatName = MutableStateFlow("")
     val chatName: StateFlow<String> = _chatName
 
+    private val _memberCount = MutableStateFlow(0)
+    val memberCount: StateFlow<Int> = _memberCount
+
     private val _otherUserPresence = MutableStateFlow<UserPresence?>(null)
     val otherUserPresence: StateFlow<UserPresence?> = _otherUserPresence
 
@@ -54,46 +60,64 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    // true while fetching from network (for subtitle "Обновление...")
+    private val _isUpdating = MutableStateFlow(false)
+    val isUpdating: StateFlow<Boolean> = _isUpdating
+
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    // Signals ChatScreen to scroll to bottom (incremented on initial load + new messages)
+    // Incremented to signal scroll to bottom
     private val _scrollToBottomEvent = MutableStateFlow(0)
     val scrollToBottomEvent: StateFlow<Int> = _scrollToBottomEvent
+
+    val isOnline: StateFlow<Boolean> = app.networkMonitor.isOnline
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
     private val currentUserId get() = authRepo.currentUserId() ?: ""
 
     private var chatId: String = ""
     private val profileCache = mutableMapOf<String, Profile>()
     private var otherUserId: String? = null
+    private var lastKnownMessageId: String? = null  // for smart scroll
 
     fun init(chatId: String) {
         if (this.chatId == chatId) return
         this.chatId = chatId
 
         viewModelScope.launch {
-            // 1. Load cached messages instantly
+            // 1. Show cached data instantly
+            val cachedInfo = cache.loadChatInfo(chatId)
             val cachedMessages = cache.loadMessages(chatId)
             val cachedProfiles = cache.loadProfileMap()
+
+            if (cachedInfo != null) {
+                _chatName.value = cachedInfo.name
+                _isGroup.value = cachedInfo.isGroup
+                _memberCount.value = cachedInfo.memberCount
+                otherUserId = cachedInfo.otherUserId
+            }
             if (cachedMessages != null) {
                 cachedProfiles.forEach { profileCache[it.key] = it.value }
                 _messages.value = buildUiItems(cachedMessages)
+                lastKnownMessageId = cachedMessages.lastOrNull()?.id
                 _isLoading.value = false
                 _scrollToBottomEvent.value++
             } else {
-                _isLoading.value = true
+                _isLoading.value = cachedInfo == null  // spinner only if nothing cached
             }
 
             // 2. Load fresh from network
+            _isUpdating.value = true
             loadChatInfo()
             loadMessages()
             markAsRead()
             loadPinnedMessage()
+            _isUpdating.value = false
             _isLoading.value = false
-            if (cachedMessages == null) _scrollToBottomEvent.value++
 
             observeNewMessages()
             observeUpdatedMessages()
@@ -108,7 +132,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 message = msg,
                 senderProfile = msg.senderId?.let { profileCache[it] },
                 isOwn = msg.senderId == myId,
-                isRead = false // will be updated when network loads
+                isRead = false
             )
         }
     }
@@ -119,6 +143,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _isGroup.value = chat.type == "group"
 
         val members = chatRepo.getChatMembers(chatId)
+        _memberCount.value = members.size
         val profiles = userRepo.getProfiles(members.map { it.userId })
         profiles.forEach { profileCache[it.id] = it }
 
@@ -133,6 +158,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             _chatName.value = chat.name ?: "Группа"
         }
+
+        cache.saveChatInfo(CachedChatInfo(
+            chatId = chatId,
+            name = _chatName.value,
+            isGroup = _isGroup.value,
+            memberCount = _memberCount.value,
+            otherUserId = otherUserId
+        ))
     }
 
     private fun startPresencePolling(userId: String) {
@@ -148,8 +181,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun loadMessages() {
         val raw = messageRepo.getMessages(chatId, limit = 50)
-        _messages.value = enrichMessages(raw)
-        // Save to cache
+        val newLastId = raw.lastOrNull()?.id
+
+        // Only update UI and scroll if data actually changed
+        val enriched = enrichMessages(raw)
+        _messages.value = enriched
+
+        // Scroll to bottom only if newer messages arrived vs cache
+        if (newLastId != null && newLastId != lastKnownMessageId) {
+            lastKnownMessageId = newLastId
+            _scrollToBottomEvent.value++
+        }
+
         if (raw.isNotEmpty()) {
             cache.saveMessages(chatId, raw)
             cache.saveProfiles(profileCache.values)
@@ -203,9 +246,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     isRead = false,
                     replyToMessage = replyMsg
                 )
-                _messages.value = _messages.value + item
+                val updated = _messages.value + item
+                _messages.value = updated
+                lastKnownMessageId = newMsg.id
                 _scrollToBottomEvent.value++
                 markAsRead()
+                // Update message cache
+                cache.saveMessages(chatId, updated.map { it.message })
             }
         }
     }

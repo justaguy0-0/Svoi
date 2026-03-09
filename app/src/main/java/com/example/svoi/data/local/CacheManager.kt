@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.Profile
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -45,6 +46,31 @@ class CacheManager(context: Context) {
     fun loadProfileMap(): Map<String, Profile> {
         val list = load("profiles.json") { json.decodeFromString<List<Profile>>(it) }
         return list?.associateBy { it.id } ?: emptyMap()
+    }
+
+    // ── Chat info (name, isGroup, memberCount) ────────────────────────────────
+
+    @Serializable
+    data class CachedChatInfo(
+        val chatId: String,
+        val name: String,
+        val isGroup: Boolean,
+        val memberCount: Int,
+        val otherUserId: String? = null
+    )
+
+    fun saveChatInfo(info: CachedChatInfo) = save("chat_${info.chatId}.json", json.encodeToString(info))
+
+    fun loadChatInfo(chatId: String): CachedChatInfo? = load("chat_$chatId.json") {
+        json.decodeFromString<CachedChatInfo>(it)
+    }
+
+    // ── Own profile ───────────────────────────────────────────────────────────
+
+    fun saveOwnProfile(profile: Profile) = save("own_profile.json", json.encodeToString(profile))
+
+    fun loadOwnProfile(): Profile? = load("own_profile.json") {
+        json.decodeFromString<Profile>(it)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
