@@ -5,10 +5,12 @@ import com.example.svoi.data.local.EncryptedPrefsManager
 import com.example.svoi.data.model.InviteKey
 import com.example.svoi.data.model.Profile
 import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.user.UserSession
 import io.github.jan.supabase.postgrest.from
+import kotlinx.coroutines.flow.first
 import kotlinx.datetime.Instant
 
 class AuthRepository(
@@ -18,6 +20,15 @@ class AuthRepository(
 
     /** Returns true if a saved session was successfully restored */
     suspend fun restoreSession(): Boolean {
+        // Wait for Supabase SDK to finish loading its own session from storage
+        val status = supabase.auth.sessionStatus.first { it !is SessionStatus.Initializing }
+
+        if (status is SessionStatus.Authenticated) {
+            Log.d("Auth", "restoreSession: SDK already authenticated, userId=${supabase.auth.currentUserOrNull()?.id}")
+            return true
+        }
+
+        // SDK is not authenticated — fall back to our EncryptedPrefsManager
         val accessToken = prefs.getAccessToken() ?: run {
             Log.w("Auth", "restoreSession: no access token saved")
             return false
@@ -36,9 +47,12 @@ class AuthRepository(
                     refreshToken = refreshToken
                 )
             )
-            val userId = supabase.auth.currentUserOrNull()?.id
-            Log.d("Auth", "restoreSession: SUCCESS, userId=$userId")
-            true
+            // Wait for the session to be fully processed after import
+            val newStatus = supabase.auth.sessionStatus.first { it !is SessionStatus.Initializing }
+            val success = newStatus is SessionStatus.Authenticated
+            Log.d("Auth", "restoreSession: importSession result=$success, userId=${supabase.auth.currentUserOrNull()?.id}")
+            if (!success) prefs.clearSession()
+            success
         } catch (e: Exception) {
             Log.e("Auth", "restoreSession: FAILED — ${e.message}", e)
             prefs.clearSession()
