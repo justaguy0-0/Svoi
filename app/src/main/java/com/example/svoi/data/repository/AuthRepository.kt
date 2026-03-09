@@ -24,8 +24,19 @@ class AuthRepository(
         val status = supabase.auth.sessionStatus.first { it !is SessionStatus.Initializing }
 
         if (status is SessionStatus.Authenticated) {
-            Log.d("Auth", "restoreSession: SDK already authenticated, userId=${supabase.auth.currentUserOrNull()?.id}")
-            return true
+            // User might be null if the session was previously saved without user info.
+            // Fetch it from the server and update the stored session.
+            if (supabase.auth.currentUserOrNull() == null) {
+                Log.w("Auth", "restoreSession: session loaded but user is null, fetching from server...")
+                try {
+                    supabase.auth.retrieveUserForCurrentSession(updateSession = true)
+                } catch (e: Exception) {
+                    Log.e("Auth", "restoreSession: failed to retrieve user — ${e.message}", e)
+                    return false
+                }
+            }
+            Log.d("Auth", "restoreSession: SDK authenticated, userId=${supabase.auth.currentUserOrNull()?.id}")
+            return supabase.auth.currentUserOrNull() != null
         }
 
         // SDK is not authenticated — fall back to our EncryptedPrefsManager
