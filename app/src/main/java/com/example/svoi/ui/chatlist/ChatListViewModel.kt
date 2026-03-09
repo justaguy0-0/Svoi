@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class ChatListViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -64,7 +66,9 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun loadChats(showUpdating: Boolean = false) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        refreshJob?.cancel()  // cancel any pending silent refresh — we're doing a full load
+        loadJob = viewModelScope.launch {
             // 1. Show cache immediately
             val cached = cache.loadChatList()
             if (cached != null) {
@@ -78,11 +82,13 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             val animate = showUpdating && (initialLoad || _chats.value.isEmpty())
             if (animate) _isUpdating.value = true
 
-            // 3. Fetch fresh from server
-            val fresh = chatRepo.getChatsForUser()
-            if (fresh.isNotEmpty()) {
-                _chats.value = fresh
-                cache.saveChatList(fresh)
+            // 3. Fetch fresh from server — mutex ensures no parallel fetch overwrites this
+            refreshMutex.withLock {
+                val fresh = chatRepo.getChatsForUser()
+                if (fresh.isNotEmpty()) {
+                    _chats.value = fresh
+                    cache.saveChatList(fresh)
+                }
             }
 
             initialLoad = false
@@ -91,16 +97,25 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Debounced silent refresh — cancels previous if called again within the same "burst"
+    // Mutex ensures only one getChatsForUser() runs at a time — prevents partial/stale overwrites
+    private val refreshMutex = Mutex()
     private var refreshJob: Job? = null
+    private var loadJob: Job? = null
+
+    // Debounced silent refresh — skips if a full loadChats() is already running
     fun silentRefresh() {
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
             delay(300) // debounce: ignore rapid-fire events
-            val fresh = chatRepo.getChatsForUser()
-            if (fresh.isNotEmpty()) {
-                _chats.value = fresh
-                cache.saveChatList(fresh)
+            if (!refreshMutex.tryLock()) return@launch  // loadChats in progress — it will have fresh data
+            try {
+                val fresh = chatRepo.getChatsForUser()
+                if (fresh.isNotEmpty()) {
+                    _chats.value = fresh
+                    cache.saveChatList(fresh)
+                }
+            } finally {
+                refreshMutex.unlock()
             }
         }
     }

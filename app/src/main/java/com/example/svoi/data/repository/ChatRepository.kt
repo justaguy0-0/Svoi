@@ -3,6 +3,7 @@ package com.example.svoi.data.repository
 import com.example.svoi.data.model.Chat
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.ChatMember
+import kotlinx.coroutines.CancellationException
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
@@ -32,6 +33,8 @@ class ChatRepository(private val supabase: SupabaseClient) {
             supabase.from("chat_members")
                 .select { filter { eq("user_id", userId) } }
                 .decodeList<ChatMember>()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("ChatRepo", "getChatsForUser: failed to load memberships", e)
             return emptyList()
@@ -46,6 +49,8 @@ class ChatRepository(private val supabase: SupabaseClient) {
             supabase.from("chats")
                 .select { filter { isIn("id", chatIds) } }
                 .decodeList<Chat>()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("ChatRepo", "getChatsForUser: failed to load chats", e)
             return emptyList()
@@ -58,6 +63,8 @@ class ChatRepository(private val supabase: SupabaseClient) {
             supabase.from("chat_members")
                 .select { filter { isIn("chat_id", chatIds) } }
                 .decodeList<ChatMember>()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("ChatRepo", "getChatsForUser: failed to load allMembers", e)
             emptyList()
@@ -73,7 +80,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
             else supabase.from("profiles")
                 .select { filter { isIn("id", otherUserIds) } }
                 .decodeList<Profile>()
-        } catch (e: Exception) { emptyList() }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() }
         val profileMap = profiles.associateBy { it.id }
 
         // 4b. Get online presence for other users
@@ -83,7 +90,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
                 .select { filter { isIn("user_id", otherUserIds) } }
                 .decodeList<UserPresence>()
                 .associateBy { it.userId }
-        } catch (_: Exception) { emptyMap() }
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap() }
 
         // 5. Get last message for each chat (one query per chat, but bounded by chat count)
         val lastMessages = mutableMapOf<String, Message>()
@@ -108,7 +115,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
             supabase.from("messages")
                 .select { filter { isIn("chat_id", chatIds); neq("sender_id", userId); eq("deleted_for_all", false) } }
                 .decodeList<Message>()
-        } catch (_: Exception) { emptyList() }
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
 
         val allOtherIds = allOtherMessages.map { it.id }
         val readMessageIds: Set<String> = if (allOtherIds.isEmpty()) emptySet() else {
@@ -117,7 +124,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
                     .select { filter { isIn("message_id", allOtherIds); eq("user_id", userId) } }
                     .decodeList<com.example.svoi.data.model.MessageRead>()
                     .map { it.messageId }.toSet()
-            } catch (_: Exception) { emptySet() }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { emptySet() }
         }
 
         val unreadCounts: Map<String, Int> = allOtherMessages
