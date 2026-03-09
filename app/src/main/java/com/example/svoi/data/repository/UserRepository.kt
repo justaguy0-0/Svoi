@@ -99,7 +99,7 @@ class UserRepository(private val supabase: SupabaseClient) {
     suspend fun getPresences(userIds: List<String>): List<UserPresence> {
         if (userIds.isEmpty()) return emptyList()
         return try {
-            supabase.from("user_presence")
+            supabase.from("user_presence_view")
                 .select { filter { isIn("user_id", userIds) } }
                 .decodeList<UserPresence>()
         } catch (e: Exception) { emptyList() }
@@ -129,7 +129,7 @@ class UserRepository(private val supabase: SupabaseClient) {
 
     suspend fun getPresence(userId: String): UserPresence? {
         return try {
-            val result = supabase.from("user_presence")
+            val result = supabase.from("user_presence_view")
                 .select { filter { eq("user_id", userId) } }
                 .decodeSingleOrNull<UserPresence>()
             Log.d("Presence", "getPresence($userId) = $result")
@@ -155,13 +155,22 @@ class UserRepository(private val supabase: SupabaseClient) {
         }
     }
 
-    /** Realtime flow — fires when a specific user's presence changes */
+    /** Realtime flow — fires when a specific user's presence changes.
+     *  After each event, fetches from user_presence_view to get server-computed is_truly_online. */
     fun presenceUpdateFlow(userId: String): Flow<UserPresence> = channelFlow {
         val channel = supabase.channel("user-presence-$userId")
         channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
             table = "user_presence"
             filter("user_id", FilterOperator.EQ, userId)
-        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
+        }.onEach {
+            // Fetch from view so is_truly_online is computed with server NOW()
+            val fresh = runCatching {
+                supabase.from("user_presence_view")
+                    .select { filter { eq("user_id", userId) } }
+                    .decodeSingleOrNull<UserPresence>()
+            }.getOrNull()
+            trySend(fresh ?: it.decodeRecord())
+        }.launchIn(this)
         channel.subscribe()
         awaitClose {
             CoroutineScope(Dispatchers.IO).launch {

@@ -86,7 +86,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
         // 4b. Get online presence for other users
         val presenceMap: Map<String, UserPresence> = try {
             if (otherUserIds.isEmpty()) emptyMap()
-            else supabase.from("user_presence")
+            else supabase.from("user_presence_view")
                 .select { filter { isIn("user_id", otherUserIds) } }
                 .decodeList<UserPresence>()
                 .associateBy { it.userId }
