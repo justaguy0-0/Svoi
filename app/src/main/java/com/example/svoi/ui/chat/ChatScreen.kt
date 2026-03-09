@@ -165,7 +165,7 @@ fun ChatScreen(
             val unreadCount = if (firstUnreadIndex >= 0) messages.size - firstUnreadIndex else 0
             val target = if (unreadEntryIdx >= 0 && unreadCount >= 5) unreadEntryIdx
                          else displayEntries.size - 1
-            listState.scrollToItem(target)
+            if (target >= 0) listState.scrollToItem(target)
             delay(600)
             allowClearSeparator = true
         }
