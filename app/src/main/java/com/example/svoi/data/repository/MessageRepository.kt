@@ -34,6 +34,19 @@ private data class MessageReadInsert(
     @SerialName("user_id") val userId: String
 )
 
+@Serializable
+private data class ForwardMessageInsert(
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("sender_id") val senderId: String,
+    val content: String? = null,
+    val type: String,
+    @SerialName("file_url") val fileUrl: String? = null,
+    @SerialName("file_name") val fileName: String? = null,
+    @SerialName("file_size") val fileSize: Long? = null,
+    @SerialName("forwarded_from_id") val forwardedFromId: String,
+    @SerialName("forwarded_from_user_id") val forwardedFromUserId: String? = null
+)
+
 class MessageRepository(private val supabase: SupabaseClient) {
 
     private fun currentUserId() = supabase.auth.currentUserOrNull()?.id ?: ""
@@ -139,42 +152,21 @@ class MessageRepository(private val supabase: SupabaseClient) {
         val userId = currentUserId()
         val original = getMessage(fromMessageId) ?: return null
 
-        // Try with forwarded_from_user_id (requires migration 08_forwarded_user.sql)
-        if (original.senderId != null) {
-            try {
-                return supabase.from("messages").insert(
-                    buildMap {
-                        put("chat_id", toChatId)
-                        put("sender_id", userId)
-                        put("content", original.content)
-                        put("type", original.type)
-                        put("file_url", original.fileUrl)
-                        put("file_name", original.fileName)
-                        put("file_size", original.fileSize)
-                        put("forwarded_from_id", fromMessageId)
-                        put("forwarded_from_user_id", original.senderId)
-                    }
-                ).decodeSingle<Message>()
-            } catch (e: Exception) {
-                Log.w("Forward", "forwardMessage: forwarded_from_user_id not available, retrying without. Run 08_forwarded_user.sql. Error: ${e.message}")
-            }
-        }
+        val dto = ForwardMessageInsert(
+            chatId = toChatId,
+            senderId = userId,
+            content = original.content,
+            type = original.type,
+            fileUrl = original.fileUrl,
+            fileName = original.fileName,
+            fileSize = original.fileSize,
+            forwardedFromId = fromMessageId,
+            forwardedFromUserId = original.senderId
+        )
 
-        // Fallback: insert without forwarded_from_user_id
         return try {
-            supabase.from("messages").insert(
-                buildMap {
-                    put("chat_id", toChatId)
-                    put("sender_id", userId)
-                    put("content", original.content)
-                    put("type", original.type)
-                    put("file_url", original.fileUrl)
-                    put("file_name", original.fileName)
-                    put("file_size", original.fileSize)
-                    put("forwarded_from_id", fromMessageId)
-                }
-            ).decodeSingle<Message>().also {
-                Log.d("Forward", "forwardMessage OK (without forwarded_from_user_id)")
+            supabase.from("messages").insert(dto).decodeSingle<Message>().also {
+                Log.d("Forward", "forwardMessage OK")
             }
         } catch (e: Exception) {
             Log.e("Forward", "forwardMessage FAILED: ${e.message}", e)
