@@ -14,16 +14,10 @@ import androidx.navigation.compose.rememberNavController
 import com.example.svoi.navigation.NavGraph
 import com.example.svoi.navigation.Routes
 import com.example.svoi.ui.theme.SvoiTheme
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 
 class MainActivity : ComponentActivity() {
 
     private val app get() = application as SvoiApp
-    private val scope = CoroutineScope(Dispatchers.Main)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,7 +33,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     val restored = app.authRepository.restoreSession()
                     startDestination = if (restored) Routes.CHAT_LIST else Routes.LOGIN
-                    if (restored) app.userRepository.setOnline(true)
+                    // setOnline is handled by startPresenceHeartbeat() in onResume
                 }
 
                 startDestination?.let { start ->
@@ -59,31 +53,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Heartbeat fires immediately on first tick, then every 30s.
+        // No need for a separate setOnline(true) call.
         if (app.authRepository.isLoggedIn()) {
-            scope.launch { app.userRepository.setOnline(true) }
             app.startPresenceHeartbeat()
         }
     }
 
     override fun onPause() {
         super.onPause()
-        // Only stop the heartbeat here — do NOT send setOnline(false) asynchronously.
-        // An async false launched here can complete AFTER onResume's async true,
-        // leaving the status stuck at false. onStop handles the actual offline write
-        // synchronously via runBlocking, which always completes before onResume fires.
+        // Stop heartbeat — TTL in the DB view (90s) will mark the user offline
+        // automatically once heartbeats stop. No explicit setOnline(false) needed,
+        // which eliminates race conditions and the "stuck online after crash" bug.
         app.stopPresenceHeartbeat()
-    }
-
-    override fun onStop() {
-        super.onStop()
-        // runBlocking guarantees this completes before the process can be killed,
-        // and always completes before the next onResume can run on the main thread.
-        if (app.authRepository.isLoggedIn()) {
-            runBlocking {
-                try {
-                    withTimeout(1500) { app.userRepository.setOnline(false) }
-                } catch (_: Exception) {}
-            }
-        }
     }
 }

@@ -51,11 +51,12 @@ class SvoiApp : Application() {
     fun startPresenceHeartbeat() {
         heartbeatJob?.cancel()
         heartbeatJob = heartbeatScope.launch {
+            // Fire immediately so resume is instant, then every 30s
             while (true) {
-                delay(30_000L)
                 if (authRepository.isLoggedIn()) {
                     userRepository.setOnline(true)
                 }
+                delay(30_000L)
             }
         }
     }

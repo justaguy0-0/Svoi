@@ -214,21 +214,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startPresencePolling(userId: String) {
+        // Always-on polling: guarantees UI refresh even when no Realtime events arrive
+        // (e.g. when the other user crashes — no more heartbeats = no events = stale UI without this)
         viewModelScope.launch {
-            // Initial load
             _otherUserPresence.value = userRepo.getPresence(userId)
-            // Realtime updates
-            try {
+            while (true) {
+                delay(30_000L)
+                val presence = userRepo.getPresence(userId)
+                if (presence != null) _otherUserPresence.value = presence
+            }
+        }
+        // Realtime on top: instant updates when presence changes
+        viewModelScope.launch {
+            runCatching {
                 userRepo.presenceUpdateFlow(userId).collect { presence ->
                     Log.d("Presence", "realtime update for $userId: $presence")
-                    _otherUserPresence.value = presence
-                }
-            } catch (_: Exception) {
-                // Realtime unavailable — fall back to polling
-                while (true) {
-                    delay(15_000L)
-                    val presence = userRepo.getPresence(userId)
-                    Log.d("Presence", "poll fallback for $userId: $presence")
                     _otherUserPresence.value = presence
                 }
             }
