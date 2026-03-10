@@ -12,7 +12,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import com.example.svoi.data.local.ThemeMode
 import com.example.svoi.ui.auth.InviteKeyScreen
@@ -52,14 +51,6 @@ fun NavGraph(
     fun canNav(): Boolean {
         val now = System.currentTimeMillis()
         return if (now - lastNavMs > 400L) { lastNavMs = now; true } else false
-    }
-
-    // Safety net: if back stack somehow becomes empty, go back to start
-    val backEntry by navController.currentBackStackEntryAsState()
-    if (backEntry == null && navController.graph.startDestinationRoute != null) {
-        navController.navigate(startDestination) {
-            popUpTo(0) { inclusive = true }
-        }
     }
 
     Surface(modifier = Modifier.fillMaxSize()) {
