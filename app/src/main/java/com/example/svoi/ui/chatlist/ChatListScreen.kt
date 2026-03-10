@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -78,6 +79,10 @@ fun ChatListScreen(
     onSettingsClick: () -> Unit = {},
     viewModel: ChatListViewModel = viewModel()
 ) {
+    // Перехватываем системный «назад» — чтобы Navigation не попытался убрать
+    // стартовый экран из стека (что даёт пустой NavHost и белый экран).
+    BackHandler(enabled = true) { /* minimize handled by system after this intercept */ }
+
     val chats by viewModel.chats.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val chatTyping by viewModel.chatTyping.collectAsState()

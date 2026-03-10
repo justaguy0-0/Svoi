@@ -76,7 +76,7 @@ fun NavGraph(
                     onKeyValidated = { key ->
                         if (canNav()) navController.navigate(Routes.setupProfile(key))
                     },
-                    onBack = { if (canNav()) navController.popBackStack() }
+                    onBack = { if (canNav()) navController.navigateUp() }
                 )
             }
 
@@ -92,7 +92,7 @@ fun NavGraph(
                             popUpTo(Routes.LOGIN) { inclusive = true }
                         }
                     },
-                    onBack = { if (canNav()) navController.popBackStack() }
+                    onBack = { if (canNav()) navController.navigateUp() }
                 )
             }
 
@@ -120,7 +120,7 @@ fun NavGraph(
                 val chatId = backStack.arguments?.getString("chatId") ?: ""
                 ChatScreen(
                     chatId = chatId,
-                    onBack = { if (canNav()) navController.popBackStack() },
+                    onBack = { if (canNav()) navController.navigateUp() },
                     onForwardTo = { targetChatId ->
                         if (canNav()) navController.navigate(Routes.chat(targetChatId))
                     }
@@ -137,7 +137,7 @@ fun NavGraph(
                     onCreateGroup = {
                         if (canNav()) navController.navigate(Routes.CREATE_GROUP)
                     },
-                    onBack = { if (canNav()) navController.popBackStack() }
+                    onBack = { if (canNav()) navController.navigateUp() }
                 )
             }
 
@@ -148,13 +148,13 @@ fun NavGraph(
                             popUpTo(Routes.USER_SEARCH) { inclusive = true }
                         }
                     },
-                    onBack = { if (canNav()) navController.popBackStack() }
+                    onBack = { if (canNav()) navController.navigateUp() }
                 )
             }
 
             composable(Routes.PROFILE) {
                 ProfileScreen(
-                    onBack = { if (canNav()) navController.popBackStack() },
+                    onBack = { if (canNav()) navController.navigateUp() },
                     onLogout = {
                         if (canNav()) navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
@@ -167,7 +167,7 @@ fun NavGraph(
                 SettingsScreen(
                     currentThemeMode = currentThemeMode,
                     onThemeChanged = onThemeChanged,
-                    onBack = { if (canNav()) navController.popBackStack() }
+                    onBack = { if (canNav()) navController.navigateUp() }
                 )
             }
         }
