@@ -138,21 +138,38 @@ class MessageRepository(private val supabase: SupabaseClient) {
     suspend fun forwardMessage(fromMessageId: String, toChatId: String): Message? {
         val userId = currentUserId()
         val original = getMessage(fromMessageId) ?: return null
+
+        val baseMap = buildMap<String, Any?> {
+            put("chat_id", toChatId)
+            put("sender_id", userId)
+            put("content", original.content)
+            put("type", original.type)
+            put("file_url", original.fileUrl)
+            put("file_name", original.fileName)
+            put("file_size", original.fileSize)
+            put("forwarded_from_id", fromMessageId)
+        }
+
+        // Try with forwarded_from_user_id (requires migration 08_forwarded_user.sql)
+        if (original.senderId != null) {
+            try {
+                return supabase.from("messages").insert(
+                    baseMap + mapOf("forwarded_from_user_id" to original.senderId)
+                ).decodeSingle<Message>()
+            } catch (e: Exception) {
+                Log.w("Forward", "forwardMessage: forwarded_from_user_id not available, retrying without. Run 08_forwarded_user.sql. Error: ${e.message}")
+            }
+        }
+
+        // Fallback: insert without forwarded_from_user_id
         return try {
-            supabase.from("messages").insert(
-                buildMap {
-                    put("chat_id", toChatId)
-                    put("sender_id", userId)
-                    put("content", original.content)
-                    put("type", original.type)
-                    put("file_url", original.fileUrl)
-                    put("file_name", original.fileName)
-                    put("file_size", original.fileSize)
-                    put("forwarded_from_id", fromMessageId)
-                    if (original.senderId != null) put("forwarded_from_user_id", original.senderId)
-                }
-            ).decodeSingle<Message>()
-        } catch (e: Exception) { null }
+            supabase.from("messages").insert(baseMap).decodeSingle<Message>().also {
+                Log.d("Forward", "forwardMessage OK (without forwarded_from_user_id)")
+            }
+        } catch (e: Exception) {
+            Log.e("Forward", "forwardMessage FAILED: ${e.message}", e)
+            null
+        }
     }
 
     suspend fun editMessage(messageId: String, newContent: String): Boolean {

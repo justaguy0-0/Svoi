@@ -669,8 +669,13 @@ fun ChatScreen(
                 BottomSheetAction(Icons.Default.Share, "Переслать") {
                     pendingForwardMessageId = selected.message.id
                     viewModel.loadChatsForForward()
-                    selectedMessage = null
-                    showForwardPicker = true
+                    // Ждём полного закрытия шита перед показом диалога,
+                    // иначе touch-up от нажатия сразу закроет диалог.
+                    scope.launch {
+                        sheetState.hide()
+                        selectedMessage = null
+                        showForwardPicker = true
+                    }
                 }
 
                 // Select (enter selection mode)
