@@ -119,11 +119,11 @@ import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
 import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.components.Avatar
-import androidx.compose.foundation.isSystemInDarkTheme
 import com.example.svoi.ui.theme.BubbleOther
 import com.example.svoi.ui.theme.BubbleOtherText
 import com.example.svoi.ui.theme.BubbleOwn
 import com.example.svoi.ui.theme.BubbleOwnText
+import com.example.svoi.ui.theme.DarkBackground
 import com.example.svoi.ui.theme.DarkBubbleOther
 import com.example.svoi.ui.theme.DarkBubbleOtherText
 import com.example.svoi.ui.theme.Online
@@ -1042,7 +1042,7 @@ private fun MessageItem(
         return
     }
 
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.background == DarkBackground
     val bubbleColor = if (item.isOwn) BubbleOwn else if (isDark) DarkBubbleOther else BubbleOther
     val textColor = if (item.isOwn) BubbleOwnText else if (isDark) DarkBubbleOtherText else BubbleOtherText
     val bubbleShape = if (item.isOwn) {
