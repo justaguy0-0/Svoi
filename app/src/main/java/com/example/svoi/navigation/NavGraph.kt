@@ -1,6 +1,9 @@
 package com.example.svoi.navigation
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -39,10 +42,11 @@ fun NavGraph(
     onThemeChanged: (ThemeMode) -> Unit = {},
     currentThemeMode: ThemeMode = ThemeMode.SYSTEM
 ) {
-    NavHost(
-        navController = navController,
-        startDestination = startDestination
-    ) {
+    Surface(modifier = Modifier.fillMaxSize()) {
+        NavHost(
+            navController = navController,
+            startDestination = startDestination
+        ) {
         composable(Routes.LOGIN) {
             LoginScreen(
                 onLoginSuccess = {
@@ -154,6 +158,7 @@ fun NavGraph(
                 onThemeChanged = onThemeChanged,
                 onBack = { navController.popBackStack() }
             )
+        }
         }
     }
 }
