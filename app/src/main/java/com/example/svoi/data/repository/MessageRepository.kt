@@ -165,9 +165,9 @@ class MessageRepository(private val supabase: SupabaseClient) {
         )
 
         return try {
-            supabase.from("messages").insert(dto).select().decodeSingle<Message>().also {
-                Log.d("Forward", "forwardMessage OK")
-            }
+            supabase.from("messages").insert(dto)
+            Log.d("Forward", "forwardMessage OK")
+            null
         } catch (e: Exception) {
             Log.e("Forward", "forwardMessage FAILED: ${e.message}", e)
             null
