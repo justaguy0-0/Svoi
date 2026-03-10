@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.svoi.SvoiApp
 import com.example.svoi.data.local.CacheManager.CachedChatInfo
 import com.example.svoi.data.model.Chat
+import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
 import com.example.svoi.data.model.PinnedMessage
@@ -68,6 +69,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _editingMessage = MutableStateFlow<Message?>(null)
     val editingMessage: StateFlow<Message?> = _editingMessage
+
+    private val _selectedMessageIds = MutableStateFlow<Set<String>>(emptySet())
+    val selectedMessageIds: StateFlow<Set<String>> = _selectedMessageIds
+
+    private val _isSelectionMode = MutableStateFlow(false)
+    val isSelectionMode: StateFlow<Boolean> = _isSelectionMode
+
+    private val _chatsForForward = MutableStateFlow<List<ChatListItem>>(emptyList())
+    val chatsForForward: StateFlow<List<ChatListItem>> = _chatsForForward
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
@@ -165,7 +175,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 senderProfile = msg.senderId?.let { profileCache[it] },
                 isOwn = msg.senderId == myId,
                 isRead = false,
-                replyToMessage = msg.replyToId?.let { messageMap[it] }
+                replyToMessage = msg.replyToId?.let { messageMap[it] },
+                forwardedFromProfile = msg.forwardedFromUserId?.let { profileCache[it] }
             )
         }
     }
@@ -264,7 +275,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun enrichMessages(raw: List<Message>): List<MessageUiItem> {
         val senderIds = raw.mapNotNull { it.senderId }.distinct()
-        val missing = senderIds.filter { it !in profileCache }
+        val forwardedFromIds = raw.mapNotNull { it.forwardedFromUserId }.distinct()
+        val allIds = (senderIds + forwardedFromIds).distinct()
+        val missing = allIds.filter { it !in profileCache }
         if (missing.isNotEmpty()) {
             userRepo.getProfiles(missing).forEach { profileCache[it.id] = it }
         }
@@ -281,7 +294,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 senderProfile = msg.senderId?.let { profileCache[it] },
                 isOwn = msg.senderId == myId,
                 isRead = msg.id in readIds,
-                replyToMessage = replyMsg
+                replyToMessage = replyMsg,
+                forwardedFromProfile = msg.forwardedFromUserId?.let { profileCache[it] }
             )
         }
     }
@@ -346,13 +360,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         userRepo.getProfile(id) ?: Profile(id = id)
                     }
                 }
+                val forwardedFromProfile = newMsg.forwardedFromUserId?.let { id ->
+                    profileCache.getOrPut(id) {
+                        userRepo.getProfile(id) ?: Profile(id = id)
+                    }
+                }
                 val replyMsg = newMsg.replyToId?.let { messageRepo.getMessage(it) }
                 val item = MessageUiItem(
                     message = newMsg,
                     senderProfile = profile,
                     isOwn = newMsg.senderId == currentUserId,
                     isRead = false,
-                    replyToMessage = replyMsg
+                    replyToMessage = replyMsg,
+                    forwardedFromProfile = forwardedFromProfile
                 )
                 val updated = _messages.value + item
                 _messages.value = updated
@@ -538,6 +558,52 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             messageRepo.forwardMessage(messageId, toChatId)
         }
+    }
+
+    // ── Selection mode ────────────────────────────────────────────────────────
+
+    fun toggleSelection(messageId: String) {
+        val current = _selectedMessageIds.value.toMutableSet()
+        if (messageId in current) current.remove(messageId) else current.add(messageId)
+        _selectedMessageIds.value = current
+        _isSelectionMode.value = current.isNotEmpty()
+    }
+
+    fun clearSelection() {
+        _selectedMessageIds.value = emptySet()
+        _isSelectionMode.value = false
+    }
+
+    fun loadChatsForForward() {
+        viewModelScope.launch {
+            _chatsForForward.value = chatRepo.getChatsForUser()
+        }
+    }
+
+    fun forwardSelectedMessages(toChatId: String) {
+        val ids = _selectedMessageIds.value.toList()
+        viewModelScope.launch {
+            ids.forEach { messageId -> messageRepo.forwardMessage(messageId, toChatId) }
+        }
+        clearSelection()
+    }
+
+    fun forwardSingleMessage(messageId: String, toChatId: String) {
+        viewModelScope.launch {
+            messageRepo.forwardMessage(messageId, toChatId)
+        }
+    }
+
+    fun deleteSelectedMessages(forEveryone: Boolean) {
+        val ids = _selectedMessageIds.value.toList()
+        viewModelScope.launch {
+            if (forEveryone) {
+                ids.forEach { messageRepo.deleteMessageForAll(it) }
+            } else {
+                _messages.value = _messages.value.filter { it.message.id !in ids }
+            }
+        }
+        clearSelection()
     }
 
     fun loadMoreMessages() {

@@ -15,6 +15,7 @@ data class Message(
     @SerialName("file_size") val fileSize: Long? = null,
     @SerialName("reply_to_id") val replyToId: String? = null,
     @SerialName("forwarded_from_id") val forwardedFromId: String? = null,
+    @SerialName("forwarded_from_user_id") val forwardedFromUserId: String? = null,
     @SerialName("edited_at") val editedAt: String? = null,
     @SerialName("deleted_for_all") val deletedForAll: Boolean = false,
     @SerialName("created_at") val createdAt: String? = null,
@@ -50,5 +51,6 @@ data class MessageUiItem(
     val senderProfile: Profile?,
     val isOwn: Boolean,
     val isRead: Boolean,
-    val replyToMessage: Message? = null
+    val replyToMessage: Message? = null,
+    val forwardedFromProfile: Profile? = null
 )

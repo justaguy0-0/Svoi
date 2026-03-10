@@ -149,6 +149,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     put("file_name", original.fileName)
                     put("file_size", original.fileSize)
                     put("forwarded_from_id", fromMessageId)
+                    if (original.senderId != null) put("forwarded_from_user_id", original.senderId)
                 }
             ).decodeSingle<Message>()
         } catch (e: Exception) { null }
