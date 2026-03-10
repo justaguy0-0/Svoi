@@ -39,6 +39,6 @@ fun UserPresence.isTrulyOnline(): Boolean {
     return runCatching {
         val ageSeconds = java.time.Instant.now().epochSecond -
             java.time.Instant.parse(ts).epochSecond
-        ageSeconds < 90
+        ageSeconds < 15
     }.getOrDefault(false)
 }

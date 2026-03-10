@@ -219,7 +219,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _otherUserPresence.value = userRepo.getPresence(userId)
             while (true) {
-                delay(30_000L)
+                delay(10_000L)
                 val presence = userRepo.getPresence(userId)
                 if (presence != null) _otherUserPresence.value = presence
             }

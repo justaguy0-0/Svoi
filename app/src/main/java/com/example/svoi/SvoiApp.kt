@@ -44,25 +44,44 @@ class SvoiApp : Application() {
     val chatRepository by lazy { ChatRepository(supabase) }
     val messageRepository by lazy { MessageRepository(supabase) }
 
-    // Heartbeat: keeps online=true while app is in foreground
+    // Presence: heartbeat while in foreground + explicit offline on background
     private val heartbeatScope = CoroutineScope(Dispatchers.IO)
     private var heartbeatJob: Job? = null
+    private var goOfflineJob: Job? = null
 
+    /**
+     * Start heartbeat (fires immediately, then every 5s).
+     * Also cancels any pending "go offline" signal — handles the case where
+     * the user backgrounds and immediately foregrounds the app.
+     */
     fun startPresenceHeartbeat() {
+        goOfflineJob?.cancel()
         heartbeatJob?.cancel()
         heartbeatJob = heartbeatScope.launch {
-            // Fire immediately so resume is instant, then every 30s
             while (true) {
                 if (authRepository.isLoggedIn()) {
                     userRepository.setOnline(true)
                 }
-                delay(30_000L)
+                delay(5_000L)
             }
         }
     }
 
+    /**
+     * Stop heartbeat and schedule explicit setOnline(false) after a short debounce.
+     * The debounce window (800ms) allows onResume to cancel the offline signal
+     * if the user just quickly switched apps and is coming right back.
+     * If the app crashes, this never runs — TTL in the DB view handles it.
+     */
     fun stopPresenceHeartbeat() {
         heartbeatJob?.cancel()
         heartbeatJob = null
+        if (authRepository.isLoggedIn()) {
+            goOfflineJob?.cancel()
+            goOfflineJob = heartbeatScope.launch {
+                delay(800L)
+                runCatching { userRepository.setOnline(false) }
+            }
+        }
     }
 }
