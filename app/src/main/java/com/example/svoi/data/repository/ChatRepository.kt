@@ -92,30 +92,21 @@ class ChatRepository(private val supabase: SupabaseClient) {
                 .associateBy { it.userId }
         } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap() }
 
-        // 5. Get last message for each chat (one query per chat, but bounded by chat count)
-        val lastMessages = mutableMapOf<String, Message>()
-        for (chatId in chatIds) {
-            try {
-                val msg = supabase.from("messages")
-                    .select {
-                        filter {
-                            eq("chat_id", chatId)
-                            eq("deleted_for_all", false)
-                        }
-                        order("created_at", Order.DESCENDING)
-                        limit(1)
-                    }
-                    .decodeSingleOrNull<Message>()
-                if (msg != null) lastMessages[chatId] = msg
-            } catch (_: Exception) {}
-        }
-
-        // 6. Unread counts — 2 queries total across all chats
-        val allOtherMessages = try {
+        // 5+6 combined: single query replaces N per-chat queries + separate allOtherMessages query
+        val allMessages = try {
             supabase.from("messages")
-                .select { filter { isIn("chat_id", chatIds); neq("sender_id", userId); eq("deleted_for_all", false) } }
+                .select {
+                    filter { isIn("chat_id", chatIds); eq("deleted_for_all", false) }
+                    order("created_at", Order.DESCENDING)
+                }
                 .decodeList<Message>()
         } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
+
+        val lastMessages: Map<String, Message> = allMessages
+            .groupBy { it.chatId }
+            .mapValues { (_, msgs) -> msgs.first() }
+
+        val allOtherMessages = allMessages.filter { it.senderId != userId }
 
         val allOtherIds = allOtherMessages.map { it.id }
         val readMessageIds: Set<String> = if (allOtherIds.isEmpty()) emptySet() else {

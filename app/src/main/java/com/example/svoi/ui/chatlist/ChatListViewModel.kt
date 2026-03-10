@@ -166,7 +166,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private fun startTypingPolling() {
         viewModelScope.launch {
             while (true) {
-                delay(2_000L)
+                delay(3_000L)
                 val chats = _chats.value
                 if (chats.isNotEmpty()) {
                     val chatIds = chats.map { it.chatId }

@@ -246,11 +246,14 @@ fun ChatScreen(
         uri?.let { viewModel.sendPhoto(it, context) }
     }
 
-    val presenceText = when {
-        presence == null -> ""
-        presence!!.isTrulyOnline() -> "в сети"
-        !presence!!.lastSeen.isNullOrBlank() -> presence!!.lastSeen!!.toLastSeen()
-        else -> ""
+    val presenceText = remember(presence) {
+        val p = presence
+        when {
+            p == null -> ""
+            p.isTrulyOnline() -> "в сети"
+            !p.lastSeen.isNullOrBlank() -> p.lastSeen!!.toLastSeen()
+            else -> ""
+        }
     }
 
     Scaffold(
@@ -272,7 +275,7 @@ fun ChatScreen(
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )
-                                val typingText = typingIndicatorText(typingUsers, isGroup)
+                                val typingText = remember(typingUsers, isGroup) { typingIndicatorText(typingUsers, isGroup) }
                                 val subtitleText: String? = when {
                                     typingText != null -> typingText
                                     !isOnline -> "Подключение..."

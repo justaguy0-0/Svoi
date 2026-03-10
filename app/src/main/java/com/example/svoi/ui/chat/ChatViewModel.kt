@@ -15,6 +15,7 @@ import com.example.svoi.data.model.MessageUiItem
 import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.UserPresence
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -428,7 +429,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun startTypingPolling() {
         viewModelScope.launch {
             while (true) {
-                delay(2_000L)
+                delay(3_000L)
                 if (chatId.isNotEmpty()) {
                     val typing = messageRepo.getTypingUsers(chatId, currentUserId)
                     _typingUsers.value = typing.map { TypingInfo(it.userId, it.displayName) }
@@ -492,7 +493,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendPhoto(uri: Uri, context: Context) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _isSending.value = true
             try {
                 val bytes = compressImage(uri, context)
