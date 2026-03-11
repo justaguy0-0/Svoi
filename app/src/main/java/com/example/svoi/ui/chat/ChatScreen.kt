@@ -85,8 +85,6 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -207,7 +205,6 @@ fun ChatScreen(
     val isChatDeleted by viewModel.isChatDeleted.collectAsState()
     val animatingMessageIds by viewModel.animatingMessageIds.collectAsState()
     val stagedMedia by viewModel.stagedMedia.collectAsState()
-    val stagedFile by viewModel.stagedFile.collectAsState()
     val uploadProgresses by viewModel.uploadProgresses.collectAsState()
 
     // If the group chat was deleted by the admin, kick this user back to chat list
@@ -241,11 +238,10 @@ fun ChatScreen(
         viewModel.clearSelection()
     }
     // Clear staged media/file with back button
-    BackHandler(enabled = stagedMedia.isNotEmpty() || stagedFile != null) {
+    BackHandler(enabled = stagedMedia.isNotEmpty()) {
         viewModel.clearStagedMedia()
     }
 
-    var attachmentMenuExpanded by remember { mutableStateOf(false) }
 
     val displayEntries = remember(messages, firstUnreadIndex) {
         buildList {
@@ -300,14 +296,6 @@ fun ChatScreen(
         if (uris.isNotEmpty()) viewModel.addStagedMedia(uris, context)
     }
 
-    val filePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            val fileInfo = viewModel.getFileInfoFromUri(uri, context)
-            if (fileInfo != null) viewModel.setStagedFile(fileInfo)
-        }
-    }
 
     val presenceText = remember(presence) {
         val p = presence
@@ -621,16 +609,7 @@ fun ChatScreen(
                             onRemove = { viewModel.removeStagedMedia(it) }
                         )
                     }
-                    // Staged file preview
-                    AnimatedVisibility(
-                        visible = stagedFile != null,
-                        enter = slideInVertically { it } + fadeIn(tween(180)),
-                        exit  = slideOutVertically { it } + fadeOut(tween(140))
-                    ) {
-                        stagedFile?.let { file ->
-                            StagedFileCard(file = file, onRemove = { viewModel.setStagedFile(null) })
-                        }
-                    }
+
 
                     // Emoji picker panel
                     AnimatedVisibility(
@@ -742,7 +721,7 @@ fun ChatScreen(
                         Spacer(Modifier.width(6.dp))
 
                         // Attach / Send button
-                        val hasContent = inputValue.text.isNotBlank() || stagedMedia.isNotEmpty() || stagedFile != null
+                        val hasContent = inputValue.text.isNotBlank() || stagedMedia.isNotEmpty()
                         AnimatedContent(
                             targetState = hasContent,
                             transitionSpec = {
@@ -760,11 +739,10 @@ fun ChatScreen(
                                         .clickable {
                                             val text = inputValue.text
                                             val media = stagedMedia
-                                            val file = stagedFile
                                             inputValue = TextFieldValue("")
                                             viewModel.onInputTextChanged("")
-                                            if (media.isNotEmpty() || file != null) {
-                                                viewModel.sendWithAttachments(text, media, file, context)
+                                            if (media.isNotEmpty()) {
+                                                viewModel.sendWithAttachments(text, media, context)
                                             } else {
                                                 viewModel.sendText(text)
                                             }
@@ -779,35 +757,12 @@ fun ChatScreen(
                                     )
                                 }
                             } else {
-                                Box {
-                                    IconButton(onClick = { attachmentMenuExpanded = true }) {
-                                        Icon(
-                                            Icons.Default.AttachFile,
-                                            contentDescription = "Прикрепить",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    DropdownMenu(
-                                        expanded = attachmentMenuExpanded,
-                                        onDismissRequest = { attachmentMenuExpanded = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("Медиа") },
-                                            leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
-                                            onClick = {
-                                                attachmentMenuExpanded = false
-                                                mediaPicker.launch(Unit)
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Файл") },
-                                            leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null) },
-                                            onClick = {
-                                                attachmentMenuExpanded = false
-                                                filePicker.launch("*/*")
-                                            }
-                                        )
-                                    }
+                                IconButton(onClick = { mediaPicker.launch(Unit) }) {
+                                    Icon(
+                                        Icons.Default.Image,
+                                        contentDescription = "Прикрепить",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
                         }
@@ -1157,45 +1112,6 @@ private fun StagedMediaRow(
                         tint = Color.White, modifier = Modifier.size(14.dp))
                 }
             }
-        }
-    }
-}
-
-// ── Staged file card ──────────────────────────────────────────────────────────
-
-@Composable
-private fun StagedFileCard(
-    file: StagedFile,
-    onRemove: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(text = mimeTypeToEmoji(file.mimeType, file.name), fontSize = 28.sp)
-        Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = file.name,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = file.size.toReadableSize(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        IconButton(onClick = onRemove) {
-            Icon(Icons.Default.Close, contentDescription = "Удалить",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

@@ -28,7 +28,6 @@ import kotlinx.coroutines.withContext
 
 data class TypingInfo(val userId: String, val displayName: String)
 data class StagedMedia(val uri: Uri, val isVideo: Boolean)
-data class StagedFile(val uri: Uri, val name: String, val size: Long, val mimeType: String)
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -84,10 +83,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /** Media (photos+videos) staged before sending */
     private val _stagedMedia = MutableStateFlow<List<StagedMedia>>(emptyList())
     val stagedMedia: StateFlow<List<StagedMedia>> = _stagedMedia
-
-    /** A single document file staged before sending */
-    private val _stagedFile = MutableStateFlow<StagedFile?>(null)
-    val stagedFile: StateFlow<StagedFile?> = _stagedFile
 
     /** Upload progress (0..1) for each staged item while uploading */
     private val _uploadProgresses = MutableStateFlow<List<Float>>(emptyList())
@@ -591,34 +586,31 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _stagedMedia.value = _stagedMedia.value.filterIndexed { i, _ -> i != index }
     }
 
-    fun setStagedFile(file: StagedFile?) {
-        _stagedFile.value = file
-    }
-
     fun clearStagedMedia() {
         _stagedMedia.value = emptyList()
-        _stagedFile.value = null
         _uploadProgresses.value = emptyList()
     }
 
-    fun getFileInfoFromUri(uri: Uri, context: Context): StagedFile? {
-        val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
+    private fun getVideoNameFromUri(uri: Uri, context: Context): String {
         return try {
             val cursor = context.contentResolver.query(uri, null, null, null, null)
             cursor?.use { c ->
                 if (!c.moveToFirst()) return@use null
                 val nameIdx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                val sizeIdx = c.getColumnIndex(android.provider.OpenableColumns.SIZE)
-                val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "Файл" else "Файл"
-                val size = if (sizeIdx >= 0 && !c.isNull(sizeIdx)) c.getLong(sizeIdx) else 0L
-                StagedFile(uri, name, size, mimeType)
-            }
-        } catch (e: Exception) { null }
+                if (nameIdx >= 0) c.getString(nameIdx) else null
+            } ?: "video_${System.currentTimeMillis()}.mp4"
+        } catch (e: Exception) { "video_${System.currentTimeMillis()}.mp4" }
+    }
+
+    private fun getUriFileSize(uri: Uri, context: Context): Long {
+        return try {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: 0L
+        } catch (e: Exception) { 0L }
     }
 
     /** Send all staged content (photos as album, videos individually, + optional text).
      *  Clears staged state immediately, then uploads in background. */
-    fun sendWithAttachments(text: String, media: List<StagedMedia>, file: StagedFile?, context: Context) {
+    fun sendWithAttachments(text: String, media: List<StagedMedia>, context: Context) {
         val replyId = _replyTo.value?.id
         val myId = currentUserId
         val myProfile = profileCache[myId]
@@ -627,7 +619,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val videos = media.filter { it.isVideo }
 
         _stagedMedia.value = emptyList()
-        _stagedFile.value = null
         _replyTo.value = null
 
         // ── Photos (album or single) ───────────────────────────────────────────
@@ -692,20 +683,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         // ── Videos (each as separate message) ─────────────────────────────────
         videos.forEach { staged -> sendVideoInternal(staged, context, replyId) }
-
-        // ── Document file ──────────────────────────────────────────────────────
-        file?.let { sendFileInternal(it, context, replyId) }
     }
 
     private fun sendVideoInternal(staged: StagedMedia, context: Context, replyId: String?) {
         val myId = currentUserId
         val mimeType = context.contentResolver.getType(staged.uri) ?: "video/mp4"
-        val info = getFileInfoFromUri(staged.uri, context)
-        val name = info?.name ?: "video_${System.currentTimeMillis()}.mp4"
-        val fileSize = info?.size ?: 0L
+        val name = getVideoNameFromUri(staged.uri, context)
 
-        // Supabase Storage limit: 50 MB
-        if (fileSize > 50 * 1024 * 1024) {
+        // Проверка лимита через openAssetFileDescriptor (надёжнее, чем OpenableColumns.SIZE)
+        val fileSize = getUriFileSize(staged.uri, context)
+        if (fileSize > 0 && fileSize > 50 * 1024 * 1024) {
             _error.value = "Видео слишком большое. Максимальный размер — 50 МБ."
             return
         }
@@ -727,6 +714,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     _error.value = "Не удалось прочитать видео"
                     return@launch
                 }
+                // Дополнительная проверка после чтения (если pre-check вернул 0)
+                if (bytes.size > 50 * 1024 * 1024) {
+                    _messages.value = _messages.value.filter { it.message.id != pendingId }
+                    _error.value = "Видео слишком большое. Максимальный размер — 50 МБ."
+                    return@launch
+                }
                 val ext = name.substringAfterLast('.', "mp4")
                 val fileName = "video_${System.currentTimeMillis()}.$ext"
                 val url = messageRepo.uploadFile(chatId, fileName, bytes)
@@ -740,48 +733,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _messages.value = _messages.value.filter { it.message.id != pendingId }
                 _error.value = "Ошибка загрузки видео"
-            }
-        }
-    }
-
-    private fun sendFileInternal(file: StagedFile, context: Context, replyId: String?) {
-        // Supabase Storage limit: 50 MB
-        if (file.size > 50 * 1024 * 1024) {
-            _error.value = "Файл слишком большой. Максимальный размер — 50 МБ."
-            return
-        }
-
-        val myId = currentUserId
-        val pendingId = "pending_${java.util.UUID.randomUUID()}"
-        val now = java.time.Instant.now().toString()
-        val pendingMsg = Message(id = pendingId, chatId = chatId, senderId = myId, type = "file",
-            fileName = file.name, fileSize = file.size, mimeType = file.mimeType, createdAt = now)
-        val pendingItem = MessageUiItem(message = pendingMsg, senderProfile = profileCache[myId],
-            isOwn = true, isRead = false, isPending = true)
-        _messages.value = _messages.value + pendingItem
-        _scrollToBottomEvent.value++
-
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val bytes = context.contentResolver.openInputStream(file.uri)?.readBytes()
-                if (bytes == null) {
-                    _messages.value = _messages.value.filter { it.message.id != pendingId }
-                    _error.value = "Не удалось прочитать файл"
-                    return@launch
-                }
-                val ext = file.name.substringAfterLast('.', "bin")
-                val fileName = "file_${System.currentTimeMillis()}.$ext"
-                val url = messageRepo.uploadFile(chatId, fileName, bytes)
-                if (url != null) {
-                    messageRepo.sendFileMessage(chatId, url, file.name, file.size, file.mimeType, replyId)
-                } else {
-                    _error.value = "Ошибка загрузки файла"
-                }
-                _messages.value = _messages.value.filter { it.message.id != pendingId }
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                _messages.value = _messages.value.filter { it.message.id != pendingId }
-                _error.value = "Ошибка загрузки файла"
             }
         }
     }
