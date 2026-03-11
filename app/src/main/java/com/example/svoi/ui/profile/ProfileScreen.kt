@@ -1,14 +1,12 @@
 package com.example.svoi.ui.profile
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,7 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,15 +54,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.ui.components.Avatar
+import com.example.svoi.ui.components.EmojiPicker
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.theme.AvatarColors
 
-private val EMOJI_LIST = listOf(
-    "😊", "😎", "🤩", "🥳", "😏", "🦊", "🐱", "🐶", "🦁", "🐸",
-    "🦋", "🌟", "🔥", "💎", "🎯", "🚀", "🎸", "🎨", "⚡", "🌈"
-)
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     onNavigateToChats: () -> Unit,
@@ -172,65 +165,50 @@ fun ProfileScreen(
                 shape = MaterialTheme.shapes.medium
             )
 
-            // Emoji picker
+            // Emoji picker (same keyboard as in chat)
             Text(
                 "Эмодзи",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.fillMaxWidth()
             )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                EMOJI_LIST.forEach { emoji ->
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (emoji == selectedEmoji) MaterialTheme.colorScheme.primaryContainer
-                                else Color.Transparent
-                            )
-                            .then(
-                                if (emoji == selectedEmoji)
-                                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                                else Modifier
-                            )
-                            .clickable { selectedEmoji = emoji },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = emoji, fontSize = 22.sp)
-                    }
-                }
-            }
+            EmojiPicker(
+                onEmojiSelected = { selectedEmoji = it },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-            // Color picker
+            // Color picker — 2 symmetric rows (chunked by 6)
             Text(
                 "Цвет",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.fillMaxWidth()
             )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                AvatarColors.forEach { hex ->
-                    val color = runCatching {
-                        Color(android.graphics.Color.parseColor(hex))
-                    }.getOrDefault(Color.Gray)
-
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(color)
-                            .then(
-                                if (hex == selectedColor)
-                                    Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
-                                else Modifier
+                AvatarColors.chunked(6).forEach { rowColors ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        rowColors.forEach { hex ->
+                            val color = runCatching {
+                                Color(android.graphics.Color.parseColor(hex))
+                            }.getOrDefault(Color.Gray)
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .then(
+                                        if (hex == selectedColor)
+                                            Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                        else Modifier
+                                    )
+                                    .clickable { selectedColor = hex }
                             )
-                            .clickable { selectedColor = hex }
-                    )
+                        }
+                    }
                 }
             }
 
