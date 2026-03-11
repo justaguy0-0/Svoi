@@ -393,7 +393,7 @@ fun ChatScreen(
                 ) {
                     pinnedMessage?.let { pinned ->
                         val contentText = when (pinnedContent?.type) {
-                            "album" -> "📷 ${pinnedContent.photoUrls?.size ?: 0} фото"
+                            "album" -> "📷 ${pinnedContent?.photoUrls?.size ?: 0} фото"
                             "photo" -> "📷 Фото"
                             "file" -> "📎 ${pinnedContent?.fileName ?: "Файл"}"
                             else -> pinnedContent?.content ?: ""
