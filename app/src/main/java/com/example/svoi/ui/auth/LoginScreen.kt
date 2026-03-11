@@ -1,5 +1,9 @@
 package com.example.svoi.ui.auth
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +26,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,8 +56,14 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
 
     Scaffold { padding ->
+        AnimatedVisibility(
+            visible = visible,
+            enter = slideInVertically { (it * 0.08f).toInt() } + fadeIn(tween(380))
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -156,5 +167,6 @@ fun LoginScreen(
                 Text("Есть пригласительный ключ?")
             }
         }
+        } // AnimatedVisibility
     }
 }

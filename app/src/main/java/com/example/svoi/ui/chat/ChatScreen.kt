@@ -7,11 +7,17 @@ import android.os.Environment
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -369,8 +375,12 @@ fun ChatScreen(
                     )
                 )
 
-                // Pinned message banner
-                if (!isSelectionMode) {
+                // Pinned message banner — slides in/out smoothly
+                AnimatedVisibility(
+                    visible = !isSelectionMode && pinnedMessage != null,
+                    enter = slideInVertically { -it } + fadeIn(tween(220)),
+                    exit  = slideOutVertically { -it } + fadeOut(tween(180))
+                ) {
                     pinnedMessage?.let { pinned ->
                         val contentText = when (pinnedContent?.type) {
                             "photo" -> "📷 Фото"
@@ -591,40 +601,46 @@ fun ChatScreen(
 
                     // Reply / Edit preview
                     val previewMessage = replyTo ?: editingMessage
-                    previewMessage?.let { msg ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
+                    AnimatedVisibility(
+                        visible = previewMessage != null,
+                        enter = slideInVertically { it } + fadeIn(tween(180)),
+                        exit  = slideOutVertically { it } + fadeOut(tween(140))
+                    ) {
+                        previewMessage?.let { msg ->
+                            Row(
                                 modifier = Modifier
-                                    .width(3.dp)
-                                    .height(36.dp)
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (editingMessage != null) "Редактирование" else "Ответ",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(3.dp)
+                                        .height(36.dp)
+                                        .background(MaterialTheme.colorScheme.primary)
                                 )
-                                Text(
-                                    text = msg.content ?: "[медиа]",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            IconButton(onClick = {
-                                viewModel.setReplyTo(null)
-                                viewModel.setEditing(null)
-                                inputValue = TextFieldValue("")
-                            }) {
-                                Icon(Icons.Default.Close, contentDescription = "Отмена")
+                                Spacer(Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (editingMessage != null) "Редактирование" else "Ответ",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = msg.content ?: "[медиа]",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                IconButton(onClick = {
+                                    viewModel.setReplyTo(null)
+                                    viewModel.setEditing(null)
+                                    inputValue = TextFieldValue("")
+                                }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Отмена")
+                                }
                             }
                         }
                     }
@@ -669,33 +685,42 @@ fun ChatScreen(
                         Spacer(Modifier.width(6.dp))
 
                         // Photo / Send button
-                        if (inputValue.text.isBlank()) {
-                            IconButton(onClick = { imagePicker.launch("image/*") }) {
-                                Icon(
-                                    Icons.Default.Image,
-                                    contentDescription = "Фото",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
-                                    .clickable {
-                                        viewModel.sendText(inputValue.text)
-                                        inputValue = TextFieldValue("")
-                                        viewModel.onInputTextChanged("")
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.Send,
-                                    contentDescription = "Отправить",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                        AnimatedContent(
+                            targetState = inputValue.text.isBlank(),
+                            transitionSpec = {
+                                (scaleIn(tween(180)) + fadeIn(tween(180))) togetherWith
+                                (scaleOut(tween(140)) + fadeOut(tween(140)))
+                            },
+                            label = "sendAttachToggle"
+                        ) { isBlank ->
+                            if (isBlank) {
+                                IconButton(onClick = { imagePicker.launch("image/*") }) {
+                                    Icon(
+                                        Icons.Default.Image,
+                                        contentDescription = "Фото",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary)
+                                        .clickable {
+                                            viewModel.sendText(inputValue.text)
+                                            inputValue = TextFieldValue("")
+                                            viewModel.onInputTextChanged("")
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Send,
+                                        contentDescription = "Отправить",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }
