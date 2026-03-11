@@ -274,7 +274,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
 
     /** Realtime flow — any message_reads insert (to refresh unread badges in chat list) */
     fun messageReadInsertFlowAll(): Flow<MessageRead> = channelFlow {
-        val channel = supabase.channel("message-reads-insert-all")
+        val channel = supabase.channel("message-reads-insert-all-${java.util.UUID.randomUUID()}")
         channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
             table = "message_reads"
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
@@ -289,7 +289,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
 
     /** Supabase Realtime flow — any new message (no chat filter, for chat list refresh) */
     fun messageInsertFlowAll(): Flow<Message> = channelFlow {
-        val channel = supabase.channel("messages-insert-all")
+        val channel = supabase.channel("messages-insert-all-${java.util.UUID.randomUUID()}")
         channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
             table = "messages"
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
@@ -304,7 +304,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
 
     /** Supabase Realtime flow — new messages in a chat */
     fun messageInsertFlow(chatId: String): Flow<Message> = channelFlow {
-        val channel = supabase.channel("messages-insert-$chatId")
+        val channel = supabase.channel("messages-insert-$chatId-${java.util.UUID.randomUUID()}")
         channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
             table = "messages"
             filter("chat_id", FilterOperator.EQ, chatId)
@@ -320,7 +320,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
 
     /** Supabase Realtime flow — updated messages in a chat (edits, deletes) */
     fun messageUpdateFlow(chatId: String): Flow<Message> = channelFlow {
-        val channel = supabase.channel("messages-update-$chatId")
+        val channel = supabase.channel("messages-update-$chatId-${java.util.UUID.randomUUID()}")
         channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
             table = "messages"
             filter("chat_id", FilterOperator.EQ, chatId)
@@ -336,7 +336,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
 
     /** Supabase Realtime flow for message_reads (to show read receipts) */
     fun messageReadFlow(chatId: String): Flow<MessageRead> = channelFlow {
-        val channel = supabase.channel("message-reads-$chatId")
+        val channel = supabase.channel("message-reads-$chatId-${java.util.UUID.randomUUID()}")
         channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
             table = "message_reads"
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)

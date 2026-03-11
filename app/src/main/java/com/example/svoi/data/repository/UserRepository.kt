@@ -142,7 +142,7 @@ class UserRepository(private val supabase: SupabaseClient) {
 
     /** Realtime flow — fires whenever any user_presence row is updated */
     fun presenceUpdateFlowAll(): Flow<UserPresence> = channelFlow {
-        val channel = supabase.channel("user-presence-updates-all")
+        val channel = supabase.channel("user-presence-updates-all-${java.util.UUID.randomUUID()}")
         channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
             table = "user_presence"
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
@@ -158,7 +158,7 @@ class UserRepository(private val supabase: SupabaseClient) {
     /** Realtime flow — fires when a specific user's presence changes.
      *  After each event, fetches from user_presence_view to get server-computed is_truly_online. */
     fun presenceUpdateFlow(userId: String): Flow<UserPresence> = channelFlow {
-        val channel = supabase.channel("user-presence-$userId")
+        val channel = supabase.channel("user-presence-$userId-${java.util.UUID.randomUUID()}")
         channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
             table = "user_presence"
             filter("user_id", FilterOperator.EQ, userId)
