@@ -296,14 +296,12 @@ fun ChatScreen(
         editingMessage?.let { inputValue = TextFieldValue(it.content ?: "") }
     }
 
-    val mediaPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetMultipleContents()
-    ) { uris: List<Uri> ->
+    val mediaPicker = rememberLauncherForActivityResult(GetMultipleMedia()) { uris ->
         if (uris.isNotEmpty()) viewModel.addStagedMedia(uris, context)
     }
 
     val filePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
             val fileInfo = viewModel.getFileInfoFromUri(uri, context)
@@ -798,7 +796,7 @@ fun ChatScreen(
                                             leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
                                             onClick = {
                                                 attachmentMenuExpanded = false
-                                                mediaPicker.launch("image/* video/*")
+                                                mediaPicker.launch(Unit)
                                             }
                                         )
                                         DropdownMenuItem(
@@ -806,7 +804,7 @@ fun ChatScreen(
                                             leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null) },
                                             onClick = {
                                                 attachmentMenuExpanded = false
-                                                filePicker.launch(arrayOf("*/*"))
+                                                filePicker.launch("*/*")
                                             }
                                         )
                                     }
