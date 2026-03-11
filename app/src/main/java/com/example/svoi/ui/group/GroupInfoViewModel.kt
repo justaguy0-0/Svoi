@@ -149,7 +149,8 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
             messageRepo.sendSystemMessage(chatId, "$myName удалил группу")
             // Small delay so realtime can propagate the message
             delay(300)
-            chatRepo.deleteChat(chatId)
+            // Soft delete: archives to deleted_chats + writes audit_log
+            chatRepo.softDeleteChat(chatId)
             onDeleted()
         }
     }

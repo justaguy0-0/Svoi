@@ -13,7 +13,10 @@ import android.util.Log
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class ChatRepository(private val supabase: SupabaseClient) {
 
@@ -319,12 +322,32 @@ class ChatRepository(private val supabase: SupabaseClient) {
         }
     }
 
+    /** Hard delete — используется только внутренне или из тестов */
     suspend fun deleteChat(chatId: String): Boolean {
         return try {
             supabase.from("chats")
                 .delete { filter { eq("id", chatId) } }
             true
         } catch (e: Exception) { false }
+    }
+
+    /**
+     * Soft delete через RPC: архивирует чат в deleted_chats,
+     * пишет запись в audit_log, затем удаляет из chats.
+     * Доступно только для admin чата.
+     */
+    suspend fun softDeleteChat(chatId: String): Boolean {
+        return try {
+            supabase.postgrest.rpc(
+                "soft_delete_chat",
+                buildJsonObject { put("p_chat_id", chatId) }
+            )
+            Log.d("ChatRepo", "softDeleteChat OK: chatId=$chatId")
+            true
+        } catch (e: Exception) {
+            Log.e("ChatRepo", "softDeleteChat FAILED: chatId=$chatId", e)
+            false
+        }
     }
 
     suspend fun clearChatHistory(chatId: String): Boolean {
