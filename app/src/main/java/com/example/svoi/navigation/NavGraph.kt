@@ -22,6 +22,7 @@ import com.example.svoi.ui.chatlist.ChatListScreen
 import com.example.svoi.ui.newchat.CreateGroupScreen
 import com.example.svoi.ui.newchat.UserSearchScreen
 import com.example.svoi.ui.profile.ProfileScreen
+import com.example.svoi.ui.profile.UserProfileScreen
 import com.example.svoi.ui.settings.SettingsScreen
 
 object Routes {
@@ -34,9 +35,11 @@ object Routes {
     const val CREATE_GROUP = "create_group"
     const val PROFILE = "profile"
     const val SETTINGS = "settings"
+    const val USER_PROFILE = "user_profile/{userId}"
 
     fun setupProfile(inviteKey: String) = "setup_profile/$inviteKey"
     fun chat(chatId: String) = "chat/$chatId"
+    fun userProfile(userId: String) = "user_profile/$userId"
 }
 
 @Composable
@@ -123,6 +126,25 @@ fun NavGraph(
                     onBack = { if (canNav()) navController.navigateUp() },
                     onForwardTo = { targetChatId ->
                         if (canNav()) navController.navigate(Routes.chat(targetChatId))
+                    },
+                    onUserClick = { userId ->
+                        if (canNav()) navController.navigate(Routes.userProfile(userId))
+                    }
+                )
+            }
+
+            composable(
+                route = Routes.USER_PROFILE,
+                arguments = listOf(navArgument("userId") { type = NavType.StringType })
+            ) { backStack ->
+                val userId = backStack.arguments?.getString("userId") ?: ""
+                UserProfileScreen(
+                    userId = userId,
+                    onBack = { if (canNav()) navController.navigateUp() },
+                    onOpenChat = { chatId ->
+                        if (canNav()) navController.navigate(Routes.chat(chatId)) {
+                            popUpTo(Routes.USER_PROFILE) { inclusive = true }
+                        }
                     }
                 )
             }

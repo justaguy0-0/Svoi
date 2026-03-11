@@ -7,8 +7,11 @@ import android.os.Environment
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -44,7 +47,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.AttachFile
@@ -94,17 +101,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import com.example.svoi.ui.components.EmojiPicker
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -140,6 +152,7 @@ fun ChatScreen(
     chatId: String,
     onBack: () -> Unit,
     onForwardTo: (String) -> Unit,
+    onUserClick: (String) -> Unit = {},
     viewModel: ChatViewModel = viewModel()
 ) {
     LaunchedEffect(chatId) { viewModel.init(chatId) }
@@ -166,8 +179,11 @@ fun ChatScreen(
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedMessageIds by viewModel.selectedMessageIds.collectAsState()
     val chatsForForward by viewModel.chatsForForward.collectAsState()
+    val otherUserId by viewModel.otherUserId.collectAsState()
 
-    var inputText by remember { mutableStateOf("") }
+    var inputValue by remember { mutableStateOf(TextFieldValue("")) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -237,7 +253,7 @@ fun ChatScreen(
     }
 
     LaunchedEffect(editingMessage) {
-        editingMessage?.let { inputText = it.content ?: "" }
+        editingMessage?.let { inputValue = TextFieldValue(it.content ?: "") }
     }
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -269,7 +285,11 @@ fun ChatScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                         } else {
-                            Column {
+                            Column(
+                                modifier = Modifier.clickable(enabled = !isGroup && otherUserId != null) {
+                                    otherUserId?.let { onUserClick(it) }
+                                }
+                            ) {
                                 Text(
                                     text = chatName,
                                     style = MaterialTheme.typography.titleMedium,
@@ -462,7 +482,8 @@ fun ChatScreen(
                                             onReply = {
                                                 viewModel.setReplyTo(entry.item.message)
                                             },
-                                            onPhotoClick = { url -> lightboxUrl = url }
+                                            onPhotoClick = { url -> lightboxUrl = url },
+                                            onUserClick = { userId -> onUserClick(userId) }
                                         )
                                     }
                                 }
@@ -516,6 +537,24 @@ fun ChatScreen(
                         .background(MaterialTheme.colorScheme.surface)
                         .navigationBarsPadding()
                 ) {
+                    // Emoji picker panel
+                    AnimatedVisibility(
+                        visible = showEmojiPicker,
+                        enter = slideInVertically { it },
+                        exit = slideOutVertically { it }
+                    ) {
+                        EmojiPicker(
+                            onEmojiSelected = { emoji ->
+                                val sel = inputValue.selection
+                                val text = inputValue.text
+                                val newText = text.substring(0, sel.start) + emoji + text.substring(sel.end)
+                                val newCursor = sel.start + emoji.length
+                                inputValue = TextFieldValue(newText, TextRange(newCursor))
+                                viewModel.onInputTextChanged(newText)
+                            }
+                        )
+                    }
+
                     // Reply / Edit preview
                     val previewMessage = replyTo ?: editingMessage
                     previewMessage?.let { msg ->
@@ -549,7 +588,7 @@ fun ChatScreen(
                             IconButton(onClick = {
                                 viewModel.setReplyTo(null)
                                 viewModel.setEditing(null)
-                                inputText = ""
+                                inputValue = TextFieldValue("")
                             }) {
                                 Icon(Icons.Default.Close, contentDescription = "Отмена")
                             }
@@ -563,20 +602,26 @@ fun ChatScreen(
                             .padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.Bottom
                     ) {
-                        IconButton(onClick = { imagePicker.launch("image/*") }) {
+                        // Emoji button
+                        IconButton(onClick = {
+                            showEmojiPicker = !showEmojiPicker
+                            if (showEmojiPicker) keyboardController?.hide()
+                        }) {
                             Icon(
-                                Icons.Default.Image,
-                                contentDescription = "Фото",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                Icons.Default.EmojiEmotions,
+                                contentDescription = "Эмодзи",
+                                tint = if (showEmojiPicker) MaterialTheme.colorScheme.primary
+                                       else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
                         TextField(
-                            value = inputText,
-                            onValueChange = { inputText = it; viewModel.onInputTextChanged(it) },
+                            value = inputValue,
+                            onValueChange = { inputValue = it; viewModel.onInputTextChanged(it.text) },
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(24.dp)),
+                                .clip(RoundedCornerShape(24.dp))
+                                .onFocusChanged { if (it.isFocused) showEmojiPicker = false },
                             placeholder = { Text("Сообщение...") },
                             maxLines = 5,
                             colors = TextFieldDefaults.colors(
@@ -589,27 +634,35 @@ fun ChatScreen(
 
                         Spacer(Modifier.width(6.dp))
 
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (inputText.isNotBlank()) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.surfaceVariant
+                        // Photo / Send button
+                        if (inputValue.text.isBlank()) {
+                            IconButton(onClick = { imagePicker.launch("image/*") }) {
+                                Icon(
+                                    Icons.Default.Image,
+                                    contentDescription = "Фото",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                .clickable(enabled = inputText.isNotBlank()) {
-                                    viewModel.sendText(inputText)
-                                    inputText = ""
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Send,
-                                contentDescription = "Отправить",
-                                tint = if (inputText.isNotBlank()) Color.White
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary)
+                                    .clickable {
+                                        viewModel.sendText(inputValue.text)
+                                        inputValue = TextFieldValue("")
+                                        viewModel.onInputTextChanged("")
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Send,
+                                    contentDescription = "Отправить",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1031,7 +1084,8 @@ private fun MessageItem(
     onLongClick: () -> Unit,
     onTap: () -> Unit = {},
     onReply: () -> Unit = {},
-    onPhotoClick: (String) -> Unit = {}
+    onPhotoClick: (String) -> Unit = {},
+    onUserClick: (String) -> Unit = {}
 ) {
     val msg = item.message
     if (msg.deletedForAll) {
@@ -1164,7 +1218,9 @@ private fun MessageItem(
                             bgColor = profile.bgColor,
                             size = 28.dp,
                             fontSize = 12.sp,
-                            modifier = Modifier.padding(end = 4.dp, bottom = 2.dp)
+                            modifier = Modifier
+                                .padding(end = 4.dp, bottom = 2.dp)
+                                .clickable { onUserClick(profile.id) }
                         )
                     } ?: Spacer(Modifier.width(32.dp))
                 }
@@ -1187,7 +1243,10 @@ private fun MessageItem(
                                 text = item.senderProfile?.displayName ?: "Пользователь",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable {
+                                    item.senderProfile?.let { onUserClick(it.id) }
+                                }
                             )
                             Spacer(Modifier.height(2.dp))
                         }

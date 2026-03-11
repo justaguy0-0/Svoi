@@ -112,7 +112,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private var chatId: String = ""
     private val profileCache = mutableMapOf<String, Profile>()
-    private var otherUserId: String? = null
+    private var otherUserIdVal: String? = null
+    private val _otherUserId = MutableStateFlow<String?>(null)
+    val otherUserId: StateFlow<String?> = _otherUserId
     private var lastKnownMessageId: String? = null
     private var typingJob: Job? = null
 
@@ -130,7 +132,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _chatName.value = cachedInfo.name
                 _isGroup.value = cachedInfo.isGroup
                 _memberCount.value = cachedInfo.memberCount
-                otherUserId = cachedInfo.otherUserId
+                otherUserIdVal = cachedInfo.otherUserId
+                _otherUserId.value = cachedInfo.otherUserId
             }
             if (cachedMessages != null) {
                 cachedProfiles.forEach { profileCache[it.key] = it.value }
@@ -197,7 +200,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val other = profiles.firstOrNull { it.id != myId }
             _chatName.value = other?.displayName ?: "Пользователь"
             other?.let { otherProfile ->
-                otherUserId = otherProfile.id
+                otherUserIdVal = otherProfile.id
+                _otherUserId.value = otherProfile.id
                 startPresencePolling(otherProfile.id)
             }
         } else {
@@ -209,7 +213,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             name = _chatName.value,
             isGroup = _isGroup.value,
             memberCount = _memberCount.value,
-            otherUserId = otherUserId
+            otherUserId = otherUserIdVal
         ))
     }
 

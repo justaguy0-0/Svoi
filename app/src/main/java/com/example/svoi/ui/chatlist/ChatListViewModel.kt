@@ -42,6 +42,9 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     val isOnline: StateFlow<Boolean> = app.networkMonitor.isOnline
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
+    private val _currentProfile = MutableStateFlow<com.example.svoi.data.model.Profile?>(null)
+    val currentProfile: StateFlow<com.example.svoi.data.model.Profile?> = _currentProfile
+
     // Track whether we need to show "Обновление..." on next refresh
     private var initialLoad = true
     private var wasOffline = false
@@ -64,6 +67,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             }
         }
         loadChats(showUpdating = true)  // initial load
+        viewModelScope.launch { _currentProfile.value = app.userRepository.getCurrentProfile() }
         observeNewMessages()
         observeReadReceipts()
         observePresenceUpdates()

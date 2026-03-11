@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -37,6 +38,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -86,6 +89,7 @@ fun ChatListScreen(
     val chats by viewModel.chats.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val chatTyping by viewModel.chatTyping.collectAsState()
+    val currentProfile by viewModel.currentProfile.collectAsState()
     val scope = rememberCoroutineScope()
 
     var selectedChat by remember { mutableStateOf<ChatListItem?>(null) }
@@ -106,6 +110,41 @@ fun ChatListScreen(
     val bottomSheetState = rememberModalBottomSheetState()
 
     Scaffold(
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = true,
+                    onClick = {},
+                    icon = { Icon(Icons.Default.Chat, contentDescription = "Чаты") },
+                    label = { Text("Чаты") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onProfileClick,
+                    icon = {
+                        val p = currentProfile
+                        if (p != null) {
+                            com.example.svoi.ui.components.Avatar(
+                                emoji = p.emoji,
+                                bgColor = p.bgColor,
+                                letter = p.displayName,
+                                size = 28.dp,
+                                fontSize = 13.sp
+                            )
+                        } else {
+                            Icon(Icons.Default.Person, contentDescription = "Профиль")
+                        }
+                    },
+                    label = { Text("Профиль") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onSettingsClick,
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "Настройки") },
+                    label = { Text("Настройки") }
+                )
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -132,14 +171,7 @@ fun ChatListScreen(
                         )
                     }
                 },
-                actions = {
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Default.Settings, contentDescription = "Настройки")
-                    }
-                    IconButton(onClick = onProfileClick) {
-                        Icon(Icons.Default.Person, contentDescription = "Профиль")
-                    }
-                },
+                actions = {},
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
