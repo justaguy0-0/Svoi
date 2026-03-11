@@ -184,6 +184,12 @@ fun ChatScreen(
     val selectedMessageIds by viewModel.selectedMessageIds.collectAsState()
     val chatsForForward by viewModel.chatsForForward.collectAsState()
     val otherUserId by viewModel.otherUserId.collectAsState()
+    val isChatDeleted by viewModel.isChatDeleted.collectAsState()
+
+    // If the group chat was deleted by the admin, kick this user back to chat list
+    LaunchedEffect(isChatDeleted) {
+        if (isChatDeleted) onBack()
+    }
 
     var inputValue by remember { mutableStateOf(TextFieldValue("")) }
     var showEmojiPicker by remember { mutableStateOf(false) }

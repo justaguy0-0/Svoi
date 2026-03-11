@@ -112,6 +112,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val currentUserId get() = authRepo.currentUserId() ?: ""
 
+    /** Becomes true when the group chat is deleted externally — screen must close */
+    private val _isChatDeleted = MutableStateFlow(false)
+    val isChatDeleted: StateFlow<Boolean> = _isChatDeleted
+
     private var chatId: String = ""
     private val profileCache = mutableMapOf<String, Profile>()
     private var otherUserIdVal: String? = null
@@ -191,6 +195,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             observeUpdatedMessages()
             observeReadReceipts()
             startTypingPolling()
+            startChatDeletionWatch()
+        }
+    }
+
+    /** For group chats: poll every 8s to detect if the chat was deleted by the admin */
+    private fun startChatDeletionWatch() {
+        viewModelScope.launch {
+            while (true) {
+                delay(8_000L)
+                val exists = chatRepo.getChat(chatId) != null
+                if (!exists) {
+                    _isChatDeleted.value = true
+                    break
+                }
+            }
         }
     }
 

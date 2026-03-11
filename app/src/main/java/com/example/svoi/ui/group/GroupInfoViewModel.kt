@@ -26,6 +26,7 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
     private val app = application as SvoiApp
     private val chatRepo = app.chatRepository
     private val userRepo = app.userRepository
+    private val messageRepo = app.messageRepository
 
     private val _chat = MutableStateFlow<Chat?>(null)
     val chat: StateFlow<Chat?> = _chat
@@ -42,7 +43,12 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
     private val _currentUserId = MutableStateFlow("")
     val currentUserId: StateFlow<String> = _currentUserId
 
+    /** Becomes true when the chat is externally deleted — screen should close */
+    private val _chatDeleted = MutableStateFlow(false)
+    val chatDeleted: StateFlow<Boolean> = _chatDeleted
+
     private var chatId: String = ""
+    private var ownProfile: Profile? = null
     private var pollJob: Job? = null
 
     fun init(chatId: String) {
@@ -50,8 +56,11 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
         this.chatId = chatId
         val userId = app.supabase.auth.currentUserOrNull()?.id ?: ""
         _currentUserId.value = userId
-        load()
-        startPolling()
+        viewModelScope.launch {
+            ownProfile = userRepo.getProfile(userId)
+            load()
+            startPolling()
+        }
     }
 
     private fun load() {
@@ -63,13 +72,17 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private suspend fun refreshData() {
-        val chat = chatRepo.getChat(chatId) ?: return
+        val chat = chatRepo.getChat(chatId)
+        if (chat == null) {
+            // Chat was deleted by someone else
+            _chatDeleted.value = true
+            return
+        }
         _chat.value = chat
 
         val userId = _currentUserId.value
         val rawMembers = chatRepo.getChatMembers(chatId)
 
-        // Determine if current user is admin
         val myMember = rawMembers.firstOrNull { it.userId == userId }
         _isAdmin.value = myMember?.role == "admin" || chat.createdBy == userId
 
@@ -89,7 +102,7 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
                 presence = presences[member.userId]
             )
         }.sortedWith(compareBy(
-            { it.member.role != "admin" }, // admins first
+            { it.member.role != "admin" },
             { it.profile?.displayName ?: "" }
         ))
     }
@@ -98,7 +111,7 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
             while (true) {
-                delay(15_000L)
+                delay(8_000L)
                 runCatching { refreshData() }
             }
         }
@@ -106,21 +119,36 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun removeMember(userId: String) {
         viewModelScope.launch {
-            chatRepo.removeMember(chatId, userId)
+            val removed = _members.value.firstOrNull { it.member.userId == userId }
+            val removedName = removed?.profile?.displayName ?: "Участник"
+            val myName = ownProfile?.displayName ?: "Администратор"
+
+            if (chatRepo.removeMember(chatId, userId)) {
+                messageRepo.sendSystemMessage(chatId, "$myName исключил $removedName")
+            }
             refreshData()
         }
     }
 
     fun renameGroup(newName: String) {
         if (newName.isBlank()) return
+        val trimmed = newName.trim()
         viewModelScope.launch {
-            chatRepo.renameGroup(chatId, newName.trim())
+            val myName = ownProfile?.displayName ?: "Администратор"
+            if (chatRepo.renameGroup(chatId, trimmed)) {
+                messageRepo.sendSystemMessage(chatId, "$myName изменил название на «$trimmed»")
+            }
             refreshData()
         }
     }
 
     fun deleteGroup(onDeleted: () -> Unit) {
         viewModelScope.launch {
+            val myName = ownProfile?.displayName ?: "Администратор"
+            // Send system message before deleting so members see it in realtime
+            messageRepo.sendSystemMessage(chatId, "$myName удалил группу")
+            // Small delay so realtime can propagate the message
+            delay(300)
             chatRepo.deleteChat(chatId)
             onDeleted()
         }
@@ -128,7 +156,13 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun addMember(userId: String) {
         viewModelScope.launch {
-            chatRepo.addMember(chatId, userId)
+            val addedProfile = userRepo.getProfile(userId)
+            val addedName = addedProfile?.displayName ?: "Пользователь"
+            val myName = ownProfile?.displayName ?: "Администратор"
+
+            if (chatRepo.addMember(chatId, userId)) {
+                messageRepo.sendSystemMessage(chatId, "$myName добавил $addedName")
+            }
             refreshData()
         }
     }

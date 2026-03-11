@@ -41,6 +41,12 @@ fun GroupInfoScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isAdmin by viewModel.isAdmin.collectAsState()
     val currentUserId by viewModel.currentUserId.collectAsState()
+    val chatDeleted by viewModel.chatDeleted.collectAsState()
+
+    // If chat was deleted externally, navigate back to chat list
+    LaunchedEffect(chatDeleted) {
+        if (chatDeleted) onChatDeleted()
+    }
 
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
