@@ -216,6 +216,8 @@ class MessageRepository(private val supabase: SupabaseClient) {
             val reads = messages.map { MessageReadInsert(messageId = it.id, userId = userId) }
             supabase.from("message_reads").upsert(reads)
             Log.d("ReadReceipts", "markMessagesAsRead: upsert SUCCESS for ${reads.size} rows")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e  // never swallow CancellationException
         } catch (e: Exception) {
             Log.e("ReadReceipts", "markMessagesAsRead FAILED: ${e.message}", e)
         }

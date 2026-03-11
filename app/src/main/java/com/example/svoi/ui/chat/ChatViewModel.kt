@@ -17,12 +17,14 @@ import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.UserPresence
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class TypingInfo(val userId: String, val displayName: String)
 
@@ -331,7 +333,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun markAsRead() {
-        messageRepo.markMessagesAsRead(chatId)
+        // NonCancellable: the read receipt must be sent even if the user navigates away
+        // while the coroutine is still running.
+        withContext(NonCancellable) {
+            messageRepo.markMessagesAsRead(chatId)
+        }
     }
 
     private suspend fun loadPinnedMessage() {
