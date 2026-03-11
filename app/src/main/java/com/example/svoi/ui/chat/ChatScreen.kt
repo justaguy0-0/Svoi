@@ -165,7 +165,12 @@ import com.example.svoi.util.toDateSeparator
 import com.example.svoi.util.toLastSeen
 import com.example.svoi.util.toMessageTime
 import com.example.svoi.util.toReadableSize
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import androidx.media3.exoplayer.ExoPlayer
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -229,6 +234,12 @@ fun ChatScreen(
     var showForwardPicker by remember { mutableStateOf(false) }
     var pendingForwardMessageId by remember { mutableStateOf<String?>(null) }
 
+    // Video playback state
+    val exoPlayer = rememberChatExoPlayer()
+    var activeVideoUrl by remember { mutableStateOf<String?>(null) }
+    var isMuted by remember { mutableStateOf(true) }
+    var fullscreenVideoUrl by remember { mutableStateOf<String?>(null) }
+
     val screenHeightPx = with(LocalDensity.current) {
         LocalConfiguration.current.screenHeightDp.dp.roundToPx()
     }
@@ -261,6 +272,27 @@ fun ChatScreen(
                 add(ChatEntry.Msg(item))
             }
         }
+    }
+
+    val currentDisplayEntries by rememberUpdatedState(displayEntries)
+
+    // Auto-play: when scroll stops, find the first 50%-visible video and play it
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .filter { !it }
+            .collect {
+                val layoutInfo = listState.layoutInfo
+                val viewportH = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+                val firstVideoUrl = layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { info ->
+                    val e = currentDisplayEntries.getOrNull(info.index) as? ChatEntry.Msg
+                        ?: return@firstNotNullOfOrNull null
+                    if (e.item.message.type != "video") return@firstNotNullOfOrNull null
+                    val visible = minOf(info.offset + info.size, viewportH) - maxOf(info.offset, 0)
+                    if (visible.toFloat() / info.size >= 0.5f) e.item.message.fileUrl else null
+                }
+                activeVideoUrl = firstVideoUrl
+                if (firstVideoUrl == null) exoPlayer.pause()
+            }
     }
 
     // Scroll to first unread or bottom
@@ -526,6 +558,9 @@ fun ChatScreen(
                                                     isSelectionMode = isSelectionMode,
                                                     uploadProgresses = if (entry.item.isPending) uploadProgresses else emptyList(),
                                                     modifier = Modifier,
+                                                    activeVideoUrl = activeVideoUrl,
+                                                    exoPlayer = exoPlayer,
+                                                    isMuted = isMuted,
                                                     onLongClick = {
                                                         viewModel.toggleSelection(entry.item.message.id)
                                                     },
@@ -542,7 +577,14 @@ fun ChatScreen(
                                                     onPhotoClick = { url, albumUrls ->
                                                         lightboxState = LightboxState(albumUrls, albumUrls.indexOf(url).coerceAtLeast(0))
                                                     },
-                                                    onUserClick = { userId -> onUserClick(userId) }
+                                                    onUserClick = { userId -> onUserClick(userId) },
+                                                    onVideoTap = { url ->
+                                                        if (!isSelectionMode) {
+                                                            exoPlayer.pause()
+                                                            fullscreenVideoUrl = url
+                                                        }
+                                                    },
+                                                    onVideoMuteToggle = { isMuted = !isMuted }
                                                 )
                                             }
                                         }
@@ -770,6 +812,17 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
+    // ── Fullscreen video player ───────────────────────────────────────────────
+    fullscreenVideoUrl?.let { url ->
+        FullscreenVideoPlayer(
+            url = url,
+            onDismiss = {
+                fullscreenVideoUrl = null
+                if (activeVideoUrl != null) exoPlayer.play()
+            }
+        )
     }
 
     // ── Image Lightbox ──────────────────────────────────────────────────────────
@@ -1455,11 +1508,16 @@ private fun MessageItem(
     isSelectionMode: Boolean = false,
     uploadProgresses: List<Float> = emptyList(),
     modifier: Modifier = Modifier,
+    activeVideoUrl: String? = null,
+    exoPlayer: ExoPlayer? = null,
+    isMuted: Boolean = true,
     onLongClick: () -> Unit,
     onTap: () -> Unit = {},
     onReply: () -> Unit = {},
     onPhotoClick: (url: String, albumUrls: List<String>) -> Unit = { _, _ -> },
-    onUserClick: (String) -> Unit = {}
+    onUserClick: (String) -> Unit = {},
+    onVideoTap: (String) -> Unit = {},
+    onVideoMuteToggle: () -> Unit = {}
 ) {
     val msg = item.message
     if (msg.deletedForAll) {
@@ -1738,53 +1796,16 @@ private fun MessageItem(
                                 }
                             }
                             "video" -> {
-                                val ctx = LocalContext.current
-                                Row(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable {
-                                            msg.fileUrl?.let { url ->
-                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                                                    setDataAndType(Uri.parse(url), msg.mimeType ?: "video/*")
-                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                }
-                                                ctx.startActivity(intent)
-                                            }
-                                        }
-                                        .padding(4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(MaterialTheme.colorScheme.onSurface.copy(0.15f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Default.PlayArrow,
-                                            contentDescription = null,
-                                            tint = textColor,
-                                            modifier = Modifier.size(28.dp)
+                                msg.fileUrl?.let { url ->
+                                    if (exoPlayer != null) {
+                                        InlineVideoPlayer(
+                                            url = url,
+                                            isActive = activeVideoUrl == url,
+                                            exoPlayer = exoPlayer,
+                                            isMuted = isMuted,
+                                            onTap = { onVideoTap(url) },
+                                            onMuteToggle = onVideoMuteToggle
                                         )
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            text = msg.fileName ?: "Видео",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = textColor,
-                                            fontWeight = FontWeight.Medium,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        msg.fileSize?.let { size ->
-                                            Text(
-                                                text = size.toReadableSize(),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = textColor.copy(0.7f)
-                                            )
-                                        }
                                     }
                                 }
                             }
