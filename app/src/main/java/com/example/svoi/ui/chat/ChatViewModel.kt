@@ -203,8 +203,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** For group chats: poll every 8s to detect if the chat was deleted by the admin */
+    /** For group chats only: poll every 8s to detect if the chat was deleted by the admin */
     private fun startChatDeletionWatch() {
+        if (!_isGroup.value) return  // personal chats can't be deleted externally
         viewModelScope.launch {
             while (true) {
                 delay(8_000L)
@@ -499,7 +500,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun startTypingPolling() {
         viewModelScope.launch {
             while (true) {
-                delay(3_000L)
+                delay(5_000L)
                 if (chatId.isNotEmpty()) {
                     val typing = messageRepo.getTypingUsers(chatId, currentUserId)
                     _typingUsers.value = typing.map { TypingInfo(it.userId, it.displayName) }

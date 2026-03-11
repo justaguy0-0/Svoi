@@ -1,5 +1,6 @@
 package com.example.svoi.data.model
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -46,6 +47,7 @@ data class TypingStatus(
 )
 
 /** UI model combining message + sender profile + read status */
+@Immutable
 data class MessageUiItem(
     val message: Message,
     val senderProfile: Profile?,

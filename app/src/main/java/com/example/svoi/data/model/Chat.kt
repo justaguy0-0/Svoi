@@ -1,5 +1,6 @@
 package com.example.svoi.data.model
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -22,6 +23,7 @@ data class ChatMember(
 )
 
 /** UI model combining chat + last message + unread + other user info */
+@Immutable
 @Serializable
 data class ChatListItem(
     val chatId: String,

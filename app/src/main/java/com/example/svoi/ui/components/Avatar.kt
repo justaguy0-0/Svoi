@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,9 +34,11 @@ fun Avatar(
     fontSize: TextUnit = 22.sp,
     modifier: Modifier = Modifier
 ) {
-    val color = runCatching {
-        Color(android.graphics.Color.parseColor(bgColor))
-    }.getOrDefault(Color(0xFF5C6BC0))
+    val color = remember(bgColor) {
+        runCatching {
+            Color(android.graphics.Color.parseColor(bgColor))
+        }.getOrDefault(Color(0xFF5C6BC0))
+    }
 
     Box(
         modifier = modifier

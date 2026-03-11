@@ -91,9 +91,9 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
         else userRepo.getProfiles(memberIds)
         val profileMap = profiles.associateBy { it.id }
 
-        val presences = memberIds.mapNotNull { id ->
-            runCatching { userRepo.getPresence(id) }.getOrNull()?.let { id to it }
-        }.toMap()
+        val presences = runCatching { userRepo.getPresences(memberIds) }
+            .getOrDefault(emptyList())
+            .associateBy { it.userId }
 
         _members.value = rawMembers.map { member ->
             MemberUiItem(
