@@ -166,6 +166,15 @@ class ChatRepository(private val supabase: SupabaseClient) {
                 lastMsg == null -> ""
                 lastMsg.deletedForAll -> "Сообщение удалено"
                 lastMsg.type == "photo" -> if (senderName != null) "$senderName: 📷 Фото" else "📷 Фото"
+                lastMsg.type == "album" -> {
+                    val count = lastMsg.photoUrls?.size ?: 0
+                    val label = if (count > 1) "📷 $count фото" else "📷 Фото"
+                    if (senderName != null) "$senderName: $label" else label
+                }
+                lastMsg.type == "video" -> {
+                    val name = lastMsg.fileName ?: "Видео"
+                    if (senderName != null) "$senderName: 🎥 $name" else "🎥 $name"
+                }
                 lastMsg.type == "file" -> if (senderName != null) "$senderName: 📎 ${lastMsg.fileName ?: "Файл"}" else "📎 ${lastMsg.fileName ?: "Файл"}"
                 else -> {
                     val text = lastMsg.content ?: ""
