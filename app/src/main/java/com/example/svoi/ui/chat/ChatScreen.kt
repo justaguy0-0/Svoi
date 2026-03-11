@@ -1281,24 +1281,38 @@ private fun MessageItem(
                                 else MaterialTheme.colorScheme.surfaceVariant),
                                 modifier = Modifier.padding(bottom = 6.dp)
                             ) {
-                                Row(modifier = Modifier.padding(6.dp)) {
+                                Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
                                     Box(
                                         modifier = Modifier
                                             .width(2.dp)
-                                            .height(24.dp)
+                                            .height(32.dp)
                                             .background(
                                                 if (item.isOwn) Color.White
                                                 else MaterialTheme.colorScheme.primary
                                             )
+                                            .align(Alignment.CenterVertically)
                                     )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        text = reply.content ?: "[медиа]",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        color = if (item.isOwn) Color.White.copy(0.9f) else textColor
-                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        val authorName = item.replyToSenderProfile?.displayName ?: "Пользователь"
+                                        Text(
+                                            text = authorName,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (item.isOwn) Color.White
+                                                    else MaterialTheme.colorScheme.primary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = reply.content ?: "[медиа]",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            color = if (item.isOwn) Color.White.copy(0.85f)
+                                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }

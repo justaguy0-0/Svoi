@@ -174,12 +174,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val myId = currentUserId
         val messageMap = raw.associateBy { it.id }
         return raw.map { msg ->
+            val replyMsg = msg.replyToId?.let { messageMap[it] }
             MessageUiItem(
                 message = msg,
                 senderProfile = msg.senderId?.let { profileCache[it] },
                 isOwn = msg.senderId == myId,
                 isRead = false,
-                replyToMessage = msg.replyToId?.let { messageMap[it] },
+                replyToMessage = replyMsg,
+                replyToSenderProfile = replyMsg?.senderId?.let { profileCache[it] },
                 forwardedFromProfile = msg.forwardedFromUserId?.let { profileCache[it] }
             )
         }
@@ -300,6 +302,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 isOwn = msg.senderId == myId,
                 isRead = msg.id in readIds,
                 replyToMessage = replyMsg,
+                replyToSenderProfile = replyMsg?.senderId?.let { profileCache[it] },
                 forwardedFromProfile = msg.forwardedFromUserId?.let { profileCache[it] }
             )
         }
@@ -377,6 +380,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     isOwn = newMsg.senderId == currentUserId,
                     isRead = false,
                     replyToMessage = replyMsg,
+                    replyToSenderProfile = replyMsg?.senderId?.let { profileCache[it] },
                     forwardedFromProfile = forwardedFromProfile
                 )
                 val updated = _messages.value + item

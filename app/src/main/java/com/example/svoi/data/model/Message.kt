@@ -52,5 +52,6 @@ data class MessageUiItem(
     val isOwn: Boolean,
     val isRead: Boolean,
     val replyToMessage: Message? = null,
+    val replyToSenderProfile: Profile? = null,
     val forwardedFromProfile: Profile? = null
 )
