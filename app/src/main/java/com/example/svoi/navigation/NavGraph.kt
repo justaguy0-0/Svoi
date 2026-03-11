@@ -143,7 +143,8 @@ fun NavGraph(
                     onBack = { if (canNav()) navController.navigateUp() },
                     onOpenChat = { chatId ->
                         if (canNav()) navController.navigate(Routes.chat(chatId)) {
-                            popUpTo(Routes.USER_PROFILE) { inclusive = true }
+                            // Pop all screens back to CHAT_LIST so there's only one chat on the stack
+                            popUpTo(Routes.CHAT_LIST) { inclusive = false }
                         }
                     }
                 )
@@ -176,7 +177,15 @@ fun NavGraph(
 
             composable(Routes.PROFILE) {
                 ProfileScreen(
-                    onBack = { if (canNav()) navController.navigateUp() },
+                    onNavigateToChats = {
+                        if (canNav()) navController.popBackStack(Routes.CHAT_LIST, inclusive = false)
+                    },
+                    onNavigateToSettings = {
+                        if (canNav()) navController.navigate(Routes.SETTINGS) {
+                            popUpTo(Routes.CHAT_LIST) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    },
                     onLogout = {
                         if (canNav()) navController.navigate(Routes.LOGIN) {
                             popUpTo(0) { inclusive = true }
@@ -189,7 +198,15 @@ fun NavGraph(
                 SettingsScreen(
                     currentThemeMode = currentThemeMode,
                     onThemeChanged = onThemeChanged,
-                    onBack = { if (canNav()) navController.navigateUp() }
+                    onNavigateToChats = {
+                        if (canNav()) navController.popBackStack(Routes.CHAT_LIST, inclusive = false)
+                    },
+                    onNavigateToProfile = {
+                        if (canNav()) navController.navigate(Routes.PROFILE) {
+                            popUpTo(Routes.CHAT_LIST) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
         }

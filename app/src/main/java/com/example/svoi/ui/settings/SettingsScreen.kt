@@ -10,14 +10,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -25,31 +23,44 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.data.local.ThemeMode
+import com.example.svoi.ui.components.MainBottomBar
+import com.example.svoi.ui.profile.ProfileViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     currentThemeMode: ThemeMode,
     onThemeChanged: (ThemeMode) -> Unit,
-    onBack: () -> Unit
+    onNavigateToChats: () -> Unit,
+    onNavigateToProfile: () -> Unit,
+    profileViewModel: ProfileViewModel = viewModel()
 ) {
+    val currentProfile by profileViewModel.profile.collectAsState()
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Настройки", fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
+            )
+        },
+        bottomBar = {
+            MainBottomBar(
+                selectedTab = 2,
+                onChatsClick = onNavigateToChats,
+                onProfileClick = onNavigateToProfile,
+                onSettingsClick = {},
+                currentProfile = currentProfile
             )
         }
     ) { padding ->

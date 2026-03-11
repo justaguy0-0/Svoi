@@ -26,20 +26,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -69,6 +63,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.ui.components.Avatar
+import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.theme.Unread
 import com.example.svoi.util.toChatListTime
 import kotlinx.coroutines.launch
@@ -111,39 +106,13 @@ fun ChatListScreen(
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = true,
-                    onClick = {},
-                    icon = { Icon(Icons.Default.Chat, contentDescription = "Чаты") },
-                    label = { Text("Чаты") }
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onProfileClick,
-                    icon = {
-                        val p = currentProfile
-                        if (p != null) {
-                            com.example.svoi.ui.components.Avatar(
-                                emoji = p.emoji,
-                                bgColor = p.bgColor,
-                                letter = p.displayName,
-                                size = 28.dp,
-                                fontSize = 13.sp
-                            )
-                        } else {
-                            Icon(Icons.Default.Person, contentDescription = "Профиль")
-                        }
-                    },
-                    label = { Text("Профиль") }
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onSettingsClick,
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Настройки") },
-                    label = { Text("Настройки") }
-                )
-            }
+            MainBottomBar(
+                selectedTab = 0,
+                onChatsClick = {},
+                onProfileClick = onProfileClick,
+                onSettingsClick = onSettingsClick,
+                currentProfile = currentProfile
+            )
         },
         topBar = {
             TopAppBar(

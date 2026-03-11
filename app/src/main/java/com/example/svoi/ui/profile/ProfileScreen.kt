@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -58,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.ui.components.Avatar
+import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.theme.AvatarColors
 
 private val EMOJI_LIST = listOf(
@@ -68,7 +68,8 @@ private val EMOJI_LIST = listOf(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ProfileScreen(
-    onBack: () -> Unit,
+    onNavigateToChats: () -> Unit,
+    onNavigateToSettings: () -> Unit,
     onLogout: () -> Unit,
     viewModel: ProfileViewModel = viewModel()
 ) {
@@ -101,11 +102,6 @@ fun ProfileScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Профиль") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
-                    }
-                },
                 actions = {
                     IconButton(onClick = { showLogoutDialog = true }) {
                         Icon(
@@ -115,6 +111,15 @@ fun ProfileScreen(
                         )
                     }
                 }
+            )
+        },
+        bottomBar = {
+            MainBottomBar(
+                selectedTab = 1,
+                onChatsClick = onNavigateToChats,
+                onProfileClick = {},
+                onSettingsClick = onNavigateToSettings,
+                currentProfile = profile
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
