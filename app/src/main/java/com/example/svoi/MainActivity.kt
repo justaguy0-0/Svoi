@@ -14,6 +14,8 @@ import androidx.navigation.compose.rememberNavController
 import com.example.svoi.navigation.NavGraph
 import com.example.svoi.navigation.Routes
 import com.example.svoi.ui.theme.SvoiTheme
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 
 class MainActivity : ComponentActivity() {
 
@@ -53,8 +55,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Heartbeat fires immediately on first tick, then every 30s.
-        // No need for a separate setOnline(true) call.
+        // Heartbeat fires immediately (no initial delay), then every 5s.
         if (app.authRepository.isLoggedIn()) {
             app.startPresenceHeartbeat()
         }
@@ -62,9 +63,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        // Stop heartbeat — TTL in the DB view (90s) will mark the user offline
-        // automatically once heartbeats stop. No explicit setOnline(false) needed,
-        // which eliminates race conditions and the "stuck online after crash" bug.
         app.stopPresenceHeartbeat()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // runBlocking on the main thread is the ONLY reliable way to guarantee
+        // the network request completes before the process can be suspended.
+        // Android lifecycle guarantees onStop() always completes before onResume() runs,
+        // so there is no race condition between setOnline(false) and setOnline(true).
+        if (app.authRepository.isLoggedIn()) {
+            runBlocking {
+                try {
+                    withTimeout(1_500) { app.userRepository.setOnline(false) }
+                } catch (_: Exception) {}
+            }
+        }
     }
 }
