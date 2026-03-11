@@ -377,7 +377,7 @@ fun ChatScreen(
 
                 // Pinned message banner — slides in/out smoothly
                 AnimatedVisibility(
-                    visible = !isSelectionMode && pinnedMessage != null,
+                    visible = pinnedMessage != null,
                     enter = slideInVertically { -it } + fadeIn(tween(220)),
                     exit  = slideOutVertically { -it } + fadeOut(tween(180))
                 ) {
@@ -483,7 +483,7 @@ fun ChatScreen(
                             Box(
                                 modifier = Modifier.animateItem(
                                     fadeInSpec = null,
-                                    placementSpec = spring(
+                                    placementSpec = if (isSelectionMode) null else spring(
                                         dampingRatio = Spring.DampingRatioMediumBouncy,
                                         stiffness = Spring.StiffnessMediumLow
                                     ),
