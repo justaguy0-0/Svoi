@@ -1,13 +1,12 @@
 package com.example.svoi.ui.auth
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,16 +46,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.ui.components.Avatar
+import com.example.svoi.ui.components.EmojiPicker
 import com.example.svoi.ui.theme.AvatarColors
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Row
 
-private val EMOJI_LIST = listOf(
-    "😊", "😎", "🤩", "🥳", "😏", "🦊", "🐱", "🐶", "🦁", "🐸",
-    "🦋", "🌟", "🔥", "💎", "🎯", "🚀", "🎸", "🎨", "⚡", "🌈"
-)
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetupProfileScreen(
     inviteKey: String,
@@ -71,7 +64,7 @@ fun SetupProfileScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    var selectedEmoji by remember { mutableStateOf(EMOJI_LIST[0]) }
+    var selectedEmoji by remember { mutableStateOf("😊") }
     var selectedColor by remember { mutableStateOf(AvatarColors[4]) } // Indigo
 
     Scaffold(
@@ -164,57 +157,42 @@ fun SetupProfileScreen(
                 shape = MaterialTheme.shapes.medium
             )
 
-            // Emoji picker
+            // Emoji picker (same keyboard as in chat)
             Text("Выберите эмодзи", style = MaterialTheme.typography.titleMedium)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                EMOJI_LIST.forEach { emoji ->
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (emoji == selectedEmoji) MaterialTheme.colorScheme.primaryContainer
-                                else Color.Transparent
-                            )
-                            .then(
-                                if (emoji == selectedEmoji)
-                                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                                else Modifier
-                            )
-                            .clickable { selectedEmoji = emoji },
-                        contentAlignment = androidx.compose.ui.Alignment.Center
-                    ) {
-                        Text(text = emoji, style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-            }
+            EmojiPicker(
+                onEmojiSelected = { selectedEmoji = it },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-            // Color picker
+            // Color picker — 2 symmetric rows (chunked by 6)
             Text("Цвет аватара", style = MaterialTheme.typography.titleMedium)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                AvatarColors.forEach { hex ->
-                    val color = runCatching {
-                        Color(android.graphics.Color.parseColor(hex))
-                    }.getOrDefault(Color.Gray)
-
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(color)
-                            .then(
-                                if (hex == selectedColor)
-                                    Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
-                                else Modifier
+                AvatarColors.chunked(6).forEach { rowColors ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        rowColors.forEach { hex ->
+                            val color = runCatching {
+                                Color(android.graphics.Color.parseColor(hex))
+                            }.getOrDefault(Color.Gray)
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .then(
+                                        if (hex == selectedColor)
+                                            Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                        else Modifier
+                                    )
+                                    .clickable { selectedColor = hex }
                             )
-                            .clickable { selectedColor = hex }
-                    )
+                        }
+                    }
                 }
             }
 
