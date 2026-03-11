@@ -19,6 +19,7 @@ import com.example.svoi.ui.auth.LoginScreen
 import com.example.svoi.ui.auth.SetupProfileScreen
 import com.example.svoi.ui.chat.ChatScreen
 import com.example.svoi.ui.chatlist.ChatListScreen
+import com.example.svoi.ui.group.GroupInfoScreen
 import com.example.svoi.ui.newchat.CreateGroupScreen
 import com.example.svoi.ui.newchat.UserSearchScreen
 import com.example.svoi.ui.profile.ProfileScreen
@@ -36,10 +37,12 @@ object Routes {
     const val PROFILE = "profile"
     const val SETTINGS = "settings"
     const val USER_PROFILE = "user_profile/{userId}"
+    const val GROUP_INFO = "group_info/{chatId}"
 
     fun setupProfile(inviteKey: String) = "setup_profile/$inviteKey"
     fun chat(chatId: String) = "chat/$chatId"
     fun userProfile(userId: String) = "user_profile/$userId"
+    fun groupInfo(chatId: String) = "group_info/$chatId"
 }
 
 @Composable
@@ -129,6 +132,28 @@ fun NavGraph(
                     },
                     onUserClick = { userId ->
                         if (canNav()) navController.navigate(Routes.userProfile(userId))
+                    },
+                    onGroupInfoClick = { groupChatId ->
+                        if (canNav()) navController.navigate(Routes.groupInfo(groupChatId))
+                    }
+                )
+            }
+
+            composable(
+                route = Routes.GROUP_INFO,
+                arguments = listOf(navArgument("chatId") { type = NavType.StringType })
+            ) { backStack ->
+                val chatId = backStack.arguments?.getString("chatId") ?: ""
+                GroupInfoScreen(
+                    chatId = chatId,
+                    onBack = { if (canNav()) navController.navigateUp() },
+                    onMemberClick = { userId ->
+                        if (canNav()) navController.navigate(Routes.userProfile(userId))
+                    },
+                    onChatDeleted = {
+                        navController.navigate(Routes.CHAT_LIST) {
+                            popUpTo(Routes.CHAT_LIST) { inclusive = false }
+                        }
                     }
                 )
             }

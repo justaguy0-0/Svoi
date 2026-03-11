@@ -156,6 +156,7 @@ fun ChatScreen(
     onBack: () -> Unit,
     onForwardTo: (String) -> Unit,
     onUserClick: (String) -> Unit = {},
+    onGroupInfoClick: (String) -> Unit = {},
     viewModel: ChatViewModel = viewModel()
 ) {
     LaunchedEffect(chatId) { viewModel.init(chatId) }
@@ -289,8 +290,11 @@ fun ChatScreen(
                             )
                         } else {
                             Column(
-                                modifier = Modifier.clickable(enabled = !isGroup && otherUserId != null) {
-                                    otherUserId?.let { onUserClick(it) }
+                                modifier = Modifier.clickable(
+                                    enabled = (isGroup || otherUserId != null)
+                                ) {
+                                    if (isGroup) onGroupInfoClick(chatId)
+                                    else otherUserId?.let { onUserClick(it) }
                                 }
                             ) {
                                 Text(
