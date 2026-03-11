@@ -35,6 +35,17 @@ private data class MessageReadInsert(
 )
 
 @Serializable
+private data class AlbumMessageInsert(
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("sender_id") val senderId: String,
+    val type: String,
+    @SerialName("file_url") val fileUrl: String? = null,
+    @SerialName("photo_urls") val photoUrls: List<String>? = null,
+    val content: String? = null,
+    @SerialName("reply_to_id") val replyToId: String? = null,
+)
+
+@Serializable
 private data class ForwardMessageInsert(
     @SerialName("chat_id") val chatId: String,
     @SerialName("sender_id") val senderId: String,
@@ -412,12 +423,42 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (_: Exception) { emptyMap() }
     }
 
-    /** Upload a file/image to Supabase Storage and return the public URL */
-    suspend fun uploadFile(chatId: String, fileName: String, bytes: ByteArray): String? {
+    /** Upload a file/image to Supabase Storage and return the public URL.
+     *  [onProgress] is called with 1.0 when the upload completes. */
+    suspend fun uploadFile(
+        chatId: String,
+        fileName: String,
+        bytes: ByteArray,
+        onProgress: ((Float) -> Unit)? = null
+    ): String? {
         return try {
             val path = "$chatId/${java.util.UUID.randomUUID()}/$fileName"
             supabase.storage.from("chat-media").upload(path, bytes)
+            onProgress?.invoke(1f)
             supabase.storage.from("chat-media").publicUrl(path)
+        } catch (e: Exception) { null }
+    }
+
+    /** Send a message with one or more photos (and optional text caption). */
+    suspend fun sendAlbumMessage(
+        chatId: String,
+        photoUrls: List<String>,
+        content: String?,
+        replyToId: String? = null
+    ): Message? {
+        val userId = currentUserId() ?: return null
+        return try {
+            supabase.from("messages").insert(
+                AlbumMessageInsert(
+                    chatId = chatId,
+                    senderId = userId,
+                    type = if (photoUrls.size == 1) "photo" else "album",
+                    fileUrl = if (photoUrls.size == 1) photoUrls.first() else null,
+                    photoUrls = if (photoUrls.size > 1) photoUrls else null,
+                    content = content,
+                    replyToId = replyToId
+                )
+            ).decodeSingle<Message>()
         } catch (e: Exception) { null }
     }
 }

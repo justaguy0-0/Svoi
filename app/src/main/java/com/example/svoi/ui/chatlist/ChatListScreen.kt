@@ -1,9 +1,11 @@
 package com.example.svoi.ui.chatlist
 
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -183,20 +185,31 @@ fun ChatListScreen(
             } else {
                 LazyColumn {
                     items(chats, key = { it.chatId }) { chat ->
-                        ChatListItem(
-                            item = chat,
-                            typingText = chatTyping[chat.chatId],
-                            onClick = { onChatClick(chat.chatId) },
-                            onLongClick = {
-                                selectedChat = chat
-                                showBottomSheet = true
-                            }
-                        )
-                        Divider(
-                            modifier = Modifier.padding(start = 78.dp),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                        )
+                        Column(
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = tween(220),
+                                placementSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                ),
+                                fadeOutSpec = tween(150)
+                            )
+                        ) {
+                            ChatListItem(
+                                item = chat,
+                                typingText = chatTyping[chat.chatId],
+                                onClick = { onChatClick(chat.chatId) },
+                                onLongClick = {
+                                    selectedChat = chat
+                                    showBottomSheet = true
+                                }
+                            )
+                            Divider(
+                                modifier = Modifier.padding(start = 78.dp),
+                                thickness = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                            )
+                        }
                     }
                 }
             }

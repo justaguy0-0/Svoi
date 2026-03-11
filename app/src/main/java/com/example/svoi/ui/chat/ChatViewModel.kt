@@ -79,6 +79,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSelectionMode = MutableStateFlow(false)
     val isSelectionMode: StateFlow<Boolean> = _isSelectionMode
 
+    /** Images staged by the user before pressing Send */
+    private val _stagedImages = MutableStateFlow<List<Uri>>(emptyList())
+    val stagedImages: StateFlow<List<Uri>> = _stagedImages
+
+    /** Upload progress (0..1) for each staged image while uploading */
+    private val _uploadProgresses = MutableStateFlow<List<Float>>(emptyList())
+    val uploadProgresses: StateFlow<List<Float>> = _uploadProgresses
+
     private val _chatsForForward = MutableStateFlow<List<ChatListItem>>(emptyList())
     val chatsForForward: StateFlow<List<ChatListItem>> = _chatsForForward
 
@@ -560,6 +568,97 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _replyTo.value = null
             }
             _isSending.value = false
+        }
+    }
+
+    // ── Staged images ─────────────────────────────────────────────────────────
+
+    fun addStagedImages(uris: List<Uri>) {
+        _stagedImages.value = (_stagedImages.value + uris).take(10)
+    }
+
+    fun removeStagedImage(index: Int) {
+        _stagedImages.value = _stagedImages.value.filterIndexed { i, _ -> i != index }
+    }
+
+    fun clearStagedImages() {
+        _stagedImages.value = emptyList()
+        _uploadProgresses.value = emptyList()
+    }
+
+    /** Send a message with staged images (and optional text caption).
+     *  Adds a pending placeholder immediately, then uploads in background. */
+    fun sendWithMedia(text: String, uris: List<Uri>, context: Context) {
+        val replyId = _replyTo.value?.id
+        val myId = currentUserId
+        val myProfile = profileCache[myId]
+
+        // Fake ID for the local placeholder
+        val pendingId = "pending_${java.util.UUID.randomUUID()}"
+        val now = java.time.Instant.now().toString()
+        val pendingMsg = Message(
+            id = pendingId,
+            chatId = chatId,
+            senderId = myId,
+            content = text.trim().ifBlank { null },
+            type = if (uris.size == 1) "photo" else "album",
+            createdAt = now
+        )
+        val pendingItem = MessageUiItem(
+            message = pendingMsg,
+            senderProfile = myProfile,
+            isOwn = true,
+            isRead = false,
+            isPending = true,
+            pendingLocalUris = uris.map { it.toString() }
+        )
+
+        _messages.value = _messages.value + pendingItem
+        _scrollToBottomEvent.value++
+        _stagedImages.value = emptyList()
+        _replyTo.value = null
+        _uploadProgresses.value = List(uris.size) { 0f }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSending.value = true
+            try {
+                val uploadedUrls = mutableListOf<String>()
+                uris.forEachIndexed { idx, uri ->
+                    val bytes = compressImage(uri, context)
+                    if (bytes == null) {
+                        _error.value = "Не удалось прочитать изображение"
+                        _messages.value = _messages.value.filter { it.message.id != pendingId }
+                        _uploadProgresses.value = emptyList()
+                        return@launch
+                    }
+                    val fileName = "photo_${System.currentTimeMillis()}.jpg"
+                    val url = messageRepo.uploadFile(chatId, fileName, bytes) { progress ->
+                        val progs = _uploadProgresses.value.toMutableList()
+                        if (idx < progs.size) {
+                            progs[idx] = progress
+                            _uploadProgresses.value = progs
+                        }
+                    }
+                    if (url == null) {
+                        _error.value = "Ошибка загрузки изображения"
+                        _messages.value = _messages.value.filter { it.message.id != pendingId }
+                        _uploadProgresses.value = emptyList()
+                        return@launch
+                    }
+                    uploadedUrls.add(url)
+                }
+
+                messageRepo.sendAlbumMessage(chatId, uploadedUrls, text.trim().ifBlank { null }, replyId)
+                // Remove placeholder — real message arrives via Realtime
+                _messages.value = _messages.value.filter { it.message.id != pendingId }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _error.value = "Ошибка: ${e.message}"
+                _messages.value = _messages.value.filter { it.message.id != pendingId }
+            } finally {
+                _isSending.value = false
+                _uploadProgresses.value = emptyList()
+            }
         }
     }
 

@@ -51,7 +51,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -196,6 +198,8 @@ fun ChatScreen(
     val otherUserId by viewModel.otherUserId.collectAsState()
     val isChatDeleted by viewModel.isChatDeleted.collectAsState()
     val animatingMessageIds by viewModel.animatingMessageIds.collectAsState()
+    val stagedImages by viewModel.stagedImages.collectAsState()
+    val uploadProgresses by viewModel.uploadProgresses.collectAsState()
 
     // If the group chat was deleted by the admin, kick this user back to chat list
     LaunchedEffect(isChatDeleted) {
@@ -226,6 +230,10 @@ fun ChatScreen(
     // Exit selection mode with back button
     BackHandler(enabled = isSelectionMode) {
         viewModel.clearSelection()
+    }
+    // Clear staged images with back button
+    BackHandler(enabled = stagedImages.isNotEmpty()) {
+        viewModel.clearStagedImages()
     }
 
     val displayEntries = remember(messages, firstUnreadIndex) {
@@ -278,9 +286,9 @@ fun ChatScreen(
     }
 
     val imagePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.sendPhoto(it, context) }
+        ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) viewModel.addStagedImages(uris)
     }
 
     val presenceText = remember(presence) {
@@ -508,6 +516,7 @@ fun ChatScreen(
                                                     isHighlighted = entry.item.message.id == highlightedMessageId,
                                                     isSelected = entry.item.message.id in selectedMessageIds,
                                                     isSelectionMode = isSelectionMode,
+                                                    uploadProgresses = if (entry.item.isPending) uploadProgresses else emptyList(),
                                                     modifier = Modifier,
                                                     onLongClick = {
                                                         viewModel.toggleSelection(entry.item.message.id)
@@ -579,6 +588,18 @@ fun ChatScreen(
                         .background(MaterialTheme.colorScheme.surface)
                         .navigationBarsPadding()
                 ) {
+                    // Staged images preview
+                    AnimatedVisibility(
+                        visible = stagedImages.isNotEmpty(),
+                        enter = slideInVertically { it } + fadeIn(tween(180)),
+                        exit  = slideOutVertically { it } + fadeOut(tween(140))
+                    ) {
+                        StagedImagesRow(
+                            uris = stagedImages,
+                            onRemove = { viewModel.removeStagedImage(it) }
+                        )
+                    }
+
                     // Emoji picker panel
                     AnimatedVisibility(
                         visible = showEmojiPicker,
@@ -684,7 +705,7 @@ fun ChatScreen(
 
                         // Photo / Send button
                         AnimatedContent(
-                            targetState = inputValue.text.isBlank(),
+                            targetState = inputValue.text.isBlank() && stagedImages.isEmpty(),
                             transitionSpec = {
                                 (scaleIn(tween(180)) + fadeIn(tween(180))) togetherWith
                                 (scaleOut(tween(140)) + fadeOut(tween(140)))
@@ -706,9 +727,15 @@ fun ChatScreen(
                                         .clip(CircleShape)
                                         .background(MaterialTheme.colorScheme.primary)
                                         .clickable {
-                                            viewModel.sendText(inputValue.text)
+                                            val text = inputValue.text
+                                            val imgs = stagedImages
                                             inputValue = TextFieldValue("")
                                             viewModel.onInputTextChanged("")
+                                            if (imgs.isNotEmpty()) {
+                                                viewModel.sendWithMedia(text, imgs, context)
+                                            } else {
+                                                viewModel.sendText(text)
+                                            }
                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -975,6 +1002,212 @@ private fun SelectionActionBar(
     }
 }
 
+// ── Staged images preview row ─────────────────────────────────────────────────
+
+@Composable
+private fun StagedImagesRow(
+    uris: List<Uri>,
+    onRemove: (Int) -> Unit
+) {
+    Column {
+        HorizontalDivider()
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            itemsIndexed(uris) { index, uri ->
+                Box(modifier = Modifier.size(80.dp)) {
+                    AsyncImage(
+                        model = uri,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(2.dp)
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .clickable { onRemove(index) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Убрать",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Photo grid (single or album) ──────────────────────────────────────────────
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PhotoGrid(
+    urls: List<String>,
+    isPending: Boolean,
+    uploadProgresses: List<Float>,
+    isOwn: Boolean,
+    isSelectionMode: Boolean,
+    textColor: Color,
+    onPhotoClick: (String) -> Unit,
+    onTap: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val maxVisible = 4
+    val count = urls.size
+    val visibleUrls = urls.take(maxVisible)
+    val extraCount = (count - maxVisible).coerceAtLeast(0)
+
+    if (count == 1) {
+        val url = urls[0]
+        val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
+            Uri.parse(url) else url
+        val progress = uploadProgresses.getOrNull(0)
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .widthIn(min = 120.dp, max = 260.dp)
+                .height(180.dp)
+                .combinedClickable(onClick = { onPhotoClick(url) }, onLongClick = onLongClick)
+        ) {
+            SubcomposeAsyncImage(
+                model = model,
+                contentDescription = "Фото",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                loading = {
+                    Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 2.dp,
+                            color = if (isOwn) Color.White.copy(0.7f)
+                                    else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
+                error = {
+                    Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        Icon(Icons.Default.BrokenImage, null, tint = textColor.copy(0.5f), modifier = Modifier.size(32.dp))
+                    }
+                }
+            )
+            // Upload progress overlay
+            if (isPending) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.3f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (progress != null && progress > 0f && progress < 1f) {
+                        CircularProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.size(36.dp),
+                            strokeWidth = 3.dp,
+                            color = Color.White,
+                            trackColor = Color.White.copy(alpha = 0.3f)
+                        )
+                    } else {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(36.dp),
+                            strokeWidth = 3.dp,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+    } else {
+        val cellSize = 130.dp
+        val gap = 2.dp
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            val rows = (visibleUrls.size + 1) / 2
+            for (row in 0 until rows) {
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    for (col in 0..1) {
+                        val idx = row * 2 + col
+                        if (idx >= visibleUrls.size) break
+                        val url = visibleUrls[idx]
+                        val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
+                            Uri.parse(url) else url
+                        val isLastVisible = idx == maxVisible - 1 && extraCount > 0
+                        val progress = uploadProgresses.getOrNull(idx)
+                        Box(
+                            modifier = Modifier
+                                .size(cellSize)
+                                .clip(RoundedCornerShape(6.dp))
+                                .combinedClickable(
+                                    onClick = { onPhotoClick(url) },
+                                    onLongClick = onLongClick
+                                )
+                        ) {
+                            AsyncImage(
+                                model = model,
+                                contentDescription = "Фото",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                            // Upload progress per cell
+                            if (isPending) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.3f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (progress != null && progress > 0f && progress < 1f) {
+                                        CircularProgressIndicator(
+                                            progress = { progress },
+                                            modifier = Modifier.size(26.dp),
+                                            strokeWidth = 2.5.dp,
+                                            color = Color.White,
+                                            trackColor = Color.White.copy(alpha = 0.3f)
+                                        )
+                                    } else {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(26.dp),
+                                            strokeWidth = 2.5.dp,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+                            }
+                            // "+N more" overlay on last visible cell
+                            if (isLastVisible) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.52f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        "+$extraCount",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ── Forward picker dialog ─────────────────────────────────────────────────────
 
 @Composable
@@ -1137,6 +1370,7 @@ private fun MessageItem(
     isHighlighted: Boolean,
     isSelected: Boolean = false,
     isSelectionMode: Boolean = false,
+    uploadProgresses: List<Float> = emptyList(),
     modifier: Modifier = Modifier,
     onLongClick: () -> Unit,
     onTap: () -> Unit = {},
@@ -1380,46 +1614,26 @@ private fun MessageItem(
 
                         // Message content
                         when (msg.type) {
-                            "photo" -> {
-                                if (msg.fileUrl != null) {
-                                    SubcomposeAsyncImage(
-                                        model = msg.fileUrl,
-                                        contentDescription = "Фото",
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .widthIn(min = 120.dp, max = 220.dp)
-                                            .height(160.dp)
-                                            .combinedClickable(
-                                                onClick = { if (!isSelectionMode) onPhotoClick(msg.fileUrl) else onTap() },
-                                                onLongClick = onLongClick
-                                            ),
-                                        contentScale = ContentScale.Crop,
-                                        loading = {
-                                            Box(
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(28.dp),
-                                                    strokeWidth = 2.dp,
-                                                    color = if (item.isOwn) Color.White.copy(0.7f)
-                                                            else MaterialTheme.colorScheme.primary
-                                                )
-                                            }
+                            "photo", "album" -> {
+                                val photos: List<String> = when {
+                                    item.isPending -> item.pendingLocalUris
+                                    msg.type == "album" -> msg.photoUrls ?: emptyList()
+                                    msg.fileUrl != null -> listOf(msg.fileUrl)
+                                    else -> emptyList()
+                                }
+                                if (photos.isNotEmpty()) {
+                                    PhotoGrid(
+                                        urls = photos,
+                                        isPending = item.isPending,
+                                        uploadProgresses = uploadProgresses,
+                                        isOwn = item.isOwn,
+                                        isSelectionMode = isSelectionMode,
+                                        textColor = textColor,
+                                        onPhotoClick = { url ->
+                                            if (!isSelectionMode) onPhotoClick(url) else onTap()
                                         },
-                                        error = {
-                                            Box(
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.BrokenImage,
-                                                    contentDescription = null,
-                                                    tint = textColor.copy(0.5f),
-                                                    modifier = Modifier.size(32.dp)
-                                                )
-                                            }
-                                        }
+                                        onTap = onTap,
+                                        onLongClick = onLongClick
                                     )
                                 } else {
                                     Text("📷 Фото", color = textColor)
@@ -1481,7 +1695,14 @@ private fun MessageItem(
                                 color = textColor.copy(0.7f),
                                 fontSize = 10.sp
                             )
-                            if (item.isOwn) {
+                            if (item.isPending) {
+                                Spacer(Modifier.width(3.dp))
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    strokeWidth = 1.5.dp,
+                                    color = textColor.copy(0.7f)
+                                )
+                            } else if (item.isOwn) {
                                 Spacer(Modifier.width(3.dp))
                                 Icon(
                                     imageVector = if (item.isRead) Icons.Default.DoneAll else Icons.Default.Check,

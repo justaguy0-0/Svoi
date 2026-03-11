@@ -10,10 +10,11 @@ data class Message(
     @SerialName("chat_id") val chatId: String = "",
     @SerialName("sender_id") val senderId: String? = null,
     val content: String? = null,
-    val type: String = "text", // "text" | "photo" | "file"
+    val type: String = "text", // "text" | "photo" | "file" | "system" | "album"
     @SerialName("file_url") val fileUrl: String? = null,
     @SerialName("file_name") val fileName: String? = null,
     @SerialName("file_size") val fileSize: Long? = null,
+    @SerialName("photo_urls") val photoUrls: List<String>? = null,
     @SerialName("reply_to_id") val replyToId: String? = null,
     @SerialName("forwarded_from_id") val forwardedFromId: String? = null,
     @SerialName("forwarded_from_user_id") val forwardedFromUserId: String? = null,
@@ -55,5 +56,9 @@ data class MessageUiItem(
     val isRead: Boolean,
     val replyToMessage: Message? = null,
     val replyToSenderProfile: Profile? = null,
-    val forwardedFromProfile: Profile? = null
+    val forwardedFromProfile: Profile? = null,
+    /** True while images are still uploading (local-only placeholder) */
+    val isPending: Boolean = false,
+    /** Content-URI strings of locally-staged images (used while isPending=true) */
+    val pendingLocalUris: List<String> = emptyList()
 )
