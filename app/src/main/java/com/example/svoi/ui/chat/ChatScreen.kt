@@ -55,6 +55,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -216,7 +218,7 @@ fun ChatScreen(
 
     // Bottom sheet state
     var selectedMessage by remember { mutableStateOf<MessageUiItem?>(null) }
-    var lightboxUrl by remember { mutableStateOf<String?>(null) }
+    var lightboxState by remember { mutableStateOf<LightboxState?>(null) }
     val sheetState = rememberModalBottomSheetState()
 
     // Forward picker state
@@ -531,7 +533,9 @@ fun ChatScreen(
                                                     onReply = {
                                                         viewModel.setReplyTo(entry.item.message)
                                                     },
-                                                    onPhotoClick = { url -> lightboxUrl = url },
+                                                    onPhotoClick = { url, albumUrls ->
+                                                        lightboxState = LightboxState(albumUrls, albumUrls.indexOf(url).coerceAtLeast(0))
+                                                    },
                                                     onUserClick = { userId -> onUserClick(userId) }
                                                 )
                                             }
@@ -755,12 +759,12 @@ fun ChatScreen(
     }
 
     // ── Image Lightbox ──────────────────────────────────────────────────────────
-    lightboxUrl?.let { url ->
+    lightboxState?.let { ls ->
         val ctx = LocalContext.current
         ImageLightbox(
-            url = url,
-            onDismiss = { lightboxUrl = null },
-            onDownload = {
+            state = ls,
+            onDismiss = { lightboxState = null },
+            onDownload = { url ->
                 val filename = "svoi_${System.currentTimeMillis()}.jpg"
                 val request = DownloadManager.Request(Uri.parse(url))
                     .setTitle(filename)
@@ -1061,147 +1065,164 @@ private fun PhotoGrid(
     isOwn: Boolean,
     isSelectionMode: Boolean,
     textColor: Color,
-    onPhotoClick: (String) -> Unit,
+    onPhotoClick: (url: String, albumUrls: List<String>) -> Unit,
     onTap: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val maxVisible = 4
     val count = urls.size
+    val maxVisible = 4
     val visibleUrls = urls.take(maxVisible)
     val extraCount = (count - maxVisible).coerceAtLeast(0)
+    val gap = 2.dp
 
-    if (count == 1) {
-        val url = urls[0]
+    // Helper: one photo cell
+    @Composable
+    fun PhotoCell(
+        url: String,
+        idx: Int,
+        modifier: Modifier,
+        showExtra: Boolean = false
+    ) {
         val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
             Uri.parse(url) else url
-        val progress = uploadProgresses.getOrNull(0)
+        val progress = uploadProgresses.getOrNull(idx)
         Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .widthIn(min = 120.dp, max = 260.dp)
-                .height(180.dp)
-                .combinedClickable(onClick = { onPhotoClick(url) }, onLongClick = onLongClick)
+            modifier = modifier
+                .clip(RoundedCornerShape(6.dp))
+                .combinedClickable(
+                    onClick = { onPhotoClick(url, urls) },
+                    onLongClick = onLongClick
+                )
         ) {
-            SubcomposeAsyncImage(
+            AsyncImage(
                 model = model,
                 contentDescription = "Фото",
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                loading = {
-                    Box(Modifier.fillMaxSize(), Alignment.Center) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(28.dp),
-                            strokeWidth = 2.dp,
-                            color = if (isOwn) Color.White.copy(0.7f)
-                                    else MaterialTheme.colorScheme.primary
-                        )
-                    }
-                },
-                error = {
-                    Box(Modifier.fillMaxSize(), Alignment.Center) {
-                        Icon(Icons.Default.BrokenImage, null, tint = textColor.copy(0.5f), modifier = Modifier.size(32.dp))
-                    }
-                }
+                contentScale = ContentScale.Crop
             )
-            // Upload progress overlay
             if (isPending) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (progress != null && progress > 0f && progress < 1f) {
                         CircularProgressIndicator(
                             progress = { progress },
-                            modifier = Modifier.size(36.dp),
-                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(26.dp),
+                            strokeWidth = 2.5.dp,
                             color = Color.White,
                             trackColor = Color.White.copy(alpha = 0.3f)
                         )
                     } else {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(36.dp),
-                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(26.dp),
+                            strokeWidth = 2.5.dp,
                             color = Color.White
                         )
                     }
                 }
             }
+            if (showExtra) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.52f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "+$extraCount",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
-    } else {
-        val cellSize = 130.dp
-        val gap = 2.dp
-        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-            val rows = (visibleUrls.size + 1) / 2
-            for (row in 0 until rows) {
-                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    for (col in 0..1) {
-                        val idx = row * 2 + col
-                        if (idx >= visibleUrls.size) break
-                        val url = visibleUrls[idx]
-                        val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
-                            Uri.parse(url) else url
-                        val isLastVisible = idx == maxVisible - 1 && extraCount > 0
-                        val progress = uploadProgresses.getOrNull(idx)
-                        Box(
-                            modifier = Modifier
-                                .size(cellSize)
-                                .clip(RoundedCornerShape(6.dp))
-                                .combinedClickable(
-                                    onClick = { onPhotoClick(url) },
-                                    onLongClick = onLongClick
-                                )
-                        ) {
-                            AsyncImage(
-                                model = model,
-                                contentDescription = "Фото",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
+    }
+
+    when (count) {
+        1 -> {
+            // Single photo with loading state
+            val url = urls[0]
+            val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
+                Uri.parse(url) else url
+            val progress = uploadProgresses.getOrNull(0)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .widthIn(min = 120.dp, max = 260.dp)
+                    .height(180.dp)
+                    .combinedClickable(onClick = { onPhotoClick(url, urls) }, onLongClick = onLongClick)
+            ) {
+                SubcomposeAsyncImage(
+                    model = model,
+                    contentDescription = "Фото",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    loading = {
+                        Box(Modifier.fillMaxSize(), Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(28.dp),
+                                strokeWidth = 2.dp,
+                                color = if (isOwn) Color.White.copy(0.7f) else MaterialTheme.colorScheme.primary
                             )
-                            // Upload progress per cell
-                            if (isPending) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black.copy(alpha = 0.3f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (progress != null && progress > 0f && progress < 1f) {
-                                        CircularProgressIndicator(
-                                            progress = { progress },
-                                            modifier = Modifier.size(26.dp),
-                                            strokeWidth = 2.5.dp,
-                                            color = Color.White,
-                                            trackColor = Color.White.copy(alpha = 0.3f)
-                                        )
-                                    } else {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(26.dp),
-                                            strokeWidth = 2.5.dp,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-                            }
-                            // "+N more" overlay on last visible cell
-                            if (isLastVisible) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black.copy(alpha = 0.52f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        "+$extraCount",
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
+                        }
+                    },
+                    error = {
+                        Box(Modifier.fillMaxSize(), Alignment.Center) {
+                            Icon(Icons.Default.BrokenImage, null, tint = textColor.copy(0.5f), modifier = Modifier.size(32.dp))
                         }
                     }
+                )
+                if (isPending) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (progress != null && progress > 0f && progress < 1f) {
+                            CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(36.dp), strokeWidth = 3.dp, color = Color.White, trackColor = Color.White.copy(0.3f))
+                        } else {
+                            CircularProgressIndicator(modifier = Modifier.size(36.dp), strokeWidth = 3.dp, color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
+        2 -> {
+            // Two equal columns
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                PhotoCell(visibleUrls[0], 0, Modifier.weight(1f).height(160.dp))
+                PhotoCell(visibleUrls[1], 1, Modifier.weight(1f).height(160.dp))
+            }
+        }
+        3 -> {
+            // Big left cell + 2 stacked on right
+            val totalH = 180.dp
+            val cellH = (totalH - gap) / 2
+            Row(
+                modifier = Modifier.width(262.dp),
+                horizontalArrangement = Arrangement.spacedBy(gap)
+            ) {
+                PhotoCell(visibleUrls[0], 0, Modifier.width(158.dp).height(totalH))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(gap)
+                ) {
+                    PhotoCell(visibleUrls[1], 1, Modifier.fillMaxWidth().height(cellH))
+                    PhotoCell(visibleUrls[2], 2, Modifier.fillMaxWidth().height(cellH))
+                }
+            }
+        }
+        else -> {
+            // 4+ photos: 2×2 grid, last cell shows "+N" if more
+            val cellSize = 130.dp
+            Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    PhotoCell(visibleUrls[0], 0, Modifier.size(cellSize))
+                    PhotoCell(visibleUrls[1], 1, Modifier.size(cellSize))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    PhotoCell(visibleUrls[2], 2, Modifier.size(cellSize))
+                    val last = visibleUrls[3]
+                    PhotoCell(last, 3, Modifier.size(cellSize), showExtra = extraCount > 0)
                 }
             }
         }
@@ -1375,7 +1396,7 @@ private fun MessageItem(
     onLongClick: () -> Unit,
     onTap: () -> Unit = {},
     onReply: () -> Unit = {},
-    onPhotoClick: (String) -> Unit = {},
+    onPhotoClick: (url: String, albumUrls: List<String>) -> Unit = { _, _ -> },
     onUserClick: (String) -> Unit = {}
 ) {
     val msg = item.message
@@ -1629,12 +1650,21 @@ private fun MessageItem(
                                         isOwn = item.isOwn,
                                         isSelectionMode = isSelectionMode,
                                         textColor = textColor,
-                                        onPhotoClick = { url ->
-                                            if (!isSelectionMode) onPhotoClick(url) else onTap()
+                                        onPhotoClick = { url, albumUrls ->
+                                            if (!isSelectionMode) onPhotoClick(url, albumUrls) else onTap()
                                         },
                                         onTap = onTap,
                                         onLongClick = onLongClick
                                     )
+                                    // Caption text (if present)
+                                    if (!msg.content.isNullOrBlank()) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = msg.content,
+                                            color = textColor,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
                                 } else {
                                     Text("📷 Фото", color = textColor)
                                 }
@@ -1732,12 +1762,18 @@ private sealed class ChatEntry {
     object UnreadDivider : ChatEntry()
 }
 
+data class LightboxState(val urls: List<String>, val startIndex: Int = 0)
+
 @Composable
 private fun ImageLightbox(
-    url: String,
+    state: LightboxState,
     onDismiss: () -> Unit,
-    onDownload: () -> Unit
+    onDownload: (url: String) -> Unit
 ) {
+    val pagerState = rememberPagerState(
+        initialPage = state.startIndex,
+        pageCount = { state.urls.size }
+    )
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -1750,37 +1786,60 @@ private fun ImageLightbox(
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.95f))
         ) {
-            // Image with loading state
-            SubcomposeAsyncImage(
-                model = url,
-                contentDescription = "Изображение",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-                loading = {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center),
-                        color = Color.White,
-                        strokeWidth = 2.dp
-                    )
-                },
-                error = {
-                    Icon(
-                        Icons.Default.BrokenImage,
-                        contentDescription = null,
-                        tint = Color.White.copy(0.5f),
-                        modifier = Modifier.align(Alignment.Center).size(48.dp)
-                    )
-                }
-            )
+            // Swipeable pager
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                val url = state.urls[page]
+                val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
+                    Uri.parse(url) else url
+                SubcomposeAsyncImage(
+                    model = model,
+                    contentDescription = "Изображение",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                    loading = {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    },
+                    error = {
+                        Icon(
+                            Icons.Default.BrokenImage,
+                            contentDescription = null,
+                            tint = Color.White.copy(0.5f),
+                            modifier = Modifier.align(Alignment.Center).size(48.dp)
+                        )
+                    }
+                )
+            }
 
-            // Top bar: download + close buttons
+            // Page indicator (only for albums)
+            if (state.urls.size > 1) {
+                Text(
+                    text = "${pagerState.currentPage + 1} / ${state.urls.size}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 20.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+            }
+
+            // Top-right: download + close
             Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(top = 16.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onDownload) {
+                val currentUrl = state.urls.getOrElse(pagerState.currentPage) { state.urls.first() }
+                IconButton(onClick = { onDownload(currentUrl) }) {
                     Icon(
                         Icons.Default.Download,
                         contentDescription = "Скачать",
