@@ -53,8 +53,6 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private val refreshMutex = Mutex()
     private var refreshJob: Job? = null
     private var loadJob: Job? = null
-    // Cooldown: prevent silentRefresh more than once per 5s (protects against rapid Realtime events)
-    private var lastRefreshMs = 0L
 
     init {
         // Watch for going offline so we show "Обновление..." when reconnecting
@@ -108,20 +106,13 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Debounced silent refresh — skips if a full loadChats() is already running.
-    // Cooldown: at most once per 5s to avoid hammering the DB on rapid Realtime events.
+    // Debounced silent refresh — skips if a full loadChats() is already running
     fun silentRefresh() {
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
-            delay(500) // debounce: ignore rapid-fire events
-            val now = System.currentTimeMillis()
-            val elapsed = now - lastRefreshMs
-            if (elapsed < 5_000L) {
-                delay(5_000L - elapsed) // wait out cooldown
-            }
+            delay(300) // debounce: ignore rapid-fire events
             if (!refreshMutex.tryLock()) return@launch  // loadChats in progress — it will have fresh data
             try {
-                lastRefreshMs = System.currentTimeMillis()
                 val fresh = chatRepo.getChatsForUser()
                 if (fresh.isNotEmpty()) {
                     _chats.value = fresh
@@ -179,7 +170,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private fun startTypingPolling() {
         viewModelScope.launch {
             while (true) {
-                delay(5_000L)
+                delay(3_000L)
                 val chats = _chats.value
                 if (chats.isNotEmpty()) {
                     val chatIds = chats.map { it.chatId }

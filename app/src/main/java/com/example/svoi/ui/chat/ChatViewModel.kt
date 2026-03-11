@@ -500,7 +500,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun startTypingPolling() {
         viewModelScope.launch {
             while (true) {
-                delay(5_000L)
+                delay(3_000L)
                 if (chatId.isNotEmpty()) {
                     val typing = messageRepo.getTypingUsers(chatId, currentUserId)
                     _typingUsers.value = typing.map { TypingInfo(it.userId, it.displayName) }
