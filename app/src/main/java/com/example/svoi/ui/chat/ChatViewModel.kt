@@ -123,39 +123,61 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         this.chatId = chatId
 
         viewModelScope.launch {
-            // 1. Show cached data instantly
-            val cachedInfo = cache.loadChatInfo(chatId)
+            val cachedInfo     = cache.loadChatInfo(chatId)
             val cachedMessages = cache.loadMessages(chatId)
             val cachedProfiles = cache.loadProfileMap()
+            val cachedPinned   = cache.loadPinnedContent(chatId)
 
-            if (cachedInfo != null) {
-                _chatName.value = cachedInfo.name
-                _isGroup.value = cachedInfo.isGroup
-                _memberCount.value = cachedInfo.memberCount
-                otherUserIdVal = cachedInfo.otherUserId
-                _otherUserId.value = cachedInfo.otherUserId
-            }
-            if (cachedMessages != null) {
+            // "Full cache" = we have everything needed to show a stable, final-looking screen.
+            // cachedPinned != null means pinned state was saved previously (even if null = no pinned).
+            val hasFullCache = cachedInfo != null && cachedMessages != null && cachedPinned != null
+
+            if (hasFullCache) {
+                // ── FAST PATH: show everything at once, no jumps ──────────────────
                 cachedProfiles.forEach { profileCache[it.key] = it.value }
-                _messages.value = buildUiItems(cachedMessages)
+
+                _chatName.value    = cachedInfo!!.name
+                _isGroup.value     = cachedInfo.isGroup
+                _memberCount.value = cachedInfo.memberCount
+                otherUserIdVal     = cachedInfo.otherUserId
+                _otherUserId.value = cachedInfo.otherUserId
+
+                // Set pinned BEFORE messages so the banner height is already stable
+                // when LazyColumn does its first layout pass.
+                _pinnedMessage.value        = cachedPinned!!.pinnedMessage
+                _pinnedMessageContent.value = cachedPinned.messageContent
+
+                _messages.value = buildUiItems(cachedMessages!!)
                 lastKnownMessageId = cachedMessages.lastOrNull()?.id
+
                 _isLoading.value = false
-                _scrollToBottomEvent.value++
+                _scrollToBottomEvent.value++   // single, stable scroll
+
+                // ── Silent background refresh — NO extra scroll ───────────────────
+                loadChatInfo()
+                loadPinnedMessage()
+                loadMessages(scrollAfter = false)
+                markAsRead()
             } else {
-                _isLoading.value = cachedInfo == null
+                // ── SLOW PATH: first visit or incomplete cache — show spinner ─────
+                if (cachedInfo != null) {
+                    // At least show the chat name in the TopAppBar while loading
+                    _chatName.value    = cachedInfo.name
+                    _isGroup.value     = cachedInfo.isGroup
+                    _memberCount.value = cachedInfo.memberCount
+                }
+                _isLoading.value = true
+
+                loadChatInfo()
+                loadPinnedMessage()
+                loadMessages(scrollAfter = false)
+                markAsRead()
+
+                _isLoading.value = false
+                _scrollToBottomEvent.value++   // single, stable scroll after full load
             }
 
-            // 2. Load fresh from network
-            val hasFullCache = cachedInfo != null && cachedMessages != null
-            if (!hasFullCache) _isUpdating.value = true
-            loadChatInfo()
-            loadPinnedMessage()   // before loadMessages so banner height is stable when messages appear
-            loadMessages()
-            markAsRead()
-            _isUpdating.value = false
-            _isLoading.value = false
-
-            // Clear separator after 5s — user has had time to read the context
+            // Clear unread separator after 5 s
             if (_firstUnreadIndex.value >= 0) {
                 viewModelScope.launch {
                     delay(5_000L)
@@ -241,7 +263,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun loadMessages() {
+    private suspend fun loadMessages(scrollAfter: Boolean = true) {
         val raw = messageRepo.getMessages(chatId, limit = 50)
         if (raw.isEmpty()) return  // offline — keep cached messages shown
 
@@ -274,7 +296,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         lastKnownMessageId = newLastId
-        _scrollToBottomEvent.value++
+        if (scrollAfter) _scrollToBottomEvent.value++
 
         cache.saveMessages(chatId, raw)
         cache.saveProfiles(profileCache.values)
@@ -314,8 +336,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun loadPinnedMessage() {
         val pinned = chatRepo.getPinnedMessage(chatId)
+        val content = pinned?.let { messageRepo.getMessage(it.messageId) }
         _pinnedMessage.value = pinned
-        _pinnedMessageContent.value = pinned?.let { messageRepo.getMessage(it.messageId) }
+        _pinnedMessageContent.value = content
+        cache.savePinnedContent(chatId, pinned, content)
     }
 
     fun pinMessage(messageId: String) {

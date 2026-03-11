@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.Profile
+import com.example.svoi.data.model.PinnedMessage
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -63,6 +64,23 @@ class CacheManager(context: Context) {
 
     fun loadChatInfo(chatId: String): CachedChatInfo? = load("chat_$chatId.json") {
         json.decodeFromString<CachedChatInfo>(it)
+    }
+
+    // ── Pinned message ────────────────────────────────────────────────────────
+    //   Wrapper so we can distinguish "never cached" (null return) from
+    //   "cached but no pinned message" (CachedPinned(null)).
+
+    @Serializable
+    data class CachedPinned(
+        val pinnedMessage: PinnedMessage? = null,
+        val messageContent: Message? = null
+    )
+
+    fun savePinnedContent(chatId: String, pinned: PinnedMessage?, content: Message?) =
+        save("pinned_$chatId.json", json.encodeToString(CachedPinned(pinned, content)))
+
+    fun loadPinnedContent(chatId: String): CachedPinned? = load("pinned_$chatId.json") {
+        json.decodeFromString<CachedPinned>(it)
     }
 
     // ── Own profile ───────────────────────────────────────────────────────────
