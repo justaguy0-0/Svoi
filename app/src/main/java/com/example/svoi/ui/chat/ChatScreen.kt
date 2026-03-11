@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -247,7 +248,7 @@ fun ChatScreen(
         val targetId = scrollToMessageEvent ?: return@LaunchedEffect
         val idx = displayEntries.indexOfFirst { it is ChatEntry.Msg && it.item.message.id == targetId }
         if (idx >= 0) {
-            listState.animateScrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
+            listState.smoothScrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
         }
         viewModel.clearScrollToMessageEvent()
     }
@@ -499,7 +500,7 @@ fun ChatScreen(
                 if (showScrollToBottom && !isSelectionMode) {
                     FloatingActionButton(
                         onClick = {
-                            scope.launch { listState.animateScrollToItem(displayEntries.size - 1) }
+                            scope.launch { listState.smoothScrollToItem(displayEntries.size - 1) }
                         },
                         containerColor = MaterialTheme.colorScheme.surface,
                         contentColor = MaterialTheme.colorScheme.primary,
@@ -1532,4 +1533,26 @@ private fun typingIndicatorText(users: List<TypingInfo>, isGroup: Boolean): Stri
         2 -> "${users[0].displayName} и ${users[1].displayName} печатают..."
         else -> "${users[0].displayName}, ${users[1].displayName} и ещё ${users.size - 2} печатают..."
     }
+}
+
+/**
+ * Smooth scroll to an item index.
+ *
+ * Compose's [animateScrollToItem] uses a fixed spring spec with no public [animationSpec]
+ * parameter.  For short distances (≤ 15 items away) the spring looks fine.  For long
+ * distances the spring finishes too quickly and feels abrupt.
+ *
+ * Strategy: if the target is far, first do an **instant** jump to a position 8 items
+ * before the target (one frame, imperceptible), then **animate** the remaining gap with
+ * the default spring.  The result is a short, smooth glide that always feels responsive.
+ */
+private suspend fun LazyListState.smoothScrollToItem(index: Int, scrollOffset: Int = 0) {
+    val diff = index - firstVisibleItemIndex
+    val totalItems = layoutInfo.totalItemsCount
+    if (kotlin.math.abs(diff) > 15) {
+        val jumpTo = if (diff > 0) (index - 8).coerceAtLeast(0)
+                     else (index + 8).coerceAtMost(maxOf(0, totalItems - 1))
+        scrollToItem(jumpTo)
+    }
+    animateScrollToItem(index, scrollOffset)
 }
