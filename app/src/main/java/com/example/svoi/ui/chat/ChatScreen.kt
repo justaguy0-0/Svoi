@@ -12,8 +12,10 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -1536,23 +1538,49 @@ private fun typingIndicatorText(users: List<TypingInfo>, isGroup: Boolean): Stri
 }
 
 /**
- * Smooth scroll to an item index.
+ * Truly smooth tween-based scroll to an item.
  *
- * Compose's [animateScrollToItem] uses a fixed spring spec with no public [animationSpec]
- * parameter.  For short distances (≤ 15 items away) the spring looks fine.  For long
- * distances the spring finishes too quickly and feels abrupt.
+ * Compose's [animateScrollToItem] uses a fixed spring spec — it has no public
+ * [animationSpec] parameter and can feel abrupt over large distances.
  *
- * Strategy: if the target is far, first do an **instant** jump to a position 8 items
- * before the target (one frame, imperceptible), then **animate** the remaining gap with
- * the default spring.  The result is a short, smooth glide that always feels responsive.
+ * This implementation:
+ *  1. If the target is far (> 10 items), **instantly** jumps to 8 items before it
+ *     (one frame, imperceptible to the user) so the remaining pixel distance is small.
+ *  2. Reads the exact pixel offset of the target from [layoutInfo].
+ *  3. Drives the scroll with [animate] + [tween] + [FastOutSlowInEasing] inside
+ *     [scroll] { [scrollBy] } — giving a genuine ease-in-out glide.
  */
 private suspend fun LazyListState.smoothScrollToItem(index: Int, scrollOffset: Int = 0) {
+    // Phase 1: instant jump to bring target into layout range
     val diff = index - firstVisibleItemIndex
-    val totalItems = layoutInfo.totalItemsCount
-    if (kotlin.math.abs(diff) > 15) {
+    if (kotlin.math.abs(diff) > 10) {
+        val clampedMax = (layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
         val jumpTo = if (diff > 0) (index - 8).coerceAtLeast(0)
-                     else (index + 8).coerceAtMost(maxOf(0, totalItems - 1))
+                     else (index + 8).coerceAtMost(clampedMax)
         scrollToItem(jumpTo)
     }
-    animateScrollToItem(index, scrollOffset)
+
+    // Phase 2: find target's current pixel position
+    val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+    if (targetItem == null) {
+        // Fallback: target still off-screen (e.g. very large items) — use default
+        animateScrollToItem(index, scrollOffset)
+        return
+    }
+
+    val pixelDelta = targetItem.offset.toFloat() - scrollOffset.toFloat()
+    if (kotlin.math.abs(pixelDelta) < 1f) return  // already at target
+
+    // Phase 3: real tween scroll with FastOutSlowIn easing (starts fast, decelerates)
+    scroll {
+        var prev = 0f
+        animate(
+            initialValue = 0f,
+            targetValue = pixelDelta,
+            animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing)
+        ) { value, _ ->
+            scrollBy(value - prev)
+            prev = value
+        }
+    }
 }
