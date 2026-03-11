@@ -1220,7 +1220,10 @@ private fun MessageItem(
                             fontSize = 12.sp,
                             modifier = Modifier
                                 .padding(end = 4.dp, bottom = 2.dp)
-                                .clickable { onUserClick(profile.id) }
+                                .combinedClickable(
+                                    onClick = { if (!isSelectionMode) onUserClick(profile.id) else onTap() },
+                                    onLongClick = onLongClick
+                                )
                         )
                     } ?: Spacer(Modifier.width(32.dp))
                 }
@@ -1244,9 +1247,10 @@ private fun MessageItem(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable {
-                                    item.senderProfile?.let { onUserClick(it.id) }
-                                }
+                                modifier = Modifier.combinedClickable(
+                                    onClick = { if (!isSelectionMode) item.senderProfile?.let { onUserClick(it.id) } },
+                                    onLongClick = onLongClick
+                                )
                             )
                             Spacer(Modifier.height(2.dp))
                         }
@@ -1328,7 +1332,10 @@ private fun MessageItem(
                                             .clip(RoundedCornerShape(8.dp))
                                             .widthIn(min = 120.dp, max = 220.dp)
                                             .height(160.dp)
-                                            .clickable { onPhotoClick(msg.fileUrl) },
+                                            .combinedClickable(
+                                                onClick = { if (!isSelectionMode) onPhotoClick(msg.fileUrl) else onTap() },
+                                                onLongClick = onLongClick
+                                            ),
                                         contentScale = ContentScale.Crop,
                                         loading = {
                                             Box(
