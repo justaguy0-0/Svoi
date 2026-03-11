@@ -401,13 +401,14 @@ class MessageRepository(private val supabase: SupabaseClient) {
 
     // ── Typing status ──────────────────────────────────────────────────────────
 
-    suspend fun setTyping(chatId: String, userId: String, displayName: String) {
+    suspend fun setTyping(chatId: String, userId: String, displayName: String, status: String = "typing") {
         try {
             supabase.from("typing_status").upsert(
                 TypingStatus(
                     chatId = chatId,
                     userId = userId,
                     displayName = displayName,
+                    status = status,
                     updatedAt = java.time.Instant.now().toString()
                 )
             )

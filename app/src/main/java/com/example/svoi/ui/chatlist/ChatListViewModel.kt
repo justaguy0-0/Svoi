@@ -189,6 +189,14 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
 
     private fun typingText(users: List<TypingStatus>, isGroup: Boolean): String? {
         if (users.isEmpty()) return null
+        val uploading = users.filter { it.status == "uploading_media" }
+        if (uploading.isNotEmpty()) {
+            return if (!isGroup) "Загружает медиа..."
+            else when (uploading.size) {
+                1 -> "${uploading[0].displayName} загружает медиа..."
+                else -> "${uploading[0].displayName} и ещё ${uploading.size - 1} загружают медиа..."
+            }
+        }
         return if (!isGroup) "Печатает..."
         else when (users.size) {
             1 -> "${users[0].displayName} печатает..."

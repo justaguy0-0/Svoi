@@ -2098,12 +2098,33 @@ private fun NewMessageAnimation(
 
 private fun typingIndicatorText(users: List<TypingInfo>, isGroup: Boolean): String? {
     if (users.isEmpty()) return null
+    val uploading = users.filter { it.status == "uploading_media" }
+    val typing = users.filter { it.status != "uploading_media" }
     return if (!isGroup) {
-        "Печатает..."
-    } else when (users.size) {
-        1 -> "${users[0].displayName} печатает..."
-        2 -> "${users[0].displayName} и ${users[1].displayName} печатают..."
-        else -> "${users[0].displayName}, ${users[1].displayName} и ещё ${users.size - 2} печатают..."
+        when {
+            uploading.isNotEmpty() -> "Загружает медиа..."
+            else -> "Печатает..."
+        }
+    } else {
+        when {
+            uploading.isNotEmpty() && typing.isEmpty() -> when (uploading.size) {
+                1 -> "${uploading[0].displayName} загружает медиа..."
+                2 -> "${uploading[0].displayName} и ${uploading[1].displayName} загружают медиа..."
+                else -> "${uploading[0].displayName} и ещё ${uploading.size - 1} загружают медиа..."
+            }
+            uploading.isEmpty() -> when (typing.size) {
+                1 -> "${typing[0].displayName} печатает..."
+                2 -> "${typing[0].displayName} и ${typing[1].displayName} печатают..."
+                else -> "${typing[0].displayName}, ${typing[1].displayName} и ещё ${typing.size - 2} печатают..."
+            }
+            else -> {
+                val all = uploading + typing
+                when (all.size) {
+                    2 -> "${all[0].displayName} и ${all[1].displayName} активны..."
+                    else -> "${all[0].displayName} и ещё ${all.size - 1} активны..."
+                }
+            }
+        }
     }
 }
 

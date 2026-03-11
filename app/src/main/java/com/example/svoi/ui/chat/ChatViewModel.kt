@@ -18,6 +18,7 @@ import com.example.svoi.data.model.UserPresence
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,7 +27,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class TypingInfo(val userId: String, val displayName: String)
+data class TypingInfo(val userId: String, val displayName: String, val status: String = "typing")
 data class StagedMedia(val uri: Uri, val isVideo: Boolean)
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -136,6 +137,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val otherUserId: StateFlow<String?> = _otherUserId
     private var lastKnownMessageId: String? = null
     private var typingJob: Job? = null
+    private val activeUploadCount = AtomicInteger(0)
 
     fun init(chatId: String) {
         if (this.chatId == chatId) return
@@ -512,7 +514,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 delay(3_000L)
                 if (chatId.isNotEmpty()) {
                     val typing = messageRepo.getTypingUsers(chatId, currentUserId)
-                    _typingUsers.value = typing.map { TypingInfo(it.userId, it.displayName) }
+                    _typingUsers.value = typing.map { TypingInfo(it.userId, it.displayName, it.status) }
                 }
             }
         }
@@ -639,6 +641,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _scrollToBottomEvent.value++
             _uploadProgresses.value = List(photos.size) { 0f }
 
+            val displayName = myProfile?.displayName ?: ""
+            if (activeUploadCount.incrementAndGet() == 1) {
+                viewModelScope.launch { messageRepo.setTyping(chatId, myId, displayName, "uploading_media") }
+            }
+
             viewModelScope.launch(Dispatchers.IO) {
                 _isSending.value = true
                 try {
@@ -677,6 +684,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 } finally {
                     _isSending.value = false
                     _uploadProgresses.value = emptyList()
+                    if (activeUploadCount.decrementAndGet() == 0) {
+                        messageRepo.clearTyping(chatId, myId)
+                    }
                 }
             }
         }
@@ -706,6 +716,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _messages.value = _messages.value + pendingItem
         _scrollToBottomEvent.value++
 
+        val displayName = profileCache[myId]?.displayName ?: ""
+        if (activeUploadCount.incrementAndGet() == 1) {
+            viewModelScope.launch { messageRepo.setTyping(chatId, myId, displayName, "uploading_media") }
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val bytes = context.contentResolver.openInputStream(staged.uri)?.readBytes()
@@ -733,6 +748,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _messages.value = _messages.value.filter { it.message.id != pendingId }
                 _error.value = "Ошибка загрузки видео"
+            } finally {
+                if (activeUploadCount.decrementAndGet() == 0) {
+                    messageRepo.clearTyping(chatId, myId)
+                }
             }
         }
     }
