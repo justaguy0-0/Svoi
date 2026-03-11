@@ -17,6 +17,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -92,6 +93,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -125,6 +127,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
@@ -185,6 +189,7 @@ fun ChatScreen(
     val chatsForForward by viewModel.chatsForForward.collectAsState()
     val otherUserId by viewModel.otherUserId.collectAsState()
     val isChatDeleted by viewModel.isChatDeleted.collectAsState()
+    val animatingMessageIds by viewModel.animatingMessageIds.collectAsState()
 
     // If the group chat was deleted by the admin, kick this user back to chat list
     LaunchedEffect(isChatDeleted) {
@@ -462,46 +467,62 @@ fun ChatScreen(
                                 }
                             }
                         ) { entry ->
-                            when (entry) {
-                                is ChatEntry.Msg -> {
-                                    val msg = entry.item.message
-                                    if (msg.type == "system") {
-                                        SystemMessageItem(
-                                            item = entry.item,
-                                            onClick = {
-                                                msg.replyToId?.let { viewModel.scrollToMessage(it) }
+                            val isNew = entry is ChatEntry.Msg &&
+                                entry.item.message.id in animatingMessageIds
+
+                            Box(
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = null,
+                                    placementSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    ),
+                                    fadeOutSpec = null
+                                )
+                            ) {
+                                NewMessageAnimation(isNew = isNew) {
+                                    when (entry) {
+                                        is ChatEntry.Msg -> {
+                                            val msg = entry.item.message
+                                            if (msg.type == "system") {
+                                                SystemMessageItem(
+                                                    item = entry.item,
+                                                    onClick = {
+                                                        msg.replyToId?.let { viewModel.scrollToMessage(it) }
+                                                    }
+                                                )
+                                            } else {
+                                                MessageItem(
+                                                    item = entry.item,
+                                                    isGroup = isGroup,
+                                                    isHighlighted = entry.item.message.id == highlightedMessageId,
+                                                    isSelected = entry.item.message.id in selectedMessageIds,
+                                                    isSelectionMode = isSelectionMode,
+                                                    modifier = Modifier,
+                                                    onLongClick = {
+                                                        if (isSelectionMode) {
+                                                            viewModel.toggleSelection(entry.item.message.id)
+                                                        } else {
+                                                            selectedMessage = entry.item
+                                                        }
+                                                    },
+                                                    onTap = {
+                                                        if (isSelectionMode) {
+                                                            viewModel.toggleSelection(entry.item.message.id)
+                                                        }
+                                                    },
+                                                    onReply = {
+                                                        viewModel.setReplyTo(entry.item.message)
+                                                    },
+                                                    onPhotoClick = { url -> lightboxUrl = url },
+                                                    onUserClick = { userId -> onUserClick(userId) }
+                                                )
                                             }
-                                        )
-                                    } else {
-                                        MessageItem(
-                                            item = entry.item,
-                                            isGroup = isGroup,
-                                            isHighlighted = entry.item.message.id == highlightedMessageId,
-                                            isSelected = entry.item.message.id in selectedMessageIds,
-                                            isSelectionMode = isSelectionMode,
-                                            modifier = Modifier,
-                                            onLongClick = {
-                                                if (isSelectionMode) {
-                                                    viewModel.toggleSelection(entry.item.message.id)
-                                                } else {
-                                                    selectedMessage = entry.item
-                                                }
-                                            },
-                                            onTap = {
-                                                if (isSelectionMode) {
-                                                    viewModel.toggleSelection(entry.item.message.id)
-                                                }
-                                            },
-                                            onReply = {
-                                                viewModel.setReplyTo(entry.item.message)
-                                            },
-                                            onPhotoClick = { url -> lightboxUrl = url },
-                                            onUserClick = { userId -> onUserClick(userId) }
-                                        )
+                                        }
+                                        is ChatEntry.DateDivider -> DateSeparator(date = entry.date)
+                                        ChatEntry.UnreadDivider -> UnreadMessagesDivider()
                                     }
                                 }
-                                is ChatEntry.DateDivider -> DateSeparator(date = entry.date)
-                                ChatEntry.UnreadDivider -> UnreadMessagesDivider()
                             }
                         }
                     }
@@ -1533,6 +1554,60 @@ private fun ImageLightbox(
                 }
             }
         }
+    }
+}
+
+/**
+ * Entrance animation for new incoming messages.
+ *
+ * New messages slide up from 60dp below their final position while fading in.
+ * Existing messages are animated via [Modifier.animateItem] (placement spring).
+ *
+ * Uses [mutableFloatStateOf] so the initial values are set on first composition;
+ * [LaunchedEffect(Unit)] fires once and drives the animation to target values.
+ * This way the composable never "jumps" even if [isNew] becomes false later
+ * (state is already at final values — no visual change on recomposition).
+ */
+@Composable
+private fun NewMessageAnimation(
+    isNew: Boolean,
+    content: @Composable () -> Unit
+) {
+    val density = LocalDensity.current
+    val startOffsetPx = remember { with(density) { 60.dp.toPx() } }
+
+    var targetOffset by remember { mutableFloatStateOf(if (isNew) startOffsetPx else 0f) }
+    var targetAlpha  by remember { mutableFloatStateOf(if (isNew) 0f else 1f) }
+
+    val animOffset by animateFloatAsState(
+        targetValue = targetOffset,
+        animationSpec = spring(
+            dampingRatio = 0.65f,   // gentle overshoot for a lively feel
+            stiffness = 320f        // ~medium speed — not too slow, not snappy
+        ),
+        label = "newMsgOffset"
+    )
+    val animAlpha by animateFloatAsState(
+        targetValue = targetAlpha,
+        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        label = "newMsgAlpha"
+    )
+
+    // One-shot: animate from start values to final on first composition of a new message.
+    // For non-new messages this block is a no-op (targets are already 0f / 1f).
+    LaunchedEffect(Unit) {
+        if (isNew) {
+            targetOffset = 0f
+            targetAlpha  = 1f
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(0, animOffset.roundToInt()) }
+            .alpha(animAlpha)
+    ) {
+        content()
     }
 }
 

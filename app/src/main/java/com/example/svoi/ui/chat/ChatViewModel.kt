@@ -116,6 +116,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _isChatDeleted = MutableStateFlow(false)
     val isChatDeleted: StateFlow<Boolean> = _isChatDeleted
 
+    /** IDs of messages currently playing their entrance animation */
+    private val _animatingMessageIds = MutableStateFlow<Set<String>>(emptySet())
+    val animatingMessageIds: StateFlow<Set<String>> = _animatingMessageIds
+
     private var chatId: String = ""
     private val profileCache = mutableMapOf<String, Profile>()
     private var otherUserIdVal: String? = null
@@ -436,6 +440,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _messages.value = updated
                 lastKnownMessageId = newMsg.id
                 _scrollToBottomEvent.value++
+
+                // Trigger entrance animation; clean up after it finishes
+                val msgId = newMsg.id
+                _animatingMessageIds.value = _animatingMessageIds.value + msgId
+                viewModelScope.launch {
+                    delay(900L)
+                    _animatingMessageIds.value = _animatingMessageIds.value - msgId
+                }
+
                 markAsRead()
                 cache.saveMessages(chatId, updated.map { it.message })
             }
