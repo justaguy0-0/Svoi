@@ -510,15 +510,13 @@ fun ChatScreen(
                                                     isSelectionMode = isSelectionMode,
                                                     modifier = Modifier,
                                                     onLongClick = {
-                                                        if (isSelectionMode) {
-                                                            viewModel.toggleSelection(entry.item.message.id)
-                                                        } else {
-                                                            selectedMessage = entry.item
-                                                        }
+                                                        viewModel.toggleSelection(entry.item.message.id)
                                                     },
                                                     onTap = {
                                                         if (isSelectionMode) {
                                                             viewModel.toggleSelection(entry.item.message.id)
+                                                        } else {
+                                                            selectedMessage = entry.item
                                                         }
                                                     },
                                                     onReply = {
