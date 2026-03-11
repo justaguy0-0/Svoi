@@ -46,6 +46,18 @@ private data class AlbumMessageInsert(
 )
 
 @Serializable
+private data class FileMessageInsert(
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("sender_id") val senderId: String,
+    val type: String,
+    @SerialName("file_url") val fileUrl: String,
+    @SerialName("file_name") val fileName: String,
+    @SerialName("file_size") val fileSize: Long,
+    @SerialName("mime_type") val mimeType: String? = null,
+    @SerialName("reply_to_id") val replyToId: String? = null,
+)
+
+@Serializable
 private data class ForwardMessageInsert(
     @SerialName("chat_id") val chatId: String,
     @SerialName("sender_id") val senderId: String,
@@ -125,22 +137,19 @@ class MessageRepository(private val supabase: SupabaseClient) {
         fileSize: Long,
         mimeType: String? = null,
         replyToId: String? = null
-    ): Message? {
+    ) {
         val userId = currentUserId()
-        return try {
+        try {
             supabase.from("messages").insert(
-                buildMap {
-                    put("chat_id", chatId)
-                    put("sender_id", userId)
-                    put("type", "file")
-                    put("file_url", fileUrl)
-                    put("file_name", fileName)
-                    put("file_size", fileSize)
-                    if (mimeType != null) put("mime_type", mimeType)
-                    if (replyToId != null) put("reply_to_id", replyToId)
-                }
-            ).decodeSingle<Message>()
-        } catch (e: Exception) { null }
+                FileMessageInsert(
+                    chatId = chatId, senderId = userId, type = "file",
+                    fileUrl = fileUrl, fileName = fileName, fileSize = fileSize,
+                    mimeType = mimeType, replyToId = replyToId
+                )
+            )
+        } catch (e: Exception) {
+            Log.e("FileMsg", "sendFileMessage FAILED: ${e.message}", e)
+        }
     }
 
     suspend fun sendVideoMessage(
@@ -150,22 +159,19 @@ class MessageRepository(private val supabase: SupabaseClient) {
         fileSize: Long,
         mimeType: String,
         replyToId: String? = null
-    ): Message? {
+    ) {
         val userId = currentUserId()
-        return try {
+        try {
             supabase.from("messages").insert(
-                buildMap {
-                    put("chat_id", chatId)
-                    put("sender_id", userId)
-                    put("type", "video")
-                    put("file_url", fileUrl)
-                    put("file_name", fileName)
-                    put("file_size", fileSize)
-                    put("mime_type", mimeType)
-                    if (replyToId != null) put("reply_to_id", replyToId)
-                }
-            ).decodeSingle<Message>()
-        } catch (e: Exception) { null }
+                FileMessageInsert(
+                    chatId = chatId, senderId = userId, type = "video",
+                    fileUrl = fileUrl, fileName = fileName, fileSize = fileSize,
+                    mimeType = mimeType, replyToId = replyToId
+                )
+            )
+        } catch (e: Exception) {
+            Log.e("FileMsg", "sendVideoMessage FAILED: ${e.message}", e)
+        }
     }
 
     suspend fun sendSystemMessage(chatId: String, content: String, replyToId: String? = null): Message? {

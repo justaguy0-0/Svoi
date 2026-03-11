@@ -702,6 +702,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val mimeType = context.contentResolver.getType(staged.uri) ?: "video/mp4"
         val info = getFileInfoFromUri(staged.uri, context)
         val name = info?.name ?: "video_${System.currentTimeMillis()}.mp4"
+        val fileSize = info?.size ?: 0L
+
+        // Supabase Storage limit: 50 MB
+        if (fileSize > 50 * 1024 * 1024) {
+            _error.value = "Видео слишком большое. Максимальный размер — 50 МБ."
+            return
+        }
 
         val pendingId = "pending_${java.util.UUID.randomUUID()}"
         val now = java.time.Instant.now().toString()
@@ -738,6 +745,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun sendFileInternal(file: StagedFile, context: Context, replyId: String?) {
+        // Supabase Storage limit: 50 MB
+        if (file.size > 50 * 1024 * 1024) {
+            _error.value = "Файл слишком большой. Максимальный размер — 50 МБ."
+            return
+        }
+
         val myId = currentUserId
         val pendingId = "pending_${java.util.UUID.randomUUID()}"
         val now = java.time.Instant.now().toString()
