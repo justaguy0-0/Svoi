@@ -393,6 +393,7 @@ fun ChatScreen(
                 ) {
                     pinnedMessage?.let { pinned ->
                         val contentText = when (pinnedContent?.type) {
+                            "album" -> "📷 ${pinnedContent.photoUrls?.size ?: 0} фото"
                             "photo" -> "📷 Фото"
                             "file" -> "📎 ${pinnedContent?.fileName ?: "Файл"}"
                             else -> pinnedContent?.content ?: ""
@@ -651,7 +652,12 @@ fun ChatScreen(
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                     Text(
-                                        text = msg.content ?: "[медиа]",
+                                        text = when {
+                                            msg.type == "album" -> "📷 ${msg.photoUrls?.size ?: 0} фото"
+                                            msg.type == "photo" -> "📷 Фото"
+                                            msg.type == "file" -> "📎 ${msg.fileName ?: "Файл"}"
+                                            else -> msg.content ?: "[медиа]"
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -790,6 +796,7 @@ fun ChatScreen(
                 // Message preview
                 Text(
                     text = when (selected.message.type) {
+                        "album" -> "📷 ${selected.message.photoUrls?.size ?: 0} фото"
                         "photo" -> "📷 Фото"
                         "file" -> "📎 ${selected.message.fileName ?: "Файл"}"
                         else -> selected.message.content ?: ""

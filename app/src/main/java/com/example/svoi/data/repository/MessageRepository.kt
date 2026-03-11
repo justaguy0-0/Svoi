@@ -54,6 +54,7 @@ private data class ForwardMessageInsert(
     @SerialName("file_url") val fileUrl: String? = null,
     @SerialName("file_name") val fileName: String? = null,
     @SerialName("file_size") val fileSize: Long? = null,
+    @SerialName("photo_urls") val photoUrls: List<String>? = null,
     @SerialName("forwarded_from_id") val forwardedFromId: String,
     @SerialName("forwarded_from_user_id") val forwardedFromUserId: String? = null
 )
@@ -171,6 +172,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
             fileUrl = original.fileUrl,
             fileName = original.fileName,
             fileSize = original.fileSize,
+            photoUrls = original.photoUrls,
             forwardedFromId = fromMessageId,
             forwardedFromUserId = original.senderId
         )
