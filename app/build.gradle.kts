@@ -87,6 +87,7 @@ dependencies {
 
     // Image loading
     implementation(libs.coil.compose)
+    implementation(libs.coil.video)
 
     // Security
     implementation(libs.security.crypto)

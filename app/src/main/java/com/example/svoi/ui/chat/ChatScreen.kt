@@ -106,6 +106,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -239,6 +240,8 @@ fun ChatScreen(
     var activeVideoUrl by remember { mutableStateOf<String?>(null) }
     var isMuted by remember { mutableStateOf(true) }
     var fullscreenVideoUrl by remember { mutableStateOf<String?>(null) }
+    // Cached aspect ratios per URL (populated on first play when real size is known)
+    val videoAspectRatios = remember { mutableStateMapOf<String, Float>() }
 
     val screenHeightPx = with(LocalDensity.current) {
         LocalConfiguration.current.screenHeightDp.dp.roundToPx()
@@ -283,7 +286,8 @@ fun ChatScreen(
             .collect {
                 val layoutInfo = listState.layoutInfo
                 val viewportH = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
-                val firstVideoUrl = layoutInfo.visibleItemsInfo.firstNotNullOfOrNull { info ->
+                // Play the bottommost visible video (like Telegram)
+                val firstVideoUrl = layoutInfo.visibleItemsInfo.asReversed().firstNotNullOfOrNull { info ->
                     val e = currentDisplayEntries.getOrNull(info.index) as? ChatEntry.Msg
                         ?: return@firstNotNullOfOrNull null
                     if (e.item.message.type != "video") return@firstNotNullOfOrNull null
@@ -561,6 +565,7 @@ fun ChatScreen(
                                                     activeVideoUrl = activeVideoUrl,
                                                     exoPlayer = exoPlayer,
                                                     isMuted = isMuted,
+                                                    videoAspectRatios = videoAspectRatios,
                                                     onLongClick = {
                                                         viewModel.toggleSelection(entry.item.message.id)
                                                     },
@@ -584,7 +589,10 @@ fun ChatScreen(
                                                             fullscreenVideoUrl = url
                                                         }
                                                     },
-                                                    onVideoMuteToggle = { isMuted = !isMuted }
+                                                    onVideoMuteToggle = { isMuted = !isMuted },
+                                                    onVideoSizeDetected = { url, ratio ->
+                                                        videoAspectRatios[url] = ratio
+                                                    }
                                                 )
                                             }
                                         }
@@ -1511,13 +1519,15 @@ private fun MessageItem(
     activeVideoUrl: String? = null,
     exoPlayer: ExoPlayer? = null,
     isMuted: Boolean = true,
+    videoAspectRatios: Map<String, Float> = emptyMap(),
     onLongClick: () -> Unit,
     onTap: () -> Unit = {},
     onReply: () -> Unit = {},
     onPhotoClick: (url: String, albumUrls: List<String>) -> Unit = { _, _ -> },
     onUserClick: (String) -> Unit = {},
     onVideoTap: (String) -> Unit = {},
-    onVideoMuteToggle: () -> Unit = {}
+    onVideoMuteToggle: () -> Unit = {},
+    onVideoSizeDetected: (url: String, ratio: Float) -> Unit = { _, _ -> }
 ) {
     val msg = item.message
     if (msg.deletedForAll) {
@@ -1803,8 +1813,10 @@ private fun MessageItem(
                                             isActive = activeVideoUrl == url,
                                             exoPlayer = exoPlayer,
                                             isMuted = isMuted,
+                                            aspectRatio = videoAspectRatios[url] ?: (16f / 9f),
                                             onTap = { onVideoTap(url) },
-                                            onMuteToggle = onVideoMuteToggle
+                                            onMuteToggle = onVideoMuteToggle,
+                                            onVideoSizeDetected = { ratio -> onVideoSizeDetected(url, ratio) }
                                         )
                                     }
                                 }
