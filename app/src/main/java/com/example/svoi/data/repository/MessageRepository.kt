@@ -54,6 +54,7 @@ private data class ForwardMessageInsert(
     @SerialName("file_url") val fileUrl: String? = null,
     @SerialName("file_name") val fileName: String? = null,
     @SerialName("file_size") val fileSize: Long? = null,
+    @SerialName("mime_type") val mimeType: String? = null,
     @SerialName("photo_urls") val photoUrls: List<String>? = null,
     @SerialName("forwarded_from_id") val forwardedFromId: String,
     @SerialName("forwarded_from_user_id") val forwardedFromUserId: String? = null
@@ -122,6 +123,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
         fileUrl: String,
         fileName: String,
         fileSize: Long,
+        mimeType: String? = null,
         replyToId: String? = null
     ): Message? {
         val userId = currentUserId()
@@ -134,6 +136,32 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     put("file_url", fileUrl)
                     put("file_name", fileName)
                     put("file_size", fileSize)
+                    if (mimeType != null) put("mime_type", mimeType)
+                    if (replyToId != null) put("reply_to_id", replyToId)
+                }
+            ).decodeSingle<Message>()
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun sendVideoMessage(
+        chatId: String,
+        fileUrl: String,
+        fileName: String,
+        fileSize: Long,
+        mimeType: String,
+        replyToId: String? = null
+    ): Message? {
+        val userId = currentUserId()
+        return try {
+            supabase.from("messages").insert(
+                buildMap {
+                    put("chat_id", chatId)
+                    put("sender_id", userId)
+                    put("type", "video")
+                    put("file_url", fileUrl)
+                    put("file_name", fileName)
+                    put("file_size", fileSize)
+                    put("mime_type", mimeType)
                     if (replyToId != null) put("reply_to_id", replyToId)
                 }
             ).decodeSingle<Message>()
@@ -172,6 +200,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
             fileUrl = original.fileUrl,
             fileName = original.fileName,
             fileSize = original.fileSize,
+            mimeType = original.mimeType,
             photoUrls = original.photoUrls,
             forwardedFromId = fromMessageId,
             forwardedFromUserId = original.senderId

@@ -27,6 +27,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class TypingInfo(val userId: String, val displayName: String)
+data class StagedMedia(val uri: Uri, val isVideo: Boolean)
+data class StagedFile(val uri: Uri, val name: String, val size: Long, val mimeType: String)
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -79,11 +81,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSelectionMode = MutableStateFlow(false)
     val isSelectionMode: StateFlow<Boolean> = _isSelectionMode
 
-    /** Images staged by the user before pressing Send */
-    private val _stagedImages = MutableStateFlow<List<Uri>>(emptyList())
-    val stagedImages: StateFlow<List<Uri>> = _stagedImages
+    /** Media (photos+videos) staged before sending */
+    private val _stagedMedia = MutableStateFlow<List<StagedMedia>>(emptyList())
+    val stagedMedia: StateFlow<List<StagedMedia>> = _stagedMedia
 
-    /** Upload progress (0..1) for each staged image while uploading */
+    /** A single document file staged before sending */
+    private val _stagedFile = MutableStateFlow<StagedFile?>(null)
+    val stagedFile: StateFlow<StagedFile?> = _stagedFile
+
+    /** Upload progress (0..1) for each staged item while uploading */
     private val _uploadProgresses = MutableStateFlow<List<Float>>(emptyList())
     val uploadProgresses: StateFlow<List<Float>> = _uploadProgresses
 
@@ -571,118 +577,198 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ── Staged images ─────────────────────────────────────────────────────────
+    // ── Staged media & files ──────────────────────────────────────────────────
 
-    fun addStagedImages(uris: List<Uri>) {
-        _stagedImages.value = (_stagedImages.value + uris).take(10)
+    fun addStagedMedia(uris: List<Uri>, context: Context) {
+        val newItems = uris.map { uri ->
+            val mimeType = context.contentResolver.getType(uri) ?: ""
+            StagedMedia(uri, isVideo = mimeType.startsWith("video/"))
+        }
+        _stagedMedia.value = (_stagedMedia.value + newItems).take(10)
     }
 
-    fun removeStagedImage(index: Int) {
-        _stagedImages.value = _stagedImages.value.filterIndexed { i, _ -> i != index }
+    fun removeStagedMedia(index: Int) {
+        _stagedMedia.value = _stagedMedia.value.filterIndexed { i, _ -> i != index }
     }
 
-    fun clearStagedImages() {
-        _stagedImages.value = emptyList()
+    fun setStagedFile(file: StagedFile?) {
+        _stagedFile.value = file
+    }
+
+    fun clearStagedMedia() {
+        _stagedMedia.value = emptyList()
+        _stagedFile.value = null
         _uploadProgresses.value = emptyList()
     }
 
-    /** Send a message with staged images (and optional text caption).
-     *  Adds a pending placeholder immediately, then uploads in background. */
-    fun sendWithMedia(text: String, uris: List<Uri>, context: Context) {
+    fun getFileInfoFromUri(uri: Uri, context: Context): StagedFile? {
+        val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
+        return try {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            cursor?.use { c ->
+                if (!c.moveToFirst()) return@use null
+                val nameIdx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                val sizeIdx = c.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "Файл" else "Файл"
+                val size = if (sizeIdx >= 0 && !c.isNull(sizeIdx)) c.getLong(sizeIdx) else 0L
+                StagedFile(uri, name, size, mimeType)
+            }
+        } catch (e: Exception) { null }
+    }
+
+    /** Send all staged content (photos as album, videos individually, + optional text).
+     *  Clears staged state immediately, then uploads in background. */
+    fun sendWithAttachments(text: String, media: List<StagedMedia>, file: StagedFile?, context: Context) {
         val replyId = _replyTo.value?.id
         val myId = currentUserId
         val myProfile = profileCache[myId]
 
-        // Fake ID for the local placeholder
+        val photos = media.filter { !it.isVideo }
+        val videos = media.filter { it.isVideo }
+
+        _stagedMedia.value = emptyList()
+        _stagedFile.value = null
+        _replyTo.value = null
+
+        // ── Photos (album or single) ───────────────────────────────────────────
+        if (photos.isNotEmpty()) {
+            val pendingId = "pending_${java.util.UUID.randomUUID()}"
+            val now = java.time.Instant.now().toString()
+            val pendingMsg = Message(
+                id = pendingId, chatId = chatId, senderId = myId,
+                content = text.trim().ifBlank { null },
+                type = if (photos.size == 1) "photo" else "album",
+                createdAt = now
+            )
+            val pendingItem = MessageUiItem(
+                message = pendingMsg, senderProfile = myProfile, isOwn = true, isRead = false,
+                isPending = true, pendingLocalUris = photos.map { it.uri.toString() }
+            )
+            _messages.value = _messages.value + pendingItem
+            _scrollToBottomEvent.value++
+            _uploadProgresses.value = List(photos.size) { 0f }
+
+            viewModelScope.launch(Dispatchers.IO) {
+                _isSending.value = true
+                try {
+                    val uploadedUrls = mutableListOf<String>()
+                    photos.forEachIndexed { idx, staged ->
+                        val bytes = compressImage(staged.uri, context)
+                        if (bytes == null) {
+                            _error.value = "Не удалось прочитать изображение"
+                            _messages.value = _messages.value.filter { it.message.id != pendingId }
+                            _uploadProgresses.value = emptyList()
+                            return@launch
+                        }
+                        val fileName = "photo_${System.currentTimeMillis()}.jpg"
+                        val url = messageRepo.uploadFile(chatId, fileName, bytes) { progress ->
+                            val progs = _uploadProgresses.value.toMutableList()
+                            if (idx < progs.size) { progs[idx] = progress; _uploadProgresses.value = progs }
+                        }
+                        if (url == null) {
+                            _error.value = "Ошибка загрузки изображения"
+                            _messages.value = _messages.value.filter { it.message.id != pendingId }
+                            _uploadProgresses.value = emptyList()
+                            return@launch
+                        }
+                        uploadedUrls.add(url)
+                    }
+                    if (photos.size == 1) {
+                        messageRepo.sendPhotoMessage(chatId, uploadedUrls[0], replyId)
+                    } else {
+                        messageRepo.sendAlbumMessage(chatId, uploadedUrls, text.trim().ifBlank { null }, replyId)
+                    }
+                    _messages.value = _messages.value.filter { it.message.id != pendingId }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    _error.value = "Ошибка: ${e.message}"
+                    _messages.value = _messages.value.filter { it.message.id != pendingId }
+                } finally {
+                    _isSending.value = false
+                    _uploadProgresses.value = emptyList()
+                }
+            }
+        }
+
+        // ── Videos (each as separate message) ─────────────────────────────────
+        videos.forEach { staged -> sendVideoInternal(staged, context, replyId) }
+
+        // ── Document file ──────────────────────────────────────────────────────
+        file?.let { sendFileInternal(it, context, replyId) }
+    }
+
+    private fun sendVideoInternal(staged: StagedMedia, context: Context, replyId: String?) {
+        val myId = currentUserId
+        val mimeType = context.contentResolver.getType(staged.uri) ?: "video/mp4"
+        val info = getFileInfoFromUri(staged.uri, context)
+        val name = info?.name ?: "video_${System.currentTimeMillis()}.mp4"
+
         val pendingId = "pending_${java.util.UUID.randomUUID()}"
         val now = java.time.Instant.now().toString()
-        val pendingMsg = Message(
-            id = pendingId,
-            chatId = chatId,
-            senderId = myId,
-            content = text.trim().ifBlank { null },
-            type = if (uris.size == 1) "photo" else "album",
-            createdAt = now
-        )
-        val pendingItem = MessageUiItem(
-            message = pendingMsg,
-            senderProfile = myProfile,
-            isOwn = true,
-            isRead = false,
-            isPending = true,
-            pendingLocalUris = uris.map { it.toString() }
-        )
-
+        val pendingMsg = Message(id = pendingId, chatId = chatId, senderId = myId, type = "video",
+            fileName = name, mimeType = mimeType, createdAt = now)
+        val pendingItem = MessageUiItem(message = pendingMsg, senderProfile = profileCache[myId],
+            isOwn = true, isRead = false, isPending = true)
         _messages.value = _messages.value + pendingItem
         _scrollToBottomEvent.value++
-        _stagedImages.value = emptyList()
-        _replyTo.value = null
-        _uploadProgresses.value = List(uris.size) { 0f }
 
         viewModelScope.launch(Dispatchers.IO) {
-            _isSending.value = true
             try {
-                val uploadedUrls = mutableListOf<String>()
-                uris.forEachIndexed { idx, uri ->
-                    val bytes = compressImage(uri, context)
-                    if (bytes == null) {
-                        _error.value = "Не удалось прочитать изображение"
-                        _messages.value = _messages.value.filter { it.message.id != pendingId }
-                        _uploadProgresses.value = emptyList()
-                        return@launch
-                    }
-                    val fileName = "photo_${System.currentTimeMillis()}.jpg"
-                    val url = messageRepo.uploadFile(chatId, fileName, bytes) { progress ->
-                        val progs = _uploadProgresses.value.toMutableList()
-                        if (idx < progs.size) {
-                            progs[idx] = progress
-                            _uploadProgresses.value = progs
-                        }
-                    }
-                    if (url == null) {
-                        _error.value = "Ошибка загрузки изображения"
-                        _messages.value = _messages.value.filter { it.message.id != pendingId }
-                        _uploadProgresses.value = emptyList()
-                        return@launch
-                    }
-                    uploadedUrls.add(url)
+                val bytes = context.contentResolver.openInputStream(staged.uri)?.readBytes()
+                if (bytes == null) {
+                    _messages.value = _messages.value.filter { it.message.id != pendingId }
+                    _error.value = "Не удалось прочитать видео"
+                    return@launch
                 }
-
-                messageRepo.sendAlbumMessage(chatId, uploadedUrls, text.trim().ifBlank { null }, replyId)
-                // Remove placeholder — real message arrives via Realtime
+                val ext = name.substringAfterLast('.', "mp4")
+                val fileName = "video_${System.currentTimeMillis()}.$ext"
+                val url = messageRepo.uploadFile(chatId, fileName, bytes)
+                if (url != null) {
+                    messageRepo.sendVideoMessage(chatId, url, name, bytes.size.toLong(), mimeType, replyId)
+                } else {
+                    _error.value = "Ошибка загрузки видео"
+                }
                 _messages.value = _messages.value.filter { it.message.id != pendingId }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                _error.value = "Ошибка: ${e.message}"
                 _messages.value = _messages.value.filter { it.message.id != pendingId }
-            } finally {
-                _isSending.value = false
-                _uploadProgresses.value = emptyList()
+                _error.value = "Ошибка загрузки видео"
             }
         }
     }
 
-    fun sendPhoto(uri: Uri, context: Context) {
+    private fun sendFileInternal(file: StagedFile, context: Context, replyId: String?) {
+        val myId = currentUserId
+        val pendingId = "pending_${java.util.UUID.randomUUID()}"
+        val now = java.time.Instant.now().toString()
+        val pendingMsg = Message(id = pendingId, chatId = chatId, senderId = myId, type = "file",
+            fileName = file.name, fileSize = file.size, mimeType = file.mimeType, createdAt = now)
+        val pendingItem = MessageUiItem(message = pendingMsg, senderProfile = profileCache[myId],
+            isOwn = true, isRead = false, isPending = true)
+        _messages.value = _messages.value + pendingItem
+        _scrollToBottomEvent.value++
+
         viewModelScope.launch(Dispatchers.IO) {
-            _isSending.value = true
             try {
-                val bytes = compressImage(uri, context)
+                val bytes = context.contentResolver.openInputStream(file.uri)?.readBytes()
                 if (bytes == null) {
-                    _error.value = "Не удалось прочитать изображение"
+                    _messages.value = _messages.value.filter { it.message.id != pendingId }
+                    _error.value = "Не удалось прочитать файл"
                     return@launch
                 }
-                val fileName = "photo_${System.currentTimeMillis()}.jpg"
+                val ext = file.name.substringAfterLast('.', "bin")
+                val fileName = "file_${System.currentTimeMillis()}.$ext"
                 val url = messageRepo.uploadFile(chatId, fileName, bytes)
                 if (url != null) {
-                    messageRepo.sendPhotoMessage(chatId, url, _replyTo.value?.id)
-                    _replyTo.value = null
+                    messageRepo.sendFileMessage(chatId, url, file.name, file.size, file.mimeType, replyId)
                 } else {
-                    _error.value = "Ошибка загрузки. Проверьте Storage bucket."
+                    _error.value = "Ошибка загрузки файла"
                 }
+                _messages.value = _messages.value.filter { it.message.id != pendingId }
             } catch (e: Exception) {
-                _error.value = "Ошибка: ${e.message}"
-            } finally {
-                _isSending.value = false
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _messages.value = _messages.value.filter { it.message.id != pendingId }
+                _error.value = "Ошибка загрузки файла"
             }
         }
     }
@@ -708,9 +794,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (scaled != original) scaled.recycle()
             original.recycle()
             out.toByteArray()
-        } catch (e: Exception) {
-            null
-        }
+        } catch (e: Exception) { null }
     }
 
     fun clearError() { _error.value = null }

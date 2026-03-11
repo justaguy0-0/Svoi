@@ -10,7 +10,7 @@ data class Message(
     @SerialName("chat_id") val chatId: String = "",
     @SerialName("sender_id") val senderId: String? = null,
     val content: String? = null,
-    val type: String = "text", // "text" | "photo" | "file" | "system" | "album"
+    val type: String = "text", // "text" | "photo" | "file" | "system" | "album" | "video"
     @SerialName("file_url") val fileUrl: String? = null,
     @SerialName("file_name") val fileName: String? = null,
     @SerialName("file_size") val fileSize: Long? = null,
@@ -21,7 +21,8 @@ data class Message(
     @SerialName("edited_at") val editedAt: String? = null,
     @SerialName("deleted_for_all") val deletedForAll: Boolean = false,
     @SerialName("created_at") val createdAt: String? = null,
-    @SerialName("updated_at") val updatedAt: String? = null
+    @SerialName("updated_at") val updatedAt: String? = null,
+    @SerialName("mime_type") val mimeType: String? = null
 )
 
 @Serializable

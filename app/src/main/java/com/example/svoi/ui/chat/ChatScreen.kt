@@ -2,6 +2,7 @@ package com.example.svoi.ui.chat
 
 import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import androidx.activity.compose.BackHandler
@@ -77,12 +78,15 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -142,7 +146,9 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
@@ -200,7 +206,8 @@ fun ChatScreen(
     val otherUserId by viewModel.otherUserId.collectAsState()
     val isChatDeleted by viewModel.isChatDeleted.collectAsState()
     val animatingMessageIds by viewModel.animatingMessageIds.collectAsState()
-    val stagedImages by viewModel.stagedImages.collectAsState()
+    val stagedMedia by viewModel.stagedMedia.collectAsState()
+    val stagedFile by viewModel.stagedFile.collectAsState()
     val uploadProgresses by viewModel.uploadProgresses.collectAsState()
 
     // If the group chat was deleted by the admin, kick this user back to chat list
@@ -233,10 +240,12 @@ fun ChatScreen(
     BackHandler(enabled = isSelectionMode) {
         viewModel.clearSelection()
     }
-    // Clear staged images with back button
-    BackHandler(enabled = stagedImages.isNotEmpty()) {
-        viewModel.clearStagedImages()
+    // Clear staged media/file with back button
+    BackHandler(enabled = stagedMedia.isNotEmpty() || stagedFile != null) {
+        viewModel.clearStagedMedia()
     }
+
+    var attachmentMenuExpanded by remember { mutableStateOf(false) }
 
     val displayEntries = remember(messages, firstUnreadIndex) {
         buildList {
@@ -287,10 +296,19 @@ fun ChatScreen(
         editingMessage?.let { inputValue = TextFieldValue(it.content ?: "") }
     }
 
-    val imagePicker = rememberLauncherForActivityResult(
+    val mediaPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
-        if (uris.isNotEmpty()) viewModel.addStagedImages(uris)
+        if (uris.isNotEmpty()) viewModel.addStagedMedia(uris, context)
+    }
+
+    val filePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val fileInfo = viewModel.getFileInfoFromUri(uri, context)
+            if (fileInfo != null) viewModel.setStagedFile(fileInfo)
+        }
     }
 
     val presenceText = remember(presence) {
@@ -396,6 +414,7 @@ fun ChatScreen(
                             "album" -> "📷 ${pinnedContent?.photoUrls?.size ?: 0} фото"
                             "photo" -> "📷 Фото"
                             "file" -> "📎 ${pinnedContent?.fileName ?: "Файл"}"
+                            "video" -> "🎬 ${pinnedContent?.fileName ?: "Видео"}"
                             else -> pinnedContent?.content ?: ""
                         }
                         Surface(
@@ -593,16 +612,26 @@ fun ChatScreen(
                         .background(MaterialTheme.colorScheme.surface)
                         .navigationBarsPadding()
                 ) {
-                    // Staged images preview
+                    // Staged media preview
                     AnimatedVisibility(
-                        visible = stagedImages.isNotEmpty(),
+                        visible = stagedMedia.isNotEmpty(),
                         enter = slideInVertically { it } + fadeIn(tween(180)),
                         exit  = slideOutVertically { it } + fadeOut(tween(140))
                     ) {
-                        StagedImagesRow(
-                            uris = stagedImages,
-                            onRemove = { viewModel.removeStagedImage(it) }
+                        StagedMediaRow(
+                            items = stagedMedia,
+                            onRemove = { viewModel.removeStagedMedia(it) }
                         )
+                    }
+                    // Staged file preview
+                    AnimatedVisibility(
+                        visible = stagedFile != null,
+                        enter = slideInVertically { it } + fadeIn(tween(180)),
+                        exit  = slideOutVertically { it } + fadeOut(tween(140))
+                    ) {
+                        stagedFile?.let { file ->
+                            StagedFileCard(file = file, onRemove = { viewModel.setStagedFile(null) })
+                        }
                     }
 
                     // Emoji picker panel
@@ -656,6 +685,7 @@ fun ChatScreen(
                                             msg.type == "album" -> "📷 ${msg.photoUrls?.size ?: 0} фото"
                                             msg.type == "photo" -> "📷 Фото"
                                             msg.type == "file" -> "📎 ${msg.fileName ?: "Файл"}"
+                                            msg.type == "video" -> "🎬 ${msg.fileName ?: "Видео"}"
                                             else -> msg.content ?: "[медиа]"
                                         },
                                         style = MaterialTheme.typography.bodySmall,
@@ -713,24 +743,17 @@ fun ChatScreen(
 
                         Spacer(Modifier.width(6.dp))
 
-                        // Photo / Send button
+                        // Attach / Send button
+                        val hasContent = inputValue.text.isNotBlank() || stagedMedia.isNotEmpty() || stagedFile != null
                         AnimatedContent(
-                            targetState = inputValue.text.isBlank() && stagedImages.isEmpty(),
+                            targetState = hasContent,
                             transitionSpec = {
                                 (scaleIn(tween(180)) + fadeIn(tween(180))) togetherWith
                                 (scaleOut(tween(140)) + fadeOut(tween(140)))
                             },
                             label = "sendAttachToggle"
-                        ) { isBlank ->
-                            if (isBlank) {
-                                IconButton(onClick = { imagePicker.launch("image/*") }) {
-                                    Icon(
-                                        Icons.Default.Image,
-                                        contentDescription = "Фото",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            } else {
+                        ) { canSend ->
+                            if (canSend) {
                                 Box(
                                     modifier = Modifier
                                         .size(48.dp)
@@ -738,11 +761,12 @@ fun ChatScreen(
                                         .background(MaterialTheme.colorScheme.primary)
                                         .clickable {
                                             val text = inputValue.text
-                                            val imgs = stagedImages
+                                            val media = stagedMedia
+                                            val file = stagedFile
                                             inputValue = TextFieldValue("")
                                             viewModel.onInputTextChanged("")
-                                            if (imgs.isNotEmpty()) {
-                                                viewModel.sendWithMedia(text, imgs, context)
+                                            if (media.isNotEmpty() || file != null) {
+                                                viewModel.sendWithAttachments(text, media, file, context)
                                             } else {
                                                 viewModel.sendText(text)
                                             }
@@ -755,6 +779,37 @@ fun ChatScreen(
                                         tint = Color.White,
                                         modifier = Modifier.size(20.dp)
                                     )
+                                }
+                            } else {
+                                Box {
+                                    IconButton(onClick = { attachmentMenuExpanded = true }) {
+                                        Icon(
+                                            Icons.Default.AttachFile,
+                                            contentDescription = "Прикрепить",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = attachmentMenuExpanded,
+                                        onDismissRequest = { attachmentMenuExpanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Медиа") },
+                                            leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
+                                            onClick = {
+                                                attachmentMenuExpanded = false
+                                                mediaPicker.launch("image/* video/*")
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Файл") },
+                                            leadingIcon = { Icon(Icons.Default.AttachFile, contentDescription = null) },
+                                            onClick = {
+                                                attachmentMenuExpanded = false
+                                                filePicker.launch(arrayOf("*/*"))
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -799,6 +854,7 @@ fun ChatScreen(
                         "album" -> "📷 ${selected.message.photoUrls?.size ?: 0} фото"
                         "photo" -> "📷 Фото"
                         "file" -> "📎 ${selected.message.fileName ?: "Файл"}"
+                        "video" -> "🎬 ${selected.message.fileName ?: "Видео"}"
                         else -> selected.message.content ?: ""
                     },
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -1013,50 +1069,135 @@ private fun SelectionActionBar(
     }
 }
 
-// ── Staged images preview row ─────────────────────────────────────────────────
+// ── Mime type to emoji helper ─────────────────────────────────────────────────
+
+private fun mimeTypeToEmoji(mimeType: String?, fileName: String?): String {
+    val ext = fileName?.substringAfterLast('.')?.lowercase()
+    return when {
+        mimeType?.startsWith("video/") == true -> "🎬"
+        mimeType?.startsWith("audio/") == true -> "🎵"
+        mimeType?.startsWith("image/") == true -> "🖼️"
+        mimeType == "application/pdf" -> "📄"
+        ext == "pdf" -> "📄"
+        mimeType in listOf("application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document") -> "📝"
+        ext in listOf("doc", "docx") -> "📝"
+        mimeType in listOf("application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation") -> "📊"
+        ext in listOf("ppt", "pptx") -> "📊"
+        mimeType in listOf("application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") -> "📈"
+        ext in listOf("xls", "xlsx", "csv") -> "📈"
+        mimeType == "application/vnd.android.package-archive" || ext == "apk" -> "📦"
+        mimeType in listOf("application/zip", "application/x-rar-compressed", "application/x-7z-compressed") -> "🗜️"
+        ext in listOf("zip", "rar", "7z", "tar", "gz") -> "🗜️"
+        mimeType?.startsWith("text/") == true || ext in listOf("txt", "md", "log") -> "📃"
+        else -> "📎"
+    }
+}
+
+// ── Staged media preview row ──────────────────────────────────────────────────
 
 @Composable
-private fun StagedImagesRow(
-    uris: List<Uri>,
+private fun StagedMediaRow(
+    items: List<StagedMedia>,
     onRemove: (Int) -> Unit
 ) {
-    Column {
-        HorizontalDivider()
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            itemsIndexed(uris) { index, uri ->
-                Box(modifier = Modifier.size(80.dp)) {
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Crop
-                    )
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        itemsIndexed(items) { idx, item ->
+            Box(modifier = Modifier.size(80.dp)) {
+                SubcomposeAsyncImage(
+                    model = item.uri,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(8.dp))
+                ) {
+                    when (painter.state) {
+                        is AsyncImagePainter.State.Loading -> Box(
+                            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
+                        is AsyncImagePainter.State.Error -> Box(
+                            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) { Text(if (item.isVideo) "🎬" else "🖼️", fontSize = 24.sp) }
+                        else -> SubcomposeAsyncImageContent()
+                    }
+                }
+                // Video overlay
+                if (item.isVideo) {
                     Box(
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(2.dp)
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .clickable { onRemove(index) },
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(0.35f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Убрать",
+                            Icons.Default.PlayArrow,
+                            contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(12.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }
+                // Remove button
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(0.6f))
+                        .clickable { onRemove(idx) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Удалить",
+                        tint = Color.White, modifier = Modifier.size(14.dp))
+                }
             }
+        }
+    }
+}
+
+// ── Staged file card ──────────────────────────────────────────────────────────
+
+@Composable
+private fun StagedFileCard(
+    file: StagedFile,
+    onRemove: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = mimeTypeToEmoji(file.mimeType, file.name), fontSize = 28.sp)
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = file.name,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = file.size.toReadableSize(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        IconButton(onClick = onRemove) {
+            Icon(Icons.Default.Close, contentDescription = "Удалить",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -1628,7 +1769,13 @@ private fun MessageItem(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = reply.content ?: "[медиа]",
+                                            text = when {
+                                                reply.type == "video" -> "🎬 ${reply.fileName ?: "Видео"}"
+                                                reply.type == "file" -> "📎 ${reply.fileName ?: "Файл"}"
+                                                reply.type == "photo" -> "📷 Фото"
+                                                reply.type == "album" -> "📷 ${reply.photoUrls?.size ?: 0} фото"
+                                                else -> reply.content ?: "[медиа]"
+                                            },
                                             style = MaterialTheme.typography.bodySmall,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
@@ -1676,21 +1823,96 @@ private fun MessageItem(
                                     Text("📷 Фото", color = textColor)
                                 }
                             }
+                            "video" -> {
+                                val ctx = LocalContext.current
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            msg.fileUrl?.let { url ->
+                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                                    setDataAndType(Uri.parse(url), msg.mimeType ?: "video/*")
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }
+                                                ctx.startActivity(intent)
+                                            }
+                                        }
+                                        .padding(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.onSurface.copy(0.15f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.PlayArrow,
+                                            contentDescription = null,
+                                            tint = textColor,
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = msg.fileName ?: "Видео",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = textColor,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        msg.fileSize?.let { size ->
+                                            Text(
+                                                text = size.toReadableSize(),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = textColor.copy(0.7f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             "file" -> {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.AttachFile,
-                                        contentDescription = null,
-                                        tint = textColor.copy(0.8f),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(Modifier.width(6.dp))
+                                val ctx = LocalContext.current
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            msg.fileUrl?.let { url ->
+                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                                    val mime = msg.mimeType ?: "*/*"
+                                                    setDataAndType(Uri.parse(url), mime)
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }
+                                                try { ctx.startActivity(intent) } catch (_: Exception) { }
+                                            }
+                                        }
+                                        .padding(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.onSurface.copy(0.12f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = mimeTypeToEmoji(msg.mimeType, msg.fileName),
+                                            fontSize = 22.sp
+                                        )
+                                    }
+                                    Spacer(Modifier.width(8.dp))
                                     Column {
                                         Text(
                                             text = msg.fileName ?: "Файл",
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = textColor,
-                                            fontWeight = FontWeight.Medium
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         msg.fileSize?.let { size ->
                                             Text(
