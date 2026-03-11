@@ -56,7 +56,9 @@ fun NavGraph(
     navController: NavHostController,
     startDestination: String,
     onThemeChanged: (ThemeMode) -> Unit = {},
-    currentThemeMode: ThemeMode = ThemeMode.SYSTEM
+    currentThemeMode: ThemeMode = ThemeMode.SYSTEM,
+    autoPlayVideos: Boolean = true,
+    onAutoPlayChanged: (Boolean) -> Unit = {}
 ) {
     // Debounce: prevent rapid-fire navigation events (e.g. accidental double-tap)
     var lastNavMs by remember { mutableLongStateOf(0L) }
@@ -167,6 +169,7 @@ fun NavGraph(
                 val chatId = backStack.arguments?.getString("chatId") ?: ""
                 ChatScreen(
                     chatId = chatId,
+                    autoPlayVideos = autoPlayVideos,
                     onBack = { if (canNav()) navController.navigateUp() },
                     onForwardTo = { targetChatId ->
                         if (canNav()) navController.navigate(Routes.chat(targetChatId))
@@ -276,6 +279,8 @@ fun NavGraph(
                 SettingsScreen(
                     currentThemeMode = currentThemeMode,
                     onThemeChanged = onThemeChanged,
+                    autoPlayVideos = autoPlayVideos,
+                    onAutoPlayChanged = onAutoPlayChanged,
                     onNavigateToChats = {
                         if (canNav()) navController.popBackStack(Routes.CHAT_LIST, inclusive = false)
                     },

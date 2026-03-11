@@ -17,4 +17,10 @@ class ThemeManager(context: Context) {
     fun setThemeMode(mode: ThemeMode) {
         prefs.edit().putString("theme_mode", mode.name).apply()
     }
+
+    fun getAutoPlayVideos(): Boolean = prefs.getBoolean("auto_play_videos", true)
+
+    fun setAutoPlayVideos(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_play_videos", enabled).apply()
+    }
 }

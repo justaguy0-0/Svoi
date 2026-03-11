@@ -91,6 +91,12 @@ class CacheManager(context: Context) {
         json.decodeFromString<Profile>(it)
     }
 
+    // ── Clear all ─────────────────────────────────────────────────────────────
+
+    fun clearAll() {
+        dir.listFiles()?.forEach { it.delete() }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun save(name: String, content: String) {

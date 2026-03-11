@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var themeMode by remember { mutableStateOf(app.themeManager.getThemeMode()) }
+            var autoPlayVideos by remember { mutableStateOf(app.themeManager.getAutoPlayVideos()) }
 
             SvoiTheme(themeMode = themeMode) {
                 val navController = rememberNavController()
@@ -46,7 +47,12 @@ class MainActivity : ComponentActivity() {
                             app.themeManager.setThemeMode(mode)
                             themeMode = mode
                         },
-                        currentThemeMode = themeMode
+                        currentThemeMode = themeMode,
+                        autoPlayVideos = autoPlayVideos,
+                        onAutoPlayChanged = { enabled ->
+                            app.themeManager.setAutoPlayVideos(enabled)
+                            autoPlayVideos = enabled
+                        }
                     )
                 }
             }

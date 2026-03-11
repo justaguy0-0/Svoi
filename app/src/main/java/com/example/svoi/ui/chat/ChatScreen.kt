@@ -177,6 +177,7 @@ import androidx.media3.exoplayer.ExoPlayer
 @Composable
 fun ChatScreen(
     chatId: String,
+    autoPlayVideos: Boolean = true,
     onBack: () -> Unit,
     onForwardTo: (String) -> Unit,
     onUserClick: (String) -> Unit = {},
@@ -279,14 +280,19 @@ fun ChatScreen(
 
     val currentDisplayEntries by rememberUpdatedState(displayEntries)
 
-    // Auto-play: when scroll stops, find the first 50%-visible video and play it
+    // Auto-play: when scroll stops, find the bottommost 50%-visible video and play it
+    val currentAutoPlay by rememberUpdatedState(autoPlayVideos)
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }
             .filter { !it }
             .collect {
+                if (!currentAutoPlay) {
+                    activeVideoUrl = null
+                    exoPlayer.pause()
+                    return@collect
+                }
                 val layoutInfo = listState.layoutInfo
                 val viewportH = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
-                // Play the bottommost visible video (like Telegram)
                 val firstVideoUrl = layoutInfo.visibleItemsInfo.asReversed().firstNotNullOfOrNull { info ->
                     val e = currentDisplayEntries.getOrNull(info.index) as? ChatEntry.Msg
                         ?: return@firstNotNullOfOrNull null
