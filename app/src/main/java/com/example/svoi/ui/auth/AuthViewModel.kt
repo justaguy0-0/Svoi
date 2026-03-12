@@ -73,7 +73,12 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 emoji = emoji,
                 bgColor = bgColor
             )
-            if (err == null) onSuccess() else _error.value = err
+            if (err == null) {
+                app.registerFcmToken()
+                onSuccess()
+            } else {
+                _error.value = err
+            }
             _isLoading.value = false
         }
     }
@@ -88,6 +93,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             val err = authRepo.signIn(email.trim().lowercase(), password)
             if (err == null) {
                 app.userRepository.setOnline(true)
+                app.registerFcmToken()
                 onSuccess()
             } else {
                 _error.value = err

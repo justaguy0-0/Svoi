@@ -1,9 +1,12 @@
 package com.example.svoi
 
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,9 +24,20 @@ class MainActivity : ComponentActivity() {
 
     private val app get() = application as SvoiApp
 
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
 
         setContent {
             var themeMode by remember { mutableStateOf(app.themeManager.getThemeMode()) }
@@ -37,6 +51,7 @@ class MainActivity : ComponentActivity() {
                     val restored = app.authRepository.restoreSession()
                     startDestination = if (restored) Routes.CHAT_LIST else Routes.LOGIN
                     // setOnline is handled by startPresenceHeartbeat() in onResume
+                    if (restored) app.registerFcmToken()
                 }
 
                 startDestination?.let { start ->

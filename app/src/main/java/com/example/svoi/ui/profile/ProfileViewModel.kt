@@ -103,6 +103,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     fun signOut(onDone: () -> Unit) {
         viewModelScope.launch {
+            app.unregisterFcmToken()
             authRepo.signOut()
             onDone()
         }
