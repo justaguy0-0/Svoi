@@ -19,7 +19,9 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.data.local.ThemeMode
+import com.example.svoi.ui.auth.AuthViewModel
 import com.example.svoi.ui.auth.InviteKeyScreen
 import com.example.svoi.ui.auth.LoginScreen
 import com.example.svoi.ui.auth.SetupStep1Screen
@@ -64,6 +66,9 @@ fun NavGraph(
     autoPlayVideos: Boolean = true,
     onAutoPlayChanged: (Boolean) -> Unit = {}
 ) {
+    // Shared AuthViewModel — scoped to NavGraph (Activity), so all auth screens share state
+    val authViewModel: AuthViewModel = viewModel()
+
     // Debounce: prevent rapid-fire navigation events (e.g. accidental double-tap)
     var lastNavMs by remember { mutableLongStateOf(0L) }
     fun canNav(): Boolean {
@@ -123,7 +128,8 @@ fun NavGraph(
                     onKeyValidated = { key ->
                         if (canNav()) navController.navigate(Routes.setupStep1(key))
                     },
-                    onBack = { if (canNav()) navController.navigateUp() }
+                    onBack = { if (canNav()) navController.navigateUp() },
+                    viewModel = authViewModel
                 )
             }
 
@@ -135,14 +141,16 @@ fun NavGraph(
                 SetupStep1Screen(
                     inviteKey = inviteKey,
                     onNext = { if (canNav()) navController.navigate(Routes.SETUP_STEP_2) },
-                    onBack = { if (canNav()) navController.navigateUp() }
+                    onBack = { if (canNav()) navController.navigateUp() },
+                    viewModel = authViewModel
                 )
             }
 
             composable(Routes.SETUP_STEP_2) {
                 SetupStep2Screen(
                     onNext = { if (canNav()) navController.navigate(Routes.SETUP_STEP_3) },
-                    onBack = { if (canNav()) navController.navigateUp() }
+                    onBack = { if (canNav()) navController.navigateUp() },
+                    viewModel = authViewModel
                 )
             }
 
@@ -153,7 +161,8 @@ fun NavGraph(
                             popUpTo(Routes.LOGIN) { inclusive = true }
                         }
                     },
-                    onBack = { if (canNav()) navController.navigateUp() }
+                    onBack = { if (canNav()) navController.navigateUp() },
+                    viewModel = authViewModel
                 )
             }
 
