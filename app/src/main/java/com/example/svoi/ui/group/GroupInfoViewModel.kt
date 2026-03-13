@@ -171,7 +171,12 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
             }
 
             if (chatRepo.addMember(chatId, userId, historyFrom)) {
-                messageRepo.sendSystemMessage(chatId, "$myName добавил(а) $addedName")
+                val sysMsg = messageRepo.sendSystemMessage(chatId, "$myName добавил(а) $addedName")
+                // Mark all history messages as read for the new member (up to the system message)
+                if (showHistory) {
+                    val beforeTs = sysMsg?.createdAt ?: java.time.Instant.now().toString()
+                    messageRepo.markHistoryRead(chatId, userId, beforeTs)
+                }
             }
             refreshData()
         }

@@ -9,8 +9,11 @@ import com.example.svoi.data.model.TypingStatus
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import io.github.jan.supabase.storage.storage
@@ -192,6 +195,23 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) {
             android.util.Log.e("SystemMsg", "sendSystemMessage FAILED: $content", e)
             null
+        }
+    }
+
+    /** Marks all messages in [chatId] created before [beforeTimestamp] as read for [userId].
+     *  Uses SECURITY DEFINER RPC so admin can insert reads on behalf of the new member. */
+    suspend fun markHistoryRead(chatId: String, userId: String, beforeTimestamp: String) {
+        try {
+            supabase.postgrest.rpc(
+                "mark_history_read",
+                buildJsonObject {
+                    put("p_chat_id", chatId)
+                    put("p_user_id", userId)
+                    put("p_before_ts", beforeTimestamp)
+                }
+            )
+        } catch (e: Exception) {
+            Log.e("MessageRepo", "markHistoryRead failed: ${e.message}")
         }
     }
 
