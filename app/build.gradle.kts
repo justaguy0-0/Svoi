@@ -106,6 +106,9 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
 
+    // Emoji2 (bundled modern emoji rendering)
+    implementation(libs.emoji2.bundled)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

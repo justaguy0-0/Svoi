@@ -158,10 +158,11 @@ fun ProfileScreen(
             OutlinedTextField(
                 value = statusText,
                 onValueChange = { statusText = it },
-                label = { Text("Статус") },
+                label = { Text("О себе") },
+                placeholder = { Text("Напишите что-нибудь о себе") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                maxLines = 3,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                 shape = MaterialTheme.shapes.medium
             )
 

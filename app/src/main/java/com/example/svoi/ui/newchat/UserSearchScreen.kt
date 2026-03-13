@@ -130,6 +130,7 @@ fun UserSearchScreen(
                             "Пользователи не найдены",
                             modifier = Modifier
                                 .align(Alignment.Center)
+                                .fillMaxWidth()
                                 .padding(16.dp),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

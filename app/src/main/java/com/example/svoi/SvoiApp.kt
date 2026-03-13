@@ -2,6 +2,8 @@ package com.example.svoi
 
 import android.app.Application
 import android.util.Log
+import androidx.emoji2.bundled.BundledEmojiCompatConfig
+import androidx.emoji2.text.EmojiCompat
 import com.example.svoi.data.NetworkMonitor
 import com.example.svoi.data.local.CacheManager
 import com.example.svoi.data.local.EncryptedPrefsManager
@@ -25,6 +27,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 class SvoiApp : Application() {
+
+    override fun onCreate() {
+        super.onCreate()
+        EmojiCompat.init(BundledEmojiCompatConfig(this))
+    }
 
     val supabase by lazy {
         createSupabaseClient(

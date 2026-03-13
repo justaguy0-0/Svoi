@@ -22,7 +22,9 @@ import androidx.navigation.navArgument
 import com.example.svoi.data.local.ThemeMode
 import com.example.svoi.ui.auth.InviteKeyScreen
 import com.example.svoi.ui.auth.LoginScreen
-import com.example.svoi.ui.auth.SetupProfileScreen
+import com.example.svoi.ui.auth.SetupStep1Screen
+import com.example.svoi.ui.auth.SetupStep2Screen
+import com.example.svoi.ui.auth.SetupStep3Screen
 import com.example.svoi.ui.chat.ChatScreen
 import com.example.svoi.ui.chatlist.ChatListScreen
 import com.example.svoi.ui.group.GroupInfoScreen
@@ -35,7 +37,9 @@ import com.example.svoi.ui.settings.SettingsScreen
 object Routes {
     const val LOGIN = "login"
     const val INVITE_KEY = "invite_key"
-    const val SETUP_PROFILE = "setup_profile/{inviteKey}"
+    const val SETUP_STEP_1 = "setup_step1/{inviteKey}"
+    const val SETUP_STEP_2 = "setup_step2"
+    const val SETUP_STEP_3 = "setup_step3"
     const val CHAT_LIST = "chat_list"
     const val CHAT = "chat/{chatId}"
     const val USER_SEARCH = "user_search"
@@ -45,7 +49,7 @@ object Routes {
     const val USER_PROFILE = "user_profile/{userId}"
     const val GROUP_INFO = "group_info/{chatId}"
 
-    fun setupProfile(inviteKey: String) = "setup_profile/$inviteKey"
+    fun setupStep1(inviteKey: String) = "setup_step1/$inviteKey"
     fun chat(chatId: String) = "chat/$chatId"
     fun userProfile(userId: String) = "user_profile/$userId"
     fun groupInfo(chatId: String) = "group_info/$chatId"
@@ -117,19 +121,33 @@ fun NavGraph(
             composable(Routes.INVITE_KEY) {
                 InviteKeyScreen(
                     onKeyValidated = { key ->
-                        if (canNav()) navController.navigate(Routes.setupProfile(key))
+                        if (canNav()) navController.navigate(Routes.setupStep1(key))
                     },
                     onBack = { if (canNav()) navController.navigateUp() }
                 )
             }
 
             composable(
-                route = Routes.SETUP_PROFILE,
+                route = Routes.SETUP_STEP_1,
                 arguments = listOf(navArgument("inviteKey") { type = NavType.StringType })
             ) { backStack ->
                 val inviteKey = backStack.arguments?.getString("inviteKey") ?: ""
-                SetupProfileScreen(
+                SetupStep1Screen(
                     inviteKey = inviteKey,
+                    onNext = { if (canNav()) navController.navigate(Routes.SETUP_STEP_2) },
+                    onBack = { if (canNav()) navController.navigateUp() }
+                )
+            }
+
+            composable(Routes.SETUP_STEP_2) {
+                SetupStep2Screen(
+                    onNext = { if (canNav()) navController.navigate(Routes.SETUP_STEP_3) },
+                    onBack = { if (canNav()) navController.navigateUp() }
+                )
+            }
+
+            composable(Routes.SETUP_STEP_3) {
+                SetupStep3Screen(
                     onSetupComplete = {
                         if (canNav()) navController.navigate(Routes.CHAT_LIST) {
                             popUpTo(Routes.LOGIN) { inclusive = true }

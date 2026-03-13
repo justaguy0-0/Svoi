@@ -108,6 +108,7 @@ class AuthRepository(
         email: String,
         password: String,
         displayName: String,
+        about: String = "",
         emoji: String,
         bgColor: String
     ): String? {
@@ -128,6 +129,7 @@ class AuthRepository(
                 set("display_name", displayName)
                 set("emoji", emoji)
                 set("bg_color", bgColor)
+                set("status_text", about)
             }) {
                 filter { eq("id", userId) }
             }
@@ -171,7 +173,8 @@ class AuthRepository(
             )
             null
         } catch (e: Exception) {
-            "Неверный email или пароль"
+            Log.e("Auth", "signIn failed: ${e.message}", e)
+            e.message ?: "Неверный email или пароль"
         }
     }
 

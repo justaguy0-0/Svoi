@@ -21,6 +21,54 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearError() { _error.value = null }
 
+    // Registration wizard state — shared between the 3 setup screens
+    internal var regInviteKey = ""
+    internal var regDisplayName = ""
+    internal var regAbout = ""
+    internal var regEmail = ""
+    internal var regPassword = ""
+
+    fun validateStep1(displayName: String, about: String, email: String, onNext: () -> Unit) {
+        clearError()
+        if (displayName.isBlank()) { _error.value = "Введите имя"; return }
+        if (email.isBlank() || !email.contains("@")) { _error.value = "Введите корректный email"; return }
+        regDisplayName = displayName.trim()
+        regAbout = about.trim()
+        regEmail = email.trim().lowercase()
+        onNext()
+    }
+
+    fun validateStep2(password: String, confirmPassword: String, onNext: () -> Unit) {
+        clearError()
+        if (password.length < 6) { _error.value = "Пароль должен быть не менее 6 символов"; return }
+        if (password != confirmPassword) { _error.value = "Пароли не совпадают"; return }
+        regPassword = password
+        onNext()
+    }
+
+    fun finishSignUp(emoji: String, bgColor: String, onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            val err = authRepo.signUpWithInviteKey(
+                inviteKey = regInviteKey,
+                email = regEmail,
+                password = regPassword,
+                displayName = regDisplayName,
+                about = regAbout,
+                emoji = emoji,
+                bgColor = bgColor
+            )
+            if (err == null) {
+                app.registerFcmToken()
+                onSuccess()
+            } else {
+                _error.value = err
+            }
+            _isLoading.value = false
+        }
+    }
+
     fun validateInviteKey(key: String, onValid: () -> Unit) {
         viewModelScope.launch {
             _isLoading.value = true
