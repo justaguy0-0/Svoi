@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.example.svoi.data.local.ThemeMode
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.svoi.navigation.NavGraph
 import com.example.svoi.navigation.Routes
@@ -60,10 +61,14 @@ class MainActivity : ComponentActivity() {
                     if (restored) app.registerFcmToken()
                 }
 
-                // Навигация в чат по уведомлению (когда приложение в фоне или убито)
+                // Навигация в чат по уведомлению.
+                // Ждём пока NavHost полностью инициализируется (currentBackStackEntry != null),
+                // только после этого навигируем — иначе граф ещё не задан и будет краш.
                 val chatId by pendingChatId
-                LaunchedEffect(startDestination, chatId) {
-                    if (startDestination == Routes.CHAT_LIST && chatId != null) {
+                val currentBackStackEntry by navController.currentBackStackEntryAsState()
+                LaunchedEffect(currentBackStackEntry?.destination?.route, chatId) {
+                    val currentRoute = currentBackStackEntry?.destination?.route
+                    if (currentRoute == Routes.CHAT_LIST && chatId != null) {
                         navController.navigate(Routes.chat(chatId!!))
                         pendingChatId.value = null
                     }
