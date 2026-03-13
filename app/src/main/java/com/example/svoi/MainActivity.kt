@@ -1,5 +1,6 @@
 package com.example.svoi
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -24,12 +25,17 @@ class MainActivity : ComponentActivity() {
 
     private val app get() = application as SvoiApp
 
+    // chat_id из уведомления — обновляется при onCreate и onNewIntent
+    private val pendingChatId = mutableStateOf<String?>(null)
+
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        pendingChatId.value = intent.getStringExtra("chat_id")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -54,6 +60,15 @@ class MainActivity : ComponentActivity() {
                     if (restored) app.registerFcmToken()
                 }
 
+                // Навигация в чат по уведомлению (когда приложение в фоне или убито)
+                val chatId by pendingChatId
+                LaunchedEffect(startDestination, chatId) {
+                    if (startDestination == Routes.CHAT_LIST && chatId != null) {
+                        navController.navigate(Routes.chat(chatId!!))
+                        pendingChatId.value = null
+                    }
+                }
+
                 startDestination?.let { start ->
                     NavGraph(
                         navController = navController,
@@ -72,6 +87,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingChatId.value = intent.getStringExtra("chat_id")
     }
 
     override fun onResume() {
