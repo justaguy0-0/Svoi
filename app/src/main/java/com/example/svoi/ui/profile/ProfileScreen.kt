@@ -177,7 +177,7 @@ fun ProfileScreen(
             // Save profile button
             Button(
                 onClick = {
-                    viewModel.saveProfile(displayName, statusText, selectedEmoji, selectedColor)
+                    viewModel.saveNameAndAbout(displayName, statusText)
                 },
                 modifier = Modifier
                     .fillMaxWidth()

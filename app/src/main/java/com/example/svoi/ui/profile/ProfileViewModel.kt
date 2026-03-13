@@ -60,22 +60,24 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun saveProfile(
-        displayName: String,
-        statusText: String,
-        emoji: String,
-        bgColor: String
-    ) {
+    fun saveNameAndAbout(displayName: String, statusText: String) {
         if (displayName.isBlank()) {
             _error.value = "Имя не может быть пустым"
             return
         }
         viewModelScope.launch {
             _isSaving.value = true
-            val err = userRepo.updateProfile(displayName.trim(), statusText.trim(), emoji, bgColor)
+            val err = userRepo.updateNameAndAbout(displayName.trim(), statusText.trim())
             if (err == null) {
+                val updated = _profile.value?.copy(
+                    displayName = displayName.trim(),
+                    statusText = statusText.trim()
+                )
+                if (updated != null) {
+                    _profile.value = updated
+                    cache.saveOwnProfile(updated)
+                }
                 _successMessage.value = "Профиль сохранён"
-                loadProfile()
             } else {
                 _error.value = err
             }
@@ -84,18 +86,16 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun saveAvatar(emoji: String, bgColor: String) {
-        val current = _profile.value ?: return
         viewModelScope.launch {
             _isSaving.value = true
-            val err = userRepo.updateProfile(
-                displayName = current.displayName,
-                statusText = current.statusText ?: "",
-                emoji = emoji,
-                bgColor = bgColor
-            )
+            val err = userRepo.updateAvatar(emoji, bgColor)
             if (err == null) {
+                val updated = _profile.value?.copy(emoji = emoji, bgColor = bgColor)
+                if (updated != null) {
+                    _profile.value = updated
+                    cache.saveOwnProfile(updated)
+                }
                 _successMessage.value = "Аватар сохранён"
-                loadProfile()
             } else {
                 _error.value = err
             }

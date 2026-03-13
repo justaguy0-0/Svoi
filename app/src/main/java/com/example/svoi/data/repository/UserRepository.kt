@@ -85,6 +85,36 @@ class UserRepository(private val supabase: SupabaseClient) {
         }
     }
 
+    suspend fun updateNameAndAbout(displayName: String, statusText: String): String? {
+        return try {
+            val userId = supabase.auth.currentUserOrNull()?.id ?: return "Не авторизован"
+            supabase.from("profiles").update({
+                set("display_name", displayName)
+                set("status_text", statusText)
+            }) {
+                filter { eq("id", userId) }
+            }
+            null
+        } catch (e: Exception) {
+            e.message
+        }
+    }
+
+    suspend fun updateAvatar(emoji: String, bgColor: String): String? {
+        return try {
+            val userId = supabase.auth.currentUserOrNull()?.id ?: return "Не авторизован"
+            supabase.from("profiles").update({
+                set("emoji", emoji)
+                set("bg_color", bgColor)
+            }) {
+                filter { eq("id", userId) }
+            }
+            null
+        } catch (e: Exception) {
+            e.message
+        }
+    }
+
     suspend fun getProfiles(userIds: List<String>): List<Profile> {
         if (userIds.isEmpty()) return emptyList()
         return try {
