@@ -119,7 +119,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { null }
     }
 
-    suspend fun sendPhotoMessage(chatId: String, fileUrl: String, replyToId: String? = null): Message? {
+    suspend fun sendPhotoMessage(chatId: String, fileUrl: String, replyToId: String? = null, content: String? = null): Message? {
         val userId = currentUserId()
         return try {
             supabase.from("messages").insert(
@@ -128,6 +128,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     put("sender_id", userId)
                     put("type", "photo")
                     put("file_url", fileUrl)
+                    if (content != null) put("content", content)
                     if (replyToId != null) put("reply_to_id", replyToId)
                 }
             ).decodeSingle<Message>()
@@ -162,16 +163,23 @@ class MessageRepository(private val supabase: SupabaseClient) {
         fileName: String,
         fileSize: Long,
         mimeType: String,
-        replyToId: String? = null
+        replyToId: String? = null,
+        content: String? = null
     ) {
         val userId = currentUserId()
         try {
             supabase.from("messages").insert(
-                FileMessageInsert(
-                    chatId = chatId, senderId = userId, type = "video",
-                    fileUrl = fileUrl, fileName = fileName, fileSize = fileSize,
-                    mimeType = mimeType, replyToId = replyToId
-                )
+                buildMap {
+                    put("chat_id", chatId)
+                    put("sender_id", userId)
+                    put("type", "video")
+                    put("file_url", fileUrl)
+                    put("file_name", fileName)
+                    put("file_size", fileSize)
+                    put("mime_type", mimeType)
+                    if (content != null) put("content", content)
+                    if (replyToId != null) put("reply_to_id", replyToId)
+                }
             )
         } catch (e: Exception) {
             Log.e("FileMsg", "sendVideoMessage FAILED: ${e.message}", e)

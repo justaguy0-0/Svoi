@@ -695,7 +695,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         uploadedUrls.add(url)
                     }
                     if (photos.size == 1) {
-                        messageRepo.sendPhotoMessage(chatId, uploadedUrls[0], replyId)
+                        messageRepo.sendPhotoMessage(chatId, uploadedUrls[0], replyId, text.trim().ifBlank { null })
                     } else {
                         messageRepo.sendAlbumMessage(chatId, uploadedUrls, text.trim().ifBlank { null }, replyId)
                     }
@@ -715,10 +715,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // ── Videos (each as separate message) ─────────────────────────────────
-        videos.forEach { staged -> sendVideoInternal(staged, context, replyId) }
+        val caption = text.trim().ifBlank { null }
+        videos.forEach { staged -> sendVideoInternal(staged, context, replyId, caption) }
     }
 
-    private fun sendVideoInternal(staged: StagedMedia, context: Context, replyId: String?) {
+    private fun sendVideoInternal(staged: StagedMedia, context: Context, replyId: String?, caption: String? = null) {
         val myId = currentUserId
         val mimeType = context.contentResolver.getType(staged.uri) ?: "video/mp4"
         val name = getVideoNameFromUri(staged.uri, context)
@@ -762,7 +763,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val fileName = "video_${System.currentTimeMillis()}.$ext"
                 val url = messageRepo.uploadFile(chatId, fileName, bytes)
                 if (url != null) {
-                    messageRepo.sendVideoMessage(chatId, url, name, bytes.size.toLong(), mimeType, replyId)
+                    messageRepo.sendVideoMessage(chatId, url, name, bytes.size.toLong(), mimeType, replyId, caption)
                 } else {
                     _error.value = "Ошибка загрузки видео"
                 }
@@ -781,24 +782,46 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun compressImage(uri: Uri, context: Context): ByteArray? {
         return try {
-            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val original = android.graphics.BitmapFactory.decodeStream(inputStream)
-            inputStream.close()
-            if (original == null) return null
-            val maxDim = 1280
-            val scaled = if (original.width > maxDim || original.height > maxDim) {
-                val ratio = minOf(maxDim.toFloat() / original.width, maxDim.toFloat() / original.height)
-                android.graphics.Bitmap.createScaledBitmap(
-                    original,
-                    (original.width * ratio).toInt(),
-                    (original.height * ratio).toInt(),
-                    true
-                )
+            // Read bytes once — reuse for both EXIF and bitmap decoding
+            val bytes = context.contentResolver.openInputStream(uri)?.readBytes() ?: return null
+
+            // Read EXIF orientation
+            val exif = android.media.ExifInterface(java.io.ByteArrayInputStream(bytes))
+            val orientation = exif.getAttributeInt(
+                android.media.ExifInterface.TAG_ORIENTATION,
+                android.media.ExifInterface.ORIENTATION_NORMAL
+            )
+            val rotation = when (orientation) {
+                android.media.ExifInterface.ORIENTATION_ROTATE_90  -> 90f
+                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                else -> 0f
+            }
+
+            val original = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                ?: return null
+
+            // Apply rotation if needed
+            val rotated = if (rotation != 0f) {
+                val matrix = android.graphics.Matrix().apply { postRotate(rotation) }
+                android.graphics.Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true)
+                    .also { if (it != original) original.recycle() }
             } else original
+
+            val maxDim = 1280
+            val scaled = if (rotated.width > maxDim || rotated.height > maxDim) {
+                val ratio = minOf(maxDim.toFloat() / rotated.width, maxDim.toFloat() / rotated.height)
+                android.graphics.Bitmap.createScaledBitmap(
+                    rotated,
+                    (rotated.width * ratio).toInt(),
+                    (rotated.height * ratio).toInt(),
+                    true
+                ).also { if (it != rotated) rotated.recycle() }
+            } else rotated
+
             val out = java.io.ByteArrayOutputStream()
             scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
-            if (scaled != original) scaled.recycle()
-            original.recycle()
+            if (scaled != rotated) scaled.recycle()
             out.toByteArray()
         } catch (e: Exception) { null }
     }
