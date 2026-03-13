@@ -140,9 +140,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val activeUploadCount = AtomicInteger(0)
     private var historyFrom: String? = null  // null = see all; timestamp = restricted to messages after join
 
+    private fun dismissChatNotification(chatId: String) {
+        val nm = getApplication<SvoiApp>()
+            .getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        nm.cancel(com.example.svoi.SvoiFirebaseMessagingService.notificationIdForChat(chatId))
+        // Cancel group summary if no other chat notifications remain
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            val remaining = nm.activeNotifications.filter {
+                it.id != com.example.svoi.SvoiFirebaseMessagingService.SUMMARY_ID
+            }
+            if (remaining.isEmpty()) {
+                nm.cancel(com.example.svoi.SvoiFirebaseMessagingService.SUMMARY_ID)
+            }
+        }
+    }
+
     fun init(chatId: String) {
         if (this.chatId == chatId) return
         this.chatId = chatId
+
+        dismissChatNotification(chatId)
 
         viewModelScope.launch {
             val cachedInfo     = cache.loadChatInfo(chatId)

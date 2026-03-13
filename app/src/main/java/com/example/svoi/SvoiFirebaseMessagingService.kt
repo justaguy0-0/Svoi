@@ -20,10 +20,16 @@ import kotlinx.coroutines.launch
 class SvoiFirebaseMessagingService : FirebaseMessagingService() {
 
     companion object {
-        private const val CHANNEL_ID = "svoi_messages"
-        private const val GROUP_KEY = "com.example.svoi.MESSAGES"
-        private const val SUMMARY_ID = 0
+        const val CHANNEL_ID = "svoi_messages"
+        const val GROUP_KEY = "com.example.svoi.MESSAGES"
+        const val SUMMARY_ID = 0
         private const val PRIMARY_COLOR = 0xFF1E88E5.toInt()
+
+        /** Stable notification ID for a given chatId — same chat always uses the same ID */
+        fun notificationIdForChat(chatId: String): Int = chatId.hashCode().let {
+            // Avoid SUMMARY_ID collision
+            if (it == SUMMARY_ID) Int.MIN_VALUE else it
+        }
     }
 
     override fun onNewToken(token: String) {
@@ -91,7 +97,8 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
             .setGroup(GROUP_KEY)
             .build()
 
-        notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+        val notifId = if (chatId != null) notificationIdForChat(chatId) else System.currentTimeMillis().toInt()
+        notificationManager.notify(notifId, notification)
 
         // Group summary — fixes black square when notifications are stacked
         val summary = NotificationCompat.Builder(this, CHANNEL_ID)
