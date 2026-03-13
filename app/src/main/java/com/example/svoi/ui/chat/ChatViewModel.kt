@@ -138,6 +138,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var lastKnownMessageId: String? = null
     private var typingJob: Job? = null
     private val activeUploadCount = AtomicInteger(0)
+    private var historyFrom: String? = null  // null = see all; timestamp = restricted to messages after join
 
     fun init(chatId: String) {
         if (this.chatId == chatId) return
@@ -257,6 +258,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         profiles.forEach { profileCache[it.id] = it }
 
         val myId = currentUserId
+        // Fetch historyFrom for the current user (only once — historyFrom never changes after join)
+        if (historyFrom == null) {
+            historyFrom = members.firstOrNull { it.userId == myId }?.historyFrom
+        }
+
         if (chat.type == "personal") {
             val other = profiles.firstOrNull { it.id != myId }
             _chatName.value = other?.displayName ?: "Пользователь"
@@ -301,7 +307,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun loadMessages(scrollAfter: Boolean = true) {
-        val raw = messageRepo.getMessages(chatId, limit = 50)
+        val raw = messageRepo.getMessages(chatId, limit = 50, historyFrom = historyFrom)
         if (raw.isEmpty()) return  // offline — keep cached messages shown
 
         val enriched = enrichMessages(raw)
@@ -847,7 +853,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun loadMoreMessages() {
         viewModelScope.launch {
             val current = _messages.value
-            val older = messageRepo.getMessages(chatId, limit = 30, offset = current.size)
+            val older = messageRepo.getMessages(chatId, limit = 30, offset = current.size, historyFrom = historyFrom)
             if (older.isNotEmpty()) {
                 _messages.value = enrichMessages(older) + current
             }

@@ -155,13 +155,22 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun addMember(userId: String) {
+    fun addMember(userId: String, showHistory: Boolean) {
         viewModelScope.launch {
             val addedProfile = userRepo.getProfile(userId)
             val addedName = addedProfile?.displayName ?: "Пользователь"
             val myName = ownProfile?.displayName ?: "Администратор"
 
-            if (chatRepo.addMember(chatId, userId)) {
+            val historyFrom: String? = if (showHistory) {
+                // Fetch last 100 messages — if fewer than 100 exist, show all (null)
+                val messages = messageRepo.getMessages(chatId, limit = 100, offset = 0)
+                if (messages.size < 100) null else messages.firstOrNull()?.createdAt
+            } else {
+                // Show only future messages — restrict to messages after now
+                java.time.Instant.now().toString()
+            }
+
+            if (chatRepo.addMember(chatId, userId, historyFrom)) {
                 messageRepo.sendSystemMessage(chatId, "$myName добавил(а) $addedName")
             }
             refreshData()

@@ -76,13 +76,14 @@ class MessageRepository(private val supabase: SupabaseClient) {
 
     private fun currentUserId() = supabase.auth.currentUserOrNull()?.id ?: ""
 
-    suspend fun getMessages(chatId: String, limit: Int = 50, offset: Int = 0): List<Message> {
+    suspend fun getMessages(chatId: String, limit: Int = 50, offset: Int = 0, historyFrom: String? = null): List<Message> {
         return try {
             supabase.from("messages")
                 .select {
                     filter {
                         eq("chat_id", chatId)
                         eq("deleted_for_all", false)
+                        if (historyFrom != null) gte("created_at", historyFrom)
                     }
                     order("created_at", Order.DESCENDING)
                     range(offset.toLong(), (offset + limit - 1).toLong())

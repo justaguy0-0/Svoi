@@ -15,8 +15,17 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+
+@Serializable
+private data class ChatMemberInsert(
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("history_from") val historyFrom: String? = null
+)
 
 class ChatRepository(private val supabase: SupabaseClient) {
 
@@ -367,10 +376,10 @@ class ChatRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { false }
     }
 
-    suspend fun addMember(chatId: String, userId: String): Boolean {
+    suspend fun addMember(chatId: String, userId: String, historyFrom: String? = null): Boolean {
         return try {
             supabase.from("chat_members").insert(
-                ChatMember(chatId = chatId, userId = userId)
+                ChatMemberInsert(chatId = chatId, userId = userId, historyFrom = historyFrom)
             )
             true
         } catch (e: Exception) { false }

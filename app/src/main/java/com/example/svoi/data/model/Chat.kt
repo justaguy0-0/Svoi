@@ -19,7 +19,8 @@ data class ChatMember(
     @SerialName("user_id") val userId: String = "",
     val role: String = "member", // "member" | "admin"
     val muted: Boolean = false,
-    @SerialName("joined_at") val joinedAt: String? = null
+    @SerialName("joined_at") val joinedAt: String? = null,
+    @SerialName("history_from") val historyFrom: String? = null
 )
 
 /** UI model combining chat + last message + unread + other user info */

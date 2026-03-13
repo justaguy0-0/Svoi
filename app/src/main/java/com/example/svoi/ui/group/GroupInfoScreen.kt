@@ -370,6 +370,7 @@ private fun AddMemberDialog(
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<com.example.svoi.data.model.Profile>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
+    var pendingUserId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(query) {
@@ -404,10 +405,7 @@ private fun AddMemberDialog(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
-                                        viewModel.addMember(profile.id)
-                                        onDismiss()
-                                    }
+                                    .clickable { pendingUserId = profile.id }
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -440,4 +438,27 @@ private fun AddMemberDialog(
             TextButton(onClick = onDismiss) { Text("Закрыть") }
         }
     )
+
+    // History dialog — shown after selecting a user to add
+    if (pendingUserId != null) {
+        AlertDialog(
+            onDismissRequest = { pendingUserId = null },
+            title = { Text("Показать историю?") },
+            text = { Text("Показать добавляемому пользователю последние 100 сообщений?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.addMember(pendingUserId!!, showHistory = true)
+                    pendingUserId = null
+                    onDismiss()
+                }) { Text("Да") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.addMember(pendingUserId!!, showHistory = false)
+                    pendingUserId = null
+                    onDismiss()
+                }) { Text("Нет") }
+            }
+        )
+    }
 }
