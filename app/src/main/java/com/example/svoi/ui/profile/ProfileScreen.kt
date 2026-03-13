@@ -23,11 +23,12 @@ import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -35,18 +36,19 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -57,6 +59,7 @@ import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.EmojiPicker
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.theme.AvatarColors
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,15 +77,18 @@ fun ProfileScreen(
     val successMessage by viewModel.successMessage.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     var displayName by remember(profile) { mutableStateOf(profile?.displayName ?: "") }
     var statusText by remember(profile) { mutableStateOf(profile?.statusText ?: "") }
     var selectedEmoji by remember(profile) { mutableStateOf(profile?.emoji ?: "😊") }
     var selectedColor by remember(profile) { mutableStateOf(profile?.bgColor ?: "#5C6BC0") }
 
-    var newPassword by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
+    var showAvatarSheet by remember { mutableStateOf(false) }
+    var showPasswordDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
+
+    val avatarSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     LaunchedEffect(error) {
         error?.let { snackbarHostState.showSnackbar(it); viewModel.clearMessages() }
@@ -144,7 +150,7 @@ fun ProfileScreen(
                 fontSize = 42.sp
             )
 
-            // Name & status
+            // Name & about
             OutlinedTextField(
                 value = displayName,
                 onValueChange = { displayName = it },
@@ -166,53 +172,7 @@ fun ProfileScreen(
                 shape = MaterialTheme.shapes.medium
             )
 
-            // Emoji picker (same keyboard as in chat)
-            Text(
-                "Эмодзи",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.fillMaxWidth()
-            )
-            EmojiPicker(
-                onEmojiSelected = { selectedEmoji = it },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            // Color picker — 2 symmetric rows (chunked by 6)
-            Text(
-                "Цвет",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                AvatarColors.chunked(6).forEach { rowColors ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        rowColors.forEach { hex ->
-                            val color = runCatching {
-                                Color(android.graphics.Color.parseColor(hex))
-                            }.getOrDefault(Color.Gray)
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(color)
-                                    .then(
-                                        if (hex == selectedColor)
-                                            Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
-                                        else Modifier
-                                    )
-                                    .clickable { selectedColor = hex }
-                            )
-                        }
-                    }
-                }
-            }
-
+            // Save profile button
             Button(
                 onClick = {
                     viewModel.saveProfile(displayName, statusText, selectedEmoji, selectedColor)
@@ -230,76 +190,179 @@ fun ProfileScreen(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Сохранить")
-                        if (!isOnline) {
-                            Text(
-                                "Нет подключения",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                            )
-                        }
-                    }
+                    Text(if (isOnline) "Сохранить" else "Нет подключения")
                 }
             }
 
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
-
-            // Change password section
-            Text(
-                "Сменить пароль",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = newPassword,
-                onValueChange = { newPassword = it },
-                label = { Text("Новый пароль") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Next
-                ),
-                shape = MaterialTheme.shapes.medium
-            )
-
-            OutlinedTextField(
-                value = confirmPassword,
-                onValueChange = { confirmPassword = it },
-                label = { Text("Повторите пароль") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Done
-                ),
-                shape = MaterialTheme.shapes.medium
-            )
-
-            Button(
-                onClick = {
-                    viewModel.changePassword("", newPassword, confirmPassword)
-                    newPassword = ""
-                    confirmPassword = ""
-                },
+            // Avatar edit button
+            OutlinedButton(
+                onClick = { showAvatarSheet = true },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
-                enabled = newPassword.isNotBlank() && !isSaving,
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text("Редактировать аватар")
+            }
+
+            // Change password button
+            OutlinedButton(
+                onClick = { showPasswordDialog = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
                 shape = MaterialTheme.shapes.medium
             ) {
                 Text("Изменить пароль")
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
         }
     }
 
+    // ── Avatar bottom sheet ──────────────────────────────────────────────────
+    if (showAvatarSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showAvatarSheet = false },
+            sheetState = avatarSheetState
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 32.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("Редактировать аватар", style = MaterialTheme.typography.titleLarge)
+
+                // Live preview inside sheet
+                Avatar(
+                    emoji = selectedEmoji,
+                    bgColor = selectedColor,
+                    size = 80.dp,
+                    fontSize = 38.sp
+                )
+
+                Text(
+                    "Эмодзи",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                EmojiPicker(
+                    onEmojiSelected = { selectedEmoji = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text(
+                    "Цвет",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    AvatarColors.chunked(6).forEach { rowColors ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            rowColors.forEach { hex ->
+                                val color = runCatching {
+                                    Color(android.graphics.Color.parseColor(hex))
+                                }.getOrDefault(Color.Gray)
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(color)
+                                        .then(
+                                            if (hex == selectedColor)
+                                                Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                            else Modifier
+                                        )
+                                        .clickable { selectedColor = hex }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        scope.launch { avatarSheetState.hide() }.invokeOnCompletion {
+                            showAvatarSheet = false
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text("Применить")
+                }
+            }
+        }
+    }
+
+    // ── Change password dialog ───────────────────────────────────────────────
+    if (showPasswordDialog) {
+        var newPassword by remember { mutableStateOf("") }
+        var confirmPassword by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showPasswordDialog = false },
+            title = { Text("Изменить пароль") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = newPassword,
+                        onValueChange = { newPassword = it },
+                        label = { Text("Новый пароль") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Next
+                        ),
+                        shape = MaterialTheme.shapes.medium
+                    )
+                    OutlinedTextField(
+                        value = confirmPassword,
+                        onValueChange = { confirmPassword = it },
+                        label = { Text("Повторите пароль") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done
+                        ),
+                        shape = MaterialTheme.shapes.medium
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.changePassword("", newPassword, confirmPassword)
+                        showPasswordDialog = false
+                    },
+                    enabled = newPassword.isNotBlank()
+                ) {
+                    Text("Сохранить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordDialog = false }) { Text("Отмена") }
+            }
+        )
+    }
+
+    // ── Logout dialog ────────────────────────────────────────────────────────
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },

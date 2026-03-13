@@ -47,7 +47,7 @@ val Error = Color(0xFFE53935)
 
 // Avatar palette — for user picks
 val AvatarColors = listOf(
-    "#EF5350", "#EC407A", "#AB47BC", "#7E57C2",
-    "#5C6BC0", "#1E88E5", "#26C6DA", "#26A69A",
-    "#66BB6A", "#FFA726", "#FF7043", "#8D6E63"
+    "#EF5350", "#EC407A", "#AB47BC", "#7E57C2", "#5C6BC0", "#1E88E5",
+    "#26C6DA", "#26A69A", "#66BB6A", "#FFA726", "#FF7043", "#8D6E63",
+    "#4CAF50", "#CDDC39", "#FFC107", "#FF5722", "#795548", "#607D8B"
 )
