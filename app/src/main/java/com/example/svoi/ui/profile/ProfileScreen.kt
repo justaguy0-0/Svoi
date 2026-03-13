@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -224,13 +226,15 @@ fun ProfileScreen(
     if (showAvatarSheet) {
         ModalBottomSheet(
             onDismissRequest = { showAvatarSheet = false },
-            sheetState = avatarSheetState
+            sheetState = avatarSheetState,
+            windowInsets = WindowInsets(0)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    .padding(bottom = 32.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp)
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -292,6 +296,7 @@ fun ProfileScreen(
 
                 Button(
                     onClick = {
+                        viewModel.saveAvatar(selectedEmoji, selectedColor)
                         scope.launch { avatarSheetState.hide() }.invokeOnCompletion {
                             showAvatarSheet = false
                         }
@@ -299,9 +304,18 @@ fun ProfileScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),
+                    enabled = !isSaving,
                     shape = MaterialTheme.shapes.medium
                 ) {
-                    Text("Применить")
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Применить")
+                    }
                 }
             }
         }

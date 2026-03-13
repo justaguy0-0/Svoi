@@ -83,6 +83,26 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun saveAvatar(emoji: String, bgColor: String) {
+        val current = _profile.value ?: return
+        viewModelScope.launch {
+            _isSaving.value = true
+            val err = userRepo.updateProfile(
+                displayName = current.displayName,
+                statusText = current.statusText ?: "",
+                emoji = emoji,
+                bgColor = bgColor
+            )
+            if (err == null) {
+                _successMessage.value = "Аватар сохранён"
+                loadProfile()
+            } else {
+                _error.value = err
+            }
+            _isSaving.value = false
+        }
+    }
+
     fun changePassword(current: String, newPassword: String, confirm: String) {
         if (newPassword.length < 6) {
             _error.value = "Пароль должен быть не менее 6 символов"
