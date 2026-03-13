@@ -162,7 +162,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
 
     fun signOut(onDone: () -> Unit) {
         viewModelScope.launch {
-            app.authRepository.signOut()
+            app.logout()
             onDone()
         }
     }

@@ -90,4 +90,11 @@ class SvoiApp : Application() {
             Log.e("FCM", "unregisterFcmToken: ${e.message}")
         }
     }
+
+    /** Central logout: unregister FCM token, clear cache, then sign out. */
+    suspend fun logout() {
+        unregisterFcmToken() // must be before signOut — needs currentUserId()
+        cacheManager.clearAll()
+        authRepository.signOut()
+    }
 }
