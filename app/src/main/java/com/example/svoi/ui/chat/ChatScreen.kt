@@ -101,7 +101,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import com.example.svoi.ActiveChatTracker
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.derivedStateOf
@@ -185,6 +187,15 @@ fun ChatScreen(
     viewModel: ChatViewModel = viewModel()
 ) {
     LaunchedEffect(chatId) { viewModel.init(chatId) }
+
+    DisposableEffect(chatId) {
+        ActiveChatTracker.activeChatId = chatId
+        onDispose {
+            if (ActiveChatTracker.activeChatId == chatId) {
+                ActiveChatTracker.activeChatId = null
+            }
+        }
+    }
 
     val messages by viewModel.messages.collectAsState()
     val chat by viewModel.chat.collectAsState()

@@ -11,8 +11,6 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import androidx.core.app.Person
-import androidx.core.graphics.drawable.IconCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.CoroutineScope
@@ -43,6 +41,10 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
         val title = data["title"] ?: return
         val body = data["body"] ?: return
         val chatId = data["chat_id"]
+
+        // Не показываем уведомление если пользователь сейчас в этом чате
+        if (chatId != null && chatId == ActiveChatTracker.activeChatId) return
+
         val isGroup = data["is_group"] == "true"
         val avatarEmoji = data["avatar_emoji"] ?: "😊"
         val avatarColor = data["avatar_color"] ?: "#5C6BC0"
@@ -51,10 +53,10 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
         val avatarText = if (isGroup) avatarLetter else avatarEmoji
         val avatarBitmap = createAvatarBitmap(avatarColor, avatarText, isEmoji = !isGroup)
 
-        showNotification(title = title, body = body, chatId = chatId, senderName = title, avatarBitmap = avatarBitmap)
+        showNotification(title = title, body = body, chatId = chatId, avatarBitmap = avatarBitmap)
     }
 
-    private fun showNotification(title: String, body: String, chatId: String?, senderName: String, avatarBitmap: Bitmap) {
+    private fun showNotification(title: String, body: String, chatId: String?, avatarBitmap: Bitmap) {
         val notificationManager = getSystemService(NotificationManager::class.java)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -76,18 +78,13 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val sender = Person.Builder()
-            .setName(senderName)
-            .setIcon(IconCompat.createWithBitmap(avatarBitmap))
-            .build()
-
-        val messagingStyle = NotificationCompat.MessagingStyle(sender)
-            .addMessage(body, System.currentTimeMillis(), sender)
-
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(avatarBitmap)
             .setColor(PRIMARY_COLOR)
-            .setStyle(messagingStyle)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
