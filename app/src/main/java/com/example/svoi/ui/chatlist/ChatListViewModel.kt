@@ -67,11 +67,22 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             }
         }
         loadChats(showUpdating = true)  // initial load
-        viewModelScope.launch { _currentProfile.value = app.userRepository.getCurrentProfile() }
+        viewModelScope.launch {
+            // Show cached profile immediately, then refresh from network
+            cache.loadOwnProfile()?.let { _currentProfile.value = it }
+            val fresh = app.userRepository.getCurrentProfile()
+            if (fresh != null) _currentProfile.value = fresh
+        }
         observeNewMessages()
         observeReadReceipts()
         observePresenceUpdates()
         startTypingPolling()
+    }
+
+    fun refreshCurrentProfile() {
+        viewModelScope.launch {
+            cache.loadOwnProfile()?.let { _currentProfile.value = it }
+        }
     }
 
     fun loadChats(showUpdating: Boolean = false) {
