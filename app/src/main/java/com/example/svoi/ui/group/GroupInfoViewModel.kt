@@ -124,7 +124,7 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
             val myName = ownProfile?.displayName ?: "Администратор"
 
             if (chatRepo.removeMember(chatId, userId)) {
-                messageRepo.sendSystemMessage(chatId, "$myName исключил $removedName")
+                messageRepo.sendSystemMessage(chatId, "$myName исключил(а) $removedName")
             }
             refreshData()
         }
@@ -136,7 +136,7 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             val myName = ownProfile?.displayName ?: "Администратор"
             if (chatRepo.renameGroup(chatId, trimmed)) {
-                messageRepo.sendSystemMessage(chatId, "$myName изменил название на «$trimmed»")
+                messageRepo.sendSystemMessage(chatId, "$myName изменил(а) название на «$trimmed»")
             }
             refreshData()
         }
@@ -146,7 +146,7 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             val myName = ownProfile?.displayName ?: "Администратор"
             // Send system message before deleting so members see it in realtime
-            messageRepo.sendSystemMessage(chatId, "$myName удалил группу")
+            messageRepo.sendSystemMessage(chatId, "$myName удалил(а) группу")
             // Small delay so realtime can propagate the message
             delay(300)
             // Soft delete: archives to deleted_chats + writes audit_log
@@ -162,7 +162,7 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
             val myName = ownProfile?.displayName ?: "Администратор"
 
             if (chatRepo.addMember(chatId, userId)) {
-                messageRepo.sendSystemMessage(chatId, "$myName добавил $addedName")
+                messageRepo.sendSystemMessage(chatId, "$myName добавил(а) $addedName")
             }
             refreshData()
         }

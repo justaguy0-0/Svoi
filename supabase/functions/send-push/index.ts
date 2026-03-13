@@ -67,8 +67,8 @@ Deno.serve(async (req) => {
     if (!record) return new Response('No record', { status: 400 })
 
     const { chat_id, sender_id, content, type } = record
-    if (!['text', 'media'].includes(type)) {
-      return new Response('Skip system messages', { status: 200 })
+    if (!['text', 'media', 'system'].includes(type)) {
+      return new Response('Skip unsupported message type', { status: 200 })
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -92,18 +92,30 @@ Deno.serve(async (req) => {
 
     if (!tokenRows?.length) return new Response('No tokens', { status: 200 })
 
-    // Get sender name and chat info in parallel
+    // Get sender profile (with avatar) and chat info in parallel
     const [{ data: sender }, { data: chat }] = await Promise.all([
-      supabase.from('profiles').select('display_name').eq('id', sender_id).single(),
+      supabase.from('profiles').select('display_name, emoji, bg_color').eq('id', sender_id).single(),
       supabase.from('chats').select('name, type').eq('id', chat_id).single(),
     ])
 
     const senderName = sender?.display_name ?? 'Кто-то'
     const isGroup = chat?.type === 'group'
-    const notificationTitle = isGroup ? (chat?.name ?? 'Групповой чат') : senderName
-    const notificationBody = type === 'media'
-      ? (isGroup ? `${senderName}: 📷 Медиа` : '📷 Медиа')
-      : (isGroup ? `${senderName}: ${content}` : content)
+    const chatName = chat?.name ?? ''
+
+    const notificationTitle = isGroup ? chatName || 'Групповой чат' : senderName
+    let notificationBody: string
+    if (type === 'system') {
+      notificationBody = content
+    } else if (type === 'media') {
+      notificationBody = isGroup ? `${senderName}: 📷 Медиа` : '📷 Медиа'
+    } else {
+      notificationBody = isGroup ? `${senderName}: ${content}` : content
+    }
+
+    // Avatar: for group — first letter of chat name on dark circle; for personal — sender emoji + color
+    const avatarEmoji = sender?.emoji ?? '😊'
+    const avatarColor = isGroup ? '#455A64' : (sender?.bg_color ?? '#5C6BC0')
+    const avatarLetter = chatName.slice(0, 1).toUpperCase()
 
     const accessToken = await getFcmAccessToken()
     const fcmUrl = `https://fcm.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/messages:send`
@@ -118,11 +130,20 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           message: {
             token,
-            notification: { title: notificationTitle, body: notificationBody },
-            data: { chat_id, sender_id },
+            // Data-only message — onMessageReceived is always called (foreground + background + killed)
+            data: {
+              chat_id,
+              sender_id,
+              title: notificationTitle,
+              body: notificationBody,
+              avatar_emoji: avatarEmoji,
+              avatar_color: avatarColor,
+              avatar_letter: avatarLetter,
+              is_group: isGroup ? 'true' : 'false',
+            },
             android: {
               priority: 'HIGH',
-              notification: { channel_id: 'svoi_messages', sound: 'default' },
+              ttl: '86400s',
             },
           },
         }),
