@@ -35,6 +35,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -721,23 +722,45 @@ fun ChatScreen(
 
                 // Scroll to bottom button
                 val showScrollToBottom by remember { derivedStateOf { listState.canScrollForward } }
+                val unreadBadgeCount = if (firstUnreadIndex >= 0) messages.size - firstUnreadIndex else 0
                 if (showScrollToBottom && !isSelectionMode) {
-                    FloatingActionButton(
-                        onClick = {
-                            scope.launch { listState.smoothScrollToItem(displayEntries.size - 1) }
-                        },
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.primary,
+                    Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(end = 12.dp, bottom = 12.dp)
-                            .size(40.dp)
                     ) {
-                        Icon(
-                            Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Вниз",
-                            modifier = Modifier.size(24.dp)
-                        )
+                        FloatingActionButton(
+                            onClick = {
+                                scope.launch { listState.smoothScrollToItem(displayEntries.size - 1) }
+                            },
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Вниз",
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        if (unreadBadgeCount > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 4.dp, y = (-4).dp)
+                                    .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
+                                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                    .padding(horizontal = 3.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (unreadBadgeCount > 99) "99+" else unreadBadgeCount.toString(),
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
             }
