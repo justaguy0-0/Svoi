@@ -354,13 +354,18 @@ fun ChatScreen(
         }
     }
 
-    // Помечаем сообщения прочитанными только когда пользователь в самом низу чата
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.canScrollForward }
-            .distinctUntilChanged()
-            .collect { canScrollForward ->
-                if (!canScrollForward) viewModel.markAsRead()
-            }
+    // Флаг: начальный авто-скролл (на вход в чат) завершён.
+    // markAsRead() нельзя вызывать до этого момента — иначе авто-скролл к разделителю
+    // непрочитанных может оказаться «у дна» и сразу сбросить счётчик.
+    var initialScrollDone by remember { mutableStateOf(false) }
+
+    // Помечаем прочитанными только когда пользователь САМ оказался у низа
+    // (после завершения начального авто-скролла)
+    val shouldMarkRead by remember {
+        derivedStateOf { initialScrollDone && !listState.canScrollForward && listState.layoutInfo.totalItemsCount > 0 }
+    }
+    LaunchedEffect(shouldMarkRead) {
+        if (shouldMarkRead) viewModel.markAsRead()
     }
 
     // Auto-play: when scroll stops, find the bottommost 50%-visible video and play it
@@ -388,11 +393,10 @@ fun ChatScreen(
             }
     }
 
-    // Scroll to first unread or bottom
+    // Scroll to first unread or bottom (initial entry)
     LaunchedEffect(scrollToBottomEvent) {
         if (scrollToBottomEvent == 0) return@LaunchedEffect
-        // Wait until the LazyColumn has actually laid out items (handles the case where
-        // messages arrive from the network while isLoading spinner is showing)
+        // Wait until the LazyColumn has actually laid out items
         snapshotFlow { listState.layoutInfo.totalItemsCount }
             .first { it > 0 }
         val entries = currentDisplayEntries
@@ -402,6 +406,8 @@ fun ChatScreen(
             val offset = if (unreadEntryIdx >= 0) -(screenHeightPx / 2) else 0
             listState.scrollToItem(target, scrollOffset = offset)
         }
+        // After initial scroll, allow markAsRead to fire when user reaches the bottom
+        initialScrollDone = true
     }
 
     // Scroll to absolute bottom when user sends their own message

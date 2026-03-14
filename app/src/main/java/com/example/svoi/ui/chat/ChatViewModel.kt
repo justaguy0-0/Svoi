@@ -238,9 +238,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 loadChatInfo()
                 loadPinnedMessage()
                 loadMessages(scrollAfter = false)
-                // Initialize badge: count from first unread (don't mark all as seen yet)
+                // Badge starts from first unread; server receipts sent only when user reaches bottom
                 _lastSeenMsgCount.value = if (_firstUnreadIndex.value >= 0) _firstUnreadIndex.value else _messages.value.size
-                sendReadReceipts()
             } else {
                 // ── SLOW PATH: first visit or incomplete cache — show spinner ─────
                 if (cachedInfo != null) {
@@ -254,9 +253,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 loadChatInfo()
                 loadPinnedMessage()
                 loadMessages(scrollAfter = false)
-                // Initialize badge: count from first unread (don't mark all as seen yet)
+                // Badge starts from first unread; server receipts sent only when user reaches bottom
                 _lastSeenMsgCount.value = if (_firstUnreadIndex.value >= 0) _firstUnreadIndex.value else _messages.value.size
-                sendReadReceipts()
 
                 _isLoading.value = false
                 _scrollToBottomEvent.value++   // single, stable scroll after full load
