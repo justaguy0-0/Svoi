@@ -138,6 +138,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _isChatDeleted = MutableStateFlow(false)
     val isChatDeleted: StateFlow<Boolean> = _isChatDeleted
 
+    /** Количество сообщений, которые пользователь видел в момент последнего markAsRead */
+    private val _lastSeenMsgCount = MutableStateFlow(0)
+    val lastSeenMsgCount: StateFlow<Int> = _lastSeenMsgCount
+
     /** Mute state for this chat (notifications) */
     private val _isMuted = MutableStateFlow(false)
     val isMuted: StateFlow<Boolean> = _isMuted
@@ -446,6 +450,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun markAsRead() {
+        _lastSeenMsgCount.value = _messages.value.size
         viewModelScope.launch {
             // NonCancellable: the read receipt must be sent even if the user navigates away
             withContext(NonCancellable) {

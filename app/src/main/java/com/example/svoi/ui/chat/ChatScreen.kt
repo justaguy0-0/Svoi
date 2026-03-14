@@ -252,6 +252,7 @@ fun ChatScreen(
     val voicePlayState by viewModel.voicePlayState.collectAsState()
     val isMuted by viewModel.isMuted.collectAsState()
     val isPartnerLeft by viewModel.isPartnerLeft.collectAsState()
+    val lastSeenMsgCount by viewModel.lastSeenMsgCount.collectAsState()
 
     // If the group chat was deleted by the admin, kick this user back to chat list
     LaunchedEffect(isChatDeleted) {
@@ -334,11 +335,19 @@ fun ChatScreen(
 
     val currentDisplayEntries by rememberUpdatedState(displayEntries)
 
-    // Если пользователь уже в самом низу — скроллим к новому сообщению автоматически.
-    // Если он пролистал вверх — не трогаем его позицию.
+    // «Зона около низа»: если последний видимый элемент не дальше 3 позиций от конца —
+    // пользователь считается «у низа» и новые сообщения скроллят его вниз.
+    val isNearBottom by remember {
+        derivedStateOf {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = listState.layoutInfo.totalItemsCount
+            total > 0 && (total - lastVisible) <= 3
+        }
+    }
+
     LaunchedEffect(messages.size) {
         if (messages.isEmpty()) return@LaunchedEffect
-        if (!listState.canScrollForward) {
+        if (isNearBottom) {
             val last = currentDisplayEntries.size - 1
             if (last >= 0) listState.animateScrollToItem(last)
         }
@@ -742,15 +751,10 @@ fun ChatScreen(
 
                 // Scroll to bottom button
                 val showScrollToBottom by remember { derivedStateOf { listState.canScrollForward } }
-                // Живой счётчик входящих сообщений ниже текущей позиции прокрутки
-                val unreadBadgeCount by remember {
-                    derivedStateOf {
-                        val entries = currentDisplayEntries
-                        val lastIdx = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-                        if (lastIdx < 0) 0
-                        else entries.drop(lastIdx + 1).count { it is ChatEntry.Msg && !it.item.isOwn }
-                    }
-                }
+                // Входящие сообщения, пришедшие после того, как пользователь последний раз
+                // был внизу (lastSeenMsgCount). Не зависит от прокрутки — это именно «новые».
+                val unreadBadgeCount = if (lastSeenMsgCount >= messages.size) 0
+                    else messages.drop(lastSeenMsgCount).count { !it.isOwn }
                 if (showScrollToBottom && !isSelectionMode) {
                     Box(
                         modifier = Modifier
