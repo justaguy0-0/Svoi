@@ -206,6 +206,29 @@ class MessageRepository(private val supabase: SupabaseClient) {
         }
     }
 
+    suspend fun sendVoiceMessage(
+        chatId: String,
+        fileUrl: String,
+        durationSec: Int,
+        replyToId: String? = null
+    ) {
+        val userId = currentUserId()
+        try {
+            supabase.from("messages").insert(
+                buildMap {
+                    put("chat_id", chatId)
+                    put("sender_id", userId)
+                    put("type", "voice")
+                    put("file_url", fileUrl)
+                    put("duration", durationSec)
+                    if (replyToId != null) put("reply_to_id", replyToId)
+                }
+            )
+        } catch (e: Exception) {
+            Log.e("MessageRepo", "sendVoiceMessage FAILED: ${e.message}")
+        }
+    }
+
     /** Marks all messages in [chatId] created before [beforeTimestamp] as read for [userId].
      *  Uses SECURITY DEFINER RPC so admin can insert reads on behalf of the new member. */
     suspend fun markHistoryRead(chatId: String, userId: String, beforeTimestamp: String) {

@@ -30,6 +30,18 @@ import kotlinx.coroutines.withContext
 data class TypingInfo(val userId: String, val displayName: String, val status: String = "typing")
 data class StagedMedia(val uri: Uri, val isVideo: Boolean)
 
+sealed class VoiceRecordState {
+    object Idle : VoiceRecordState()
+    data class Recording(val isLocked: Boolean = false) : VoiceRecordState()
+}
+
+data class VoicePlayState(
+    val messageId: String,
+    val isPlaying: Boolean,
+    val positionMs: Int,
+    val durationMs: Int
+)
+
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as SvoiApp
@@ -139,6 +151,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var typingJob: Job? = null
     private val activeUploadCount = AtomicInteger(0)
     private var historyFrom: String? = null  // null = see all; timestamp = restricted to messages after join
+
+    // ── Voice recording ───────────────────────────────────────────────────────
+    private val voiceRecorder = VoiceRecorder(getApplication())
+    private val _voiceRecordState = MutableStateFlow<VoiceRecordState>(VoiceRecordState.Idle)
+    val voiceRecordState: StateFlow<VoiceRecordState> = _voiceRecordState
+    private val _voiceElapsedMs = MutableStateFlow(0L)
+    val voiceElapsedMs: StateFlow<Long> = _voiceElapsedMs
+    private var voiceTimerJob: Job? = null
+
+    // ── Voice playback ────────────────────────────────────────────────────────
+    private var voiceMediaPlayer: android.media.MediaPlayer? = null
+    private val _voicePlayState = MutableStateFlow<VoicePlayState?>(null)
+    val voicePlayState: StateFlow<VoicePlayState?> = _voicePlayState
+    private var voiceProgressJob: Job? = null
 
     private fun dismissChatNotification(chatId: String) {
         val nm = getApplication<SvoiApp>()
@@ -567,6 +593,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (chatId.isNotEmpty()) {
             viewModelScope.launch { messageRepo.clearTyping(chatId, currentUserId) }
         }
+        voiceRecorder.cancel()
+        stopVoice()
     }
 
     fun setReplyTo(message: Message?) { _replyTo.value = message }
@@ -899,4 +927,138 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    // ── Voice recording methods ───────────────────────────────────────────────
+
+    fun startVoiceRecording() {
+        if (_voiceRecordState.value != VoiceRecordState.Idle) return
+        pauseVoice() // stop any playing voice
+        val started = voiceRecorder.start()
+        if (!started) { _error.value = "Не удалось начать запись"; return }
+        _voiceRecordState.value = VoiceRecordState.Recording()
+        voiceTimerJob?.cancel()
+        voiceTimerJob = viewModelScope.launch {
+            while (voiceRecorder.isRecording) {
+                _voiceElapsedMs.value = voiceRecorder.elapsedMs
+                delay(100)
+            }
+        }
+    }
+
+    fun lockRecording() {
+        val s = _voiceRecordState.value
+        if (s is VoiceRecordState.Recording && !s.isLocked) {
+            _voiceRecordState.value = VoiceRecordState.Recording(isLocked = true)
+        }
+    }
+
+    fun cancelVoiceRecording() {
+        voiceTimerJob?.cancel()
+        voiceRecorder.cancel()
+        _voiceRecordState.value = VoiceRecordState.Idle
+        _voiceElapsedMs.value = 0L
+    }
+
+    fun sendVoiceRecording(context: android.content.Context) {
+        if (voiceRecorder.elapsedMs < 500L) { cancelVoiceRecording(); return }
+        voiceTimerJob?.cancel()
+        _voiceRecordState.value = VoiceRecordState.Idle
+        _voiceElapsedMs.value = 0L
+        val result = voiceRecorder.stop() ?: return
+        val (file, durationSec) = result
+        val replyId = _replyTo.value?.id
+        _replyTo.value = null
+        val myId = currentUserId
+        val pendingId = "pending_${java.util.UUID.randomUUID()}"
+        val now = java.time.Instant.now().toString()
+        val pendingMsg = Message(id = pendingId, chatId = chatId, senderId = myId,
+            type = "voice", duration = durationSec, createdAt = now)
+        _messages.value = _messages.value + MessageUiItem(
+            message = pendingMsg, senderProfile = profileCache[myId],
+            isOwn = true, isRead = false, isPending = true)
+        _scrollToBottomEvent.value++
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val bytes = file.readBytes(); file.delete()
+                val url = messageRepo.uploadFile(chatId, "voice_${System.currentTimeMillis()}.m4a", bytes)
+                if (url != null) messageRepo.sendVoiceMessage(chatId, url, durationSec, replyId)
+                else _error.value = "Ошибка загрузки голосового"
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _error.value = "Ошибка: ${e.message}"
+            } finally {
+                _messages.value = _messages.value.filter { it.message.id != pendingId }
+            }
+        }
+    }
+
+    // ── Voice playback methods ────────────────────────────────────────────────
+
+    fun playVoice(messageId: String, url: String, durationSec: Int) {
+        val cur = _voicePlayState.value
+        if (cur?.messageId == messageId) {
+            if (cur.isPlaying) pauseVoice() else resumeVoice(); return
+        }
+        stopVoice()
+        val player = android.media.MediaPlayer()
+        voiceMediaPlayer = player
+        _voicePlayState.value = VoicePlayState(messageId, false, 0, durationSec * 1000)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                player.setDataSource(url)
+                player.prepare()
+                val dur = player.duration.takeIf { it > 0 } ?: (durationSec * 1000)
+                withContext(Dispatchers.Main) {
+                    _voicePlayState.value = VoicePlayState(messageId, true, 0, dur)
+                    player.start()
+                    startVoiceProgressUpdates(messageId)
+                    player.setOnCompletionListener {
+                        _voicePlayState.value = _voicePlayState.value?.copy(isPlaying = false, positionMs = 0)
+                        voiceProgressJob?.cancel()
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                withContext(Dispatchers.Main) { _voicePlayState.value = null; voiceMediaPlayer = null }
+            }
+        }
+    }
+
+    private fun startVoiceProgressUpdates(messageId: String) {
+        voiceProgressJob?.cancel()
+        voiceProgressJob = viewModelScope.launch {
+            while (_voicePlayState.value?.isPlaying == true) {
+                _voicePlayState.value = _voicePlayState.value?.copy(
+                    positionMs = voiceMediaPlayer?.currentPosition ?: break
+                )
+                delay(100)
+            }
+        }
+    }
+
+    fun pauseVoice() {
+        try { voiceMediaPlayer?.pause() } catch (_: Exception) {}
+        voiceProgressJob?.cancel()
+        _voicePlayState.value = _voicePlayState.value?.copy(isPlaying = false)
+    }
+
+    fun resumeVoice() {
+        val id = _voicePlayState.value?.messageId ?: return
+        voiceMediaPlayer?.start()
+        _voicePlayState.value = _voicePlayState.value?.copy(isPlaying = true)
+        startVoiceProgressUpdates(id)
+    }
+
+    fun seekVoice(positionMs: Int) {
+        voiceMediaPlayer?.seekTo(positionMs)
+        _voicePlayState.value = _voicePlayState.value?.copy(positionMs = positionMs)
+    }
+
+    fun stopVoice() {
+        voiceProgressJob?.cancel()
+        try { voiceMediaPlayer?.stop(); voiceMediaPlayer?.release() } catch (_: Exception) {}
+        voiceMediaPlayer = null
+        _voicePlayState.value = null
+    }
+
 }
