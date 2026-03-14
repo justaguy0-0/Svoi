@@ -82,8 +82,15 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -95,6 +102,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -152,7 +160,6 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.core.content.ContextCompat
-import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntOffset
@@ -181,6 +188,7 @@ import com.example.svoi.util.toDateSeparator
 import com.example.svoi.util.toLastSeen
 import com.example.svoi.util.toMessageTime
 import com.example.svoi.util.toReadableSize
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.CompositionLocalProvider
@@ -240,6 +248,8 @@ fun ChatScreen(
     val voiceRecordState by viewModel.voiceRecordState.collectAsState()
     val voiceElapsedMs by viewModel.voiceElapsedMs.collectAsState()
     val voicePlayState by viewModel.voicePlayState.collectAsState()
+    val isMuted by viewModel.isMuted.collectAsState()
+    val isPartnerLeft by viewModel.isPartnerLeft.collectAsState()
 
     // If the group chat was deleted by the admin, kick this user back to chat list
     LaunchedEffect(isChatDeleted) {
@@ -277,7 +287,7 @@ fun ChatScreen(
     // Video playback state
     val exoPlayer = rememberChatExoPlayer()
     var activeVideoUrl by remember { mutableStateOf<String?>(null) }
-    var isMuted by remember { mutableStateOf(true) }
+    var isVideoMuted by remember { mutableStateOf(true) }
     var fullscreenVideoUrl by remember { mutableStateOf<String?>(null) }
     // Cached aspect ratios per URL (populated on first play when real size is known)
     val videoAspectRatios = remember { mutableStateMapOf<String, Float>() }
@@ -285,6 +295,10 @@ fun ChatScreen(
     val screenHeightPx = with(LocalDensity.current) {
         LocalConfiguration.current.screenHeightDp.dp.roundToPx()
     }
+
+    var showChatMenu by remember { mutableStateOf(false) }
+    var showLeaveConfirmDialog by remember { mutableStateOf(false) }
+    var showDeleteChatDialog by remember { mutableStateOf(false) }
 
     // Exit selection mode with back button
     BackHandler(enabled = isSelectionMode) {
@@ -345,16 +359,15 @@ fun ChatScreen(
 
     // Scroll to first unread or bottom
     LaunchedEffect(scrollToBottomEvent) {
-        if (displayEntries.isNotEmpty()) {
-            val unreadEntryIdx = displayEntries.indexOfFirst { it is ChatEntry.UnreadDivider }
-            val unreadCount = if (firstUnreadIndex >= 0) messages.size - firstUnreadIndex else 0
-            val target = if (unreadEntryIdx >= 0 && unreadCount >= 5) unreadEntryIdx
-                         else displayEntries.size - 1
-            if (target >= 0) {
-                val offset = if (unreadEntryIdx >= 0 && unreadCount >= 5)
-                    -(screenHeightPx / 3) else 0
-                listState.scrollToItem(target, scrollOffset = offset)
-            }
+        if (scrollToBottomEvent == 0) return@LaunchedEffect
+        if (displayEntries.isEmpty()) return@LaunchedEffect
+        // Small delay so the LazyColumn finishes its first layout pass after items appear
+        delay(60)
+        val unreadEntryIdx = displayEntries.indexOfFirst { it is ChatEntry.UnreadDivider }
+        val target = if (unreadEntryIdx >= 0) unreadEntryIdx else displayEntries.size - 1
+        if (target >= 0) {
+            val offset = if (unreadEntryIdx >= 0) -(screenHeightPx / 2) else 0
+            listState.scrollToItem(target, scrollOffset = offset)
         }
     }
 
@@ -462,6 +475,55 @@ fun ChatScreen(
                                 if (isSelectionMode) Icons.Default.Close else Icons.Default.ArrowBack,
                                 contentDescription = if (isSelectionMode) "Отмена" else "Назад"
                             )
+                        }
+                    },
+                    actions = {
+                        if (!isSelectionMode) {
+                            Box {
+                                IconButton(onClick = { showChatMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "Меню")
+                                }
+                                DropdownMenu(
+                                    expanded = showChatMenu,
+                                    onDismissRequest = { showChatMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(if (isMuted) "Включить уведомления" else "Отключить уведомления")
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                if (isMuted) Icons.Default.Notifications else Icons.Default.NotificationsOff,
+                                                contentDescription = null
+                                            )
+                                        },
+                                        onClick = {
+                                            showChatMenu = false
+                                            viewModel.toggleMute()
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                if (isGroup) "Выйти из группы" else "Удалить чат",
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.ExitToApp,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error
+                                            )
+                                        },
+                                        onClick = {
+                                            showChatMenu = false
+                                            if (isGroup) showLeaveConfirmDialog = true
+                                            else showDeleteChatDialog = true
+                                        }
+                                    )
+                                }
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -609,7 +671,7 @@ fun ChatScreen(
                                                     modifier = Modifier,
                                                     activeVideoUrl = activeVideoUrl,
                                                     exoPlayer = exoPlayer,
-                                                    isMuted = isMuted,
+                                                    isMuted = isVideoMuted,
                                                     videoAspectRatios = videoAspectRatios,
                                                     onLongClick = {
                                                         viewModel.toggleSelection(entry.item.message.id)
@@ -634,7 +696,7 @@ fun ChatScreen(
                                                             fullscreenVideoUrl = url
                                                         }
                                                     },
-                                                    onVideoMuteToggle = { isMuted = !isMuted },
+                                                    onVideoMuteToggle = { isVideoMuted = !isVideoMuted },
                                                     onVideoSizeDetected = { url, ratio ->
                                                         videoAspectRatios[url] = ratio
                                                     },
@@ -691,6 +753,22 @@ fun ChatScreen(
                     onDeleteForAll = { viewModel.deleteSelectedMessages(forEveryone = true) },
                     hasOwnMessages = messages.any { it.message.id in selectedMessageIds && it.isOwn }
                 )
+            } else if (isPartnerLeft) {
+                // Personal chat: partner deleted the chat
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Пользователь удалил чат",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             } else {
                 Column(
                     modifier = Modifier
@@ -1145,6 +1223,50 @@ fun ChatScreen(
                 }
                 showForwardPicker = false
                 pendingForwardMessageId = null
+            }
+        )
+    }
+
+    // ── Диалог: выход из группы ──────────────────────────────────────────────
+    if (showLeaveConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showLeaveConfirmDialog = false },
+            title = { Text("Выйти из группы?") },
+            text = { Text("Вы покинете группу. Сообщения сохранятся для остальных участников.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLeaveConfirmDialog = false
+                        viewModel.leaveGroup(onLeft = onBack)
+                    }
+                ) {
+                    Text("Выйти", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLeaveConfirmDialog = false }) { Text("Отмена") }
+            }
+        )
+    }
+
+    // ── Диалог: удаление личного чата ────────────────────────────────────────
+    if (showDeleteChatDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteChatDialog = false },
+            title = { Text("Удалить чат?") },
+            text = { Text("Чат исчезнет из вашего списка. У собеседника останется история сообщений, но он не сможет писать вам в этот чат.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteChatDialog = false
+                        viewModel.deletePersonalChat(onDeleted = onBack)
+                    }
+                ) {
+                    Text("Удалить", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteChatDialog = false }) { Text("Отмена") }
             }
         )
     }

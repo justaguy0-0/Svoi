@@ -23,4 +23,16 @@ class ThemeManager(context: Context) {
     fun setAutoPlayVideos(enabled: Boolean) {
         prefs.edit().putBoolean("auto_play_videos", enabled).apply()
     }
+
+    fun isNotificationsMuted(): Boolean = prefs.getBoolean("notifications_muted", false)
+
+    fun setNotificationsMuted(muted: Boolean) {
+        prefs.edit().putBoolean("notifications_muted", muted).apply()
+    }
+
+    fun isChatMuted(chatId: String): Boolean = prefs.getBoolean("chat_muted_$chatId", false)
+
+    fun setChatMuted(chatId: String, muted: Boolean) {
+        prefs.edit().putBoolean("chat_muted_$chatId", muted).apply()
+    }
 }

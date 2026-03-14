@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -76,6 +77,10 @@ fun SettingsScreen(
 
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var isClearingCache by remember { mutableStateOf(false) }
+
+    val app = context.applicationContext as SvoiApp
+    var globalNotifMuted by remember { mutableStateOf(app.themeManager.isNotificationsMuted()) }
+    var showMuteConfirmDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -143,6 +148,28 @@ fun SettingsScreen(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+            // ── Уведомления ───────────────────────────────────────────────────
+            SectionHeader("Уведомления")
+
+            ToggleRow(
+                icon = Icons.Default.NotificationsOff,
+                title = "Отключить все уведомления",
+                subtitle = if (globalNotifMuted) "Уведомления отключены во всём приложении"
+                           else "Получать уведомления о новых сообщениях",
+                checked = globalNotifMuted,
+                onCheckedChange = { newValue ->
+                    if (newValue) {
+                        // Показываем предупреждение только при включении мута
+                        showMuteConfirmDialog = true
+                    } else {
+                        globalNotifMuted = false
+                        app.themeManager.setNotificationsMuted(false)
+                    }
+                }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
             // ── Данные ────────────────────────────────────────────────────────
             SectionHeader("Данные")
 
@@ -156,6 +183,29 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    // ── Диалог подтверждения отключения уведомлений ──────────────────────────
+    if (showMuteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showMuteConfirmDialog = false },
+            title = { Text("Отключить уведомления?") },
+            text = {
+                Text("Вы не будете получать уведомления о новых сообщениях, пока сами не включите их обратно в настройках.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showMuteConfirmDialog = false
+                    globalNotifMuted = true
+                    app.themeManager.setNotificationsMuted(true)
+                }) {
+                    Text("Отключить", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMuteConfirmDialog = false }) { Text("Отмена") }
+            }
+        )
     }
 
     // ── Диалог подтверждения очистки ──────────────────────────────────────────

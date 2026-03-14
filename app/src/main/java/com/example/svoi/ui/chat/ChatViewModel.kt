@@ -138,6 +138,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _isChatDeleted = MutableStateFlow(false)
     val isChatDeleted: StateFlow<Boolean> = _isChatDeleted
 
+    /** Mute state for this chat (notifications) */
+    private val _isMuted = MutableStateFlow(false)
+    val isMuted: StateFlow<Boolean> = _isMuted
+
+    /** True when partner left the personal chat (only current user remains) */
+    private val _isPartnerLeft = MutableStateFlow(false)
+    val isPartnerLeft: StateFlow<Boolean> = _isPartnerLeft
+
     /** IDs of messages currently playing their entrance animation */
     private val _animatingMessageIds = MutableStateFlow<Set<String>>(emptySet())
     val animatingMessageIds: StateFlow<Set<String>> = _animatingMessageIds
@@ -258,16 +266,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** For group chats only: poll every 8s to detect if the chat was deleted by the admin */
+    /** Poll every 8s to detect group deletion or partner leaving a personal chat */
     private fun startChatDeletionWatch() {
-        if (!_isGroup.value) return  // personal chats can't be deleted externally
         viewModelScope.launch {
             while (true) {
                 delay(8_000L)
-                val exists = chatRepo.getChat(chatId) != null
-                if (!exists) {
-                    _isChatDeleted.value = true
-                    break
+                if (_isGroup.value) {
+                    val exists = chatRepo.getChat(chatId) != null
+                    if (!exists) {
+                        _isChatDeleted.value = true
+                        break
+                    }
+                } else {
+                    // Personal chat: check if partner left (only current user remains)
+                    val members = chatRepo.getChatMembers(chatId)
+                    if (members.size <= 1) {
+                        _isPartnerLeft.value = true
+                    }
                 }
             }
         }
@@ -306,7 +321,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             historyFrom = members.firstOrNull { it.userId == myId }?.historyFrom
         }
 
+        // Load mute state from DB and sync to local prefs
+        val myMembership = members.firstOrNull { it.userId == myId }
+        val mutedInDb = myMembership?.muted == true
+        _isMuted.value = mutedInDb
+        app.themeManager.setChatMuted(chatId, mutedInDb)
+
         if (chat.type == "personal") {
+            // Partner left if only current user remains in the chat
+            if (members.size <= 1) {
+                _isPartnerLeft.value = true
+            }
             val other = profiles.firstOrNull { it.id != myId }
             _chatName.value = other?.displayName ?: "Пользователь"
             other?.let { otherProfile ->
@@ -1063,6 +1088,35 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         try { voiceMediaPlayer?.stop(); voiceMediaPlayer?.release() } catch (_: Exception) {}
         voiceMediaPlayer = null
         _voicePlayState.value = null
+    }
+
+    // ── Notifications mute ────────────────────────────────────────────────────
+
+    fun toggleMute() {
+        viewModelScope.launch {
+            val newMuted = !_isMuted.value
+            _isMuted.value = newMuted
+            app.themeManager.setChatMuted(chatId, newMuted)
+            chatRepo.setMuted(chatId, newMuted)
+        }
+    }
+
+    // ── Leave group / Delete personal chat ────────────────────────────────────
+
+    fun leaveGroup(onLeft: () -> Unit) {
+        viewModelScope.launch {
+            val myName = profileCache[currentUserId]?.displayName ?: "Пользователь"
+            messageRepo.sendSystemMessage(chatId, "$myName вышел(а) из чата")
+            chatRepo.removeMember(chatId, currentUserId)
+            onLeft()
+        }
+    }
+
+    fun deletePersonalChat(onDeleted: () -> Unit) {
+        viewModelScope.launch {
+            chatRepo.removeMember(chatId, currentUserId)
+            onDeleted()
+        }
     }
 
 }

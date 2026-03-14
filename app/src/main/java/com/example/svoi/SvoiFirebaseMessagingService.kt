@@ -51,6 +51,12 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
         // Не показываем уведомление если пользователь сейчас в этом чате
         if (chatId != null && chatId == ActiveChatTracker.activeChatId) return
 
+        val app = applicationContext as SvoiApp
+        // Глобальное отключение уведомлений
+        if (app.themeManager.isNotificationsMuted()) return
+        // Отключение уведомлений для конкретного чата
+        if (chatId != null && app.themeManager.isChatMuted(chatId)) return
+
         val isGroup = data["is_group"] == "true"
         val avatarEmoji = data["avatar_emoji"] ?: "😊"
         val avatarColor = data["avatar_color"] ?: "#5C6BC0"
