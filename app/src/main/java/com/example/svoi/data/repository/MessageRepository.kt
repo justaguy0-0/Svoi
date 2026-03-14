@@ -224,7 +224,8 @@ class MessageRepository(private val supabase: SupabaseClient) {
     ) {
         val userId = currentUserId()
         try {
-            supabase.from("messages").insert(
+            Log.d("VoiceDebug", "inserting voice: chatId=$chatId fileUrl=$fileUrl duration=$durationSec")
+            val result = supabase.from("messages").insert(
                 VoiceMessageInsert(
                     chatId = chatId,
                     senderId = userId,
@@ -232,9 +233,10 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     duration = durationSec,
                     replyToId = replyToId
                 )
-            )
+            ) { select() }.decodeSingle<Message>()
+            Log.d("VoiceDebug", "insert OK: id=${result.id} fileUrl=${result.fileUrl} duration=${result.duration}")
         } catch (e: Exception) {
-            Log.e("MessageRepo", "sendVoiceMessage FAILED: ${e.message}")
+            Log.e("VoiceDebug", "sendVoiceMessage FAILED: ${e.message}", e)
         }
     }
 

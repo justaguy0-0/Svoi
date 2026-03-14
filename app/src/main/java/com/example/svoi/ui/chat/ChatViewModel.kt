@@ -472,6 +472,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun observeNewMessages() {
         viewModelScope.launch {
             messageRepo.messageInsertFlow(chatId).collect { newMsg ->
+                Log.d("VoiceDebug", "Realtime INSERT: id=${newMsg.id} type=${newMsg.type} fileUrl=${newMsg.fileUrl} duration=${newMsg.duration}")
                 // New incoming message — clear typing indicator for that user
                 if (newMsg.senderId != currentUserId) {
                     _typingUsers.value = _typingUsers.value.filter { it.userId != newMsg.senderId }
@@ -980,11 +981,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val bytes = file.readBytes(); file.delete()
+                Log.d("VoiceDebug", "uploading ${bytes.size} bytes, duration=${durationSec}s")
                 val url = messageRepo.uploadFile(chatId, "voice_${System.currentTimeMillis()}.m4a", bytes)
-                if (url != null) messageRepo.sendVoiceMessage(chatId, url, durationSec, replyId)
-                else _error.value = "Ошибка загрузки голосового"
+                Log.d("VoiceDebug", "upload result url=$url")
+                if (url != null) {
+                    messageRepo.sendVoiceMessage(chatId, url, durationSec, replyId)
+                    Log.d("VoiceDebug", "sendVoiceMessage called OK")
+                } else {
+                    _error.value = "Ошибка загрузки голосового"
+                }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.e("VoiceDebug", "sendVoiceRecording exception: ${e.message}", e)
                 _error.value = "Ошибка: ${e.message}"
             } finally {
                 _messages.value = _messages.value.filter { it.message.id != pendingId }
