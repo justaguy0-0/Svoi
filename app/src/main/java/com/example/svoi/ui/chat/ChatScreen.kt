@@ -2044,18 +2044,45 @@ private fun MessageItem(
                                 }
                             }
                             "voice" -> {
-                                msg.fileUrl?.let { url ->
-                                    VoiceMessageBubble(
-                                        messageId = msg.id,
-                                        url = url,
-                                        durationSec = msg.duration ?: 0,
-                                        isOwn = item.isOwn,
-                                        voicePlayState = voicePlayState,
-                                        onPlay = { onVoicePlay(msg.id, url, msg.duration ?: 0) },
-                                        onPause = onVoicePause,
-                                        onResume = onVoiceResume,
-                                        onSeek = onVoiceSeek
-                                    )
+                                if (item.isPending) {
+                                    // Upload in progress — show spinner + duration
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.width(180.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp,
+                                            color = textColor.copy(0.7f)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Icon(
+                                            Icons.Default.Mic,
+                                            contentDescription = null,
+                                            tint = textColor.copy(0.7f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            text = (msg.duration ?: 0).toVoiceDuration(),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = textColor.copy(0.7f)
+                                        )
+                                    }
+                                } else {
+                                    msg.fileUrl?.let { url ->
+                                        VoiceMessageBubble(
+                                            messageId = msg.id,
+                                            url = url,
+                                            durationSec = msg.duration ?: 0,
+                                            isOwn = item.isOwn,
+                                            voicePlayState = voicePlayState,
+                                            onPlay = { onVoicePlay(msg.id, url, msg.duration ?: 0) },
+                                            onPause = onVoicePause,
+                                            onResume = onVoiceResume,
+                                            onSeek = onVoiceSeek
+                                        )
+                                    }
                                 }
                             }
                             else -> {
@@ -2144,10 +2171,8 @@ private fun VoiceMessageBubble(
                      else (durationSec * 1000).coerceAtLeast(1000)
     val progress = (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
-    val contentColor = if (isOwn) Color.White else Color.Unspecified
     val sliderActiveColor = if (isOwn) Color.White else MaterialTheme.colorScheme.primary
     val sliderInactiveColor = if (isOwn) Color.White.copy(0.4f) else MaterialTheme.colorScheme.onSurface.copy(0.2f)
-    val thumbColor = sliderActiveColor
 
     // Displayed time: current position if active, else total duration
     val displaySec = if (isThisActive) positionMs / 1000 else durationSec
@@ -2155,7 +2180,7 @@ private fun VoiceMessageBubble(
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.widthIn(min = 180.dp, max = 260.dp)
+        modifier = Modifier.width(220.dp)
     ) {
         IconButton(
             onClick = {
@@ -2170,8 +2195,8 @@ private fun VoiceMessageBubble(
             Icon(
                 imageVector = if (isThisPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                 contentDescription = if (isThisPlaying) "Пауза" else "Играть",
-                tint = contentColor.takeIf { isOwn } ?: MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp)
+                tint = if (isOwn) Color.White else MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(26.dp)
             )
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -2179,19 +2204,17 @@ private fun VoiceMessageBubble(
                 value = progress,
                 onValueChange = { onSeek((it * durationMs).toInt()) },
                 colors = SliderDefaults.colors(
-                    thumbColor = thumbColor,
+                    thumbColor = sliderActiveColor,
                     activeTrackColor = sliderActiveColor,
                     inactiveTrackColor = sliderInactiveColor
                 ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(24.dp)
+                modifier = Modifier.fillMaxWidth()
             )
             Text(
                 text = timeStr,
                 style = MaterialTheme.typography.labelSmall,
                 color = if (isOwn) Color.White.copy(0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp)
+                modifier = Modifier.padding(start = 4.dp).offset(y = (-6).dp)
             )
         }
     }
