@@ -780,200 +780,204 @@ fun ChatScreen(
                         }
                     }
 
-                    // Text input row (or recording UI)
+                    // Text input row — mic button always stays in composition during recording
                     val isRecording = voiceRecordState is VoiceRecordState.Recording
                     val isLocked = isRecording && (voiceRecordState as VoiceRecordState.Recording).isLocked
                     val density = LocalDensity.current
 
-                    if (isRecording) {
-                        // ── Recording overlay ─────────────────────────────────
-                        val elapsedSec = (voiceElapsedMs / 1000).toInt()
-                        val timeStr = "%d:%02d".format(elapsedSec / 60, elapsedSec % 60)
-                        val infiniteTransition = rememberInfiniteTransition(label = "rec_pulse")
-                        val dotAlpha by infiniteTransition.animateFloat(
-                            initialValue = 1f, targetValue = 0.3f,
-                            animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
-                            label = "dot_alpha"
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
-                                .padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Pulsing red dot + timer
-                            Box(
-                                modifier = Modifier.size(10.dp).clip(CircleShape)
-                                    .background(Color.Red.copy(alpha = dotAlpha))
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = timeStr,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(Modifier.weight(1f))
-                            if (isLocked) {
-                                // Locked: show cancel text + send button
-                                TextButton(onClick = { viewModel.cancelVoiceRecording() }) {
-                                    Text("Отменить", color = MaterialTheme.colorScheme.error)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // ── Left side: recording overlay OR normal inputs ───────
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (isRecording) {
+                                // Recording indicator
+                                val elapsedSec = (voiceElapsedMs / 1000).toInt()
+                                val timeStr = "%d:%02d".format(elapsedSec / 60, elapsedSec % 60)
+                                val infiniteTransition = rememberInfiniteTransition(label = "rec_pulse")
+                                val dotAlpha by infiniteTransition.animateFloat(
+                                    initialValue = 1f, targetValue = 0.3f,
+                                    animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
+                                    label = "dot_alpha"
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier.size(10.dp).clip(CircleShape)
+                                            .background(Color.Red.copy(alpha = dotAlpha))
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = timeStr,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    if (isLocked) {
+                                        TextButton(onClick = { viewModel.cancelVoiceRecording() }) {
+                                            Text("Отменить", color = MaterialTheme.colorScheme.error)
+                                        }
+                                    } else {
+                                        val cancelFraction = (-voiceDragOffsetX / with(density) { 80.dp.toPx() }).coerceIn(0f, 1f)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.alpha(1f - cancelFraction)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.ArrowBack, contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                "Сдвиньте, чтобы отменить",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Spacer(Modifier.width(8.dp))
+                                    }
                                 }
-                                Spacer(Modifier.width(8.dp))
+                            } else {
+                                // Normal inputs
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.Bottom
+                                ) {
+                                    IconButton(
+                                        onClick = { showEmojiPicker = !showEmojiPicker; if (showEmojiPicker) keyboardController?.hide() },
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(Icons.Default.EmojiEmotions, contentDescription = "Эмодзи",
+                                            modifier = Modifier.size(22.dp),
+                                            tint = if (showEmojiPicker) MaterialTheme.colorScheme.primary
+                                                   else MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    IconButton(
+                                        onClick = { mediaPicker.launch(Unit) },
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(Icons.Default.Image, contentDescription = "Медиа",
+                                            modifier = Modifier.size(22.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Spacer(Modifier.width(2.dp))
+                                    TextField(
+                                        value = inputValue,
+                                        onValueChange = { inputValue = it; viewModel.onInputTextChanged(it.text) },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(24.dp))
+                                            .onFocusChanged { if (it.isFocused) showEmojiPicker = false },
+                                        placeholder = { Text("Сообщение...") },
+                                        maxLines = 5,
+                                        colors = TextFieldDefaults.colors(
+                                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            focusedIndicatorColor = Color.Transparent,
+                                            unfocusedIndicatorColor = Color.Transparent
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.width(6.dp))
+
+                        // ── Right: Mic/Send — always in composition ─────────────
+                        // When locked → Send (tap to send voice)
+                        // When has text/media and not recording → Send (tap to send message)
+                        // Otherwise → Mic (hold-to-record gesture)
+                        val hasContent = inputValue.text.isNotBlank() || stagedMedia.isNotEmpty()
+                        val showSend = isLocked || (hasContent && !isRecording)
+                        AnimatedContent(
+                            targetState = showSend,
+                            transitionSpec = {
+                                (scaleIn(tween(160)) + fadeIn(tween(160))) togetherWith
+                                (scaleOut(tween(120)) + fadeOut(tween(120)))
+                            },
+                            label = "micSendToggle"
+                        ) { isSend ->
+                            if (isSend) {
                                 Box(
                                     modifier = Modifier.size(48.dp).clip(CircleShape)
                                         .background(MaterialTheme.colorScheme.primary)
-                                        .clickable { viewModel.sendVoiceRecording(context) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.Send, contentDescription = "Отправить",
-                                        tint = Color.White, modifier = Modifier.size(22.dp))
-                                }
-                            } else {
-                                // Holding: show cancel hint (fades on drag left)
-                                val cancelFraction = (-voiceDragOffsetX / with(density) { 80.dp.toPx() }).coerceIn(0f, 1f)
-                                Row(verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.alpha(1f - cancelFraction)) {
-                                    Icon(Icons.Default.ArrowBack, contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Сдвиньте, чтобы отменить",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Spacer(Modifier.width(16.dp))
-                            }
-                        }
-                    } else {
-                        // ── Normal input row ──────────────────────────────────
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.Bottom
-                        ) {
-                            // Emoji button
-                            IconButton(
-                                onClick = { showEmojiPicker = !showEmojiPicker; if (showEmojiPicker) keyboardController?.hide() },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(Icons.Default.EmojiEmotions, contentDescription = "Эмодзи",
-                                    modifier = Modifier.size(22.dp),
-                                    tint = if (showEmojiPicker) MaterialTheme.colorScheme.primary
-                                           else MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-
-                            // Attach button — always visible (can add more media even when staged)
-                            IconButton(
-                                onClick = { mediaPicker.launch(Unit) },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(Icons.Default.Image, contentDescription = "Медиа",
-                                    modifier = Modifier.size(22.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-
-                            Spacer(Modifier.width(2.dp))
-
-                            TextField(
-                                value = inputValue,
-                                onValueChange = { inputValue = it; viewModel.onInputTextChanged(it.text) },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(24.dp))
-                                    .onFocusChanged { if (it.isFocused) showEmojiPicker = false },
-                                placeholder = { Text("Сообщение...") },
-                                maxLines = 5,
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent
-                                )
-                            )
-
-                            Spacer(Modifier.width(6.dp))
-
-                            // Mic or Send button
-                            val hasContent = inputValue.text.isNotBlank() || stagedMedia.isNotEmpty()
-                            AnimatedContent(
-                                targetState = hasContent,
-                                transitionSpec = {
-                                    (scaleIn(tween(160)) + fadeIn(tween(160))) togetherWith
-                                    (scaleOut(tween(120)) + fadeOut(tween(120)))
-                                },
-                                label = "micSendToggle"
-                            ) { canSend ->
-                                if (canSend) {
-                                    Box(
-                                        modifier = Modifier.size(48.dp).clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primary)
-                                            .clickable {
+                                        .clickable {
+                                            if (isLocked) {
+                                                viewModel.sendVoiceRecording(context)
+                                            } else {
                                                 val text = inputValue.text
                                                 val media = stagedMedia
                                                 inputValue = TextFieldValue("")
                                                 viewModel.onInputTextChanged("")
                                                 if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
                                                 else viewModel.sendText(text)
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Default.Send, contentDescription = "Отправить",
-                                            tint = Color.White, modifier = Modifier.size(20.dp))
-                                    }
-                                } else {
-                                    // Mic button with hold-to-record gesture
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primary)
-                                            .pointerInput(micPermissionGranted) {
-                                                if (!micPermissionGranted) return@pointerInput
-                                                awaitEachGesture {
-                                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                                    down.consume()
-                                                    viewModel.startVoiceRecording()
-                                                    var cancelled = false
-                                                    var locked = false
-                                                    val cancelThreshold = 80.dp.toPx()
-                                                    val lockThreshold = 70.dp.toPx()
-                                                    while (true) {
-                                                        val event = awaitPointerEvent()
-                                                        val change = event.changes.firstOrNull { it.id == down.id }
-                                                        if (change == null || !change.pressed) {
-                                                            if (!cancelled && !locked) viewModel.sendVoiceRecording(context)
-                                                            voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
-                                                            break
-                                                        }
-                                                        val offset = change.position - down.position
-                                                        voiceDragOffsetX = offset.x
-                                                        voiceDragOffsetY = offset.y
-                                                        if (!locked && offset.x < -cancelThreshold) {
-                                                            viewModel.cancelVoiceRecording()
-                                                            cancelled = true
-                                                            voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
-                                                            break
-                                                        }
-                                                        if (!locked && offset.y < -lockThreshold) {
-                                                            viewModel.lockRecording()
-                                                            locked = true
-                                                            voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
-                                                        }
-                                                        change.consume()
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Send, contentDescription = "Отправить",
+                                        tint = Color.White, modifier = Modifier.size(20.dp))
+                                }
+                            } else {
+                                // Mic button — stays in composition while recording (non-locked)
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isRecording) Color.Red
+                                            else MaterialTheme.colorScheme.primary
+                                        )
+                                        .pointerInput(micPermissionGranted) {
+                                            if (!micPermissionGranted) return@pointerInput
+                                            awaitEachGesture {
+                                                val down = awaitFirstDown(requireUnconsumed = false)
+                                                down.consume()
+                                                viewModel.startVoiceRecording()
+                                                var cancelled = false
+                                                var locked = false
+                                                val cancelThreshold = 80.dp.toPx()
+                                                val lockThreshold = 70.dp.toPx()
+                                                while (true) {
+                                                    val event = awaitPointerEvent()
+                                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                                    if (change == null || !change.pressed) {
+                                                        if (!cancelled && !locked) viewModel.sendVoiceRecording(context)
+                                                        voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
+                                                        break
                                                     }
+                                                    val offset = change.position - down.position
+                                                    voiceDragOffsetX = offset.x
+                                                    voiceDragOffsetY = offset.y
+                                                    if (!locked && offset.x < -cancelThreshold) {
+                                                        viewModel.cancelVoiceRecording()
+                                                        cancelled = true
+                                                        voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
+                                                        break
+                                                    }
+                                                    if (!locked && offset.y < -lockThreshold) {
+                                                        viewModel.lockRecording()
+                                                        locked = true
+                                                        voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
+                                                    }
+                                                    change.consume()
                                                 }
                                             }
-                                            .clickable(enabled = !micPermissionGranted) {
-                                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Default.Mic, contentDescription = "Голосовое",
-                                            tint = Color.White, modifier = Modifier.size(22.dp))
-                                    }
+                                        }
+                                        .clickable(enabled = !micPermissionGranted && !isRecording) {
+                                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Mic, contentDescription = "Голосовое",
+                                        tint = Color.White, modifier = Modifier.size(22.dp))
                                 }
                             }
                         }
