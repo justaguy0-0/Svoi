@@ -2046,7 +2046,6 @@ private fun MessageItem(
                                 }
                             }
                             "voice" -> {
-                                android.util.Log.d("VoiceDebug", "render voice: id=${msg.id} fileUrl=${msg.fileUrl} duration=${msg.duration} isPending=${item.isPending}")
                                 if (item.isPending) {
                                     // Upload in progress — show spinner + duration
                                     Row(
