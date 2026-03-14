@@ -49,6 +49,19 @@ private data class AlbumMessageInsert(
 )
 
 @Serializable
+private data class VideoMessageInsert(
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("sender_id") val senderId: String,
+    val type: String,
+    @SerialName("file_url") val fileUrl: String,
+    @SerialName("file_name") val fileName: String,
+    @SerialName("file_size") val fileSize: Long,
+    @SerialName("mime_type") val mimeType: String? = null,
+    @SerialName("reply_to_id") val replyToId: String? = null,
+    val content: String? = null,
+)
+
+@Serializable
 private data class FileMessageInsert(
     @SerialName("chat_id") val chatId: String,
     @SerialName("sender_id") val senderId: String,
@@ -169,17 +182,11 @@ class MessageRepository(private val supabase: SupabaseClient) {
         val userId = currentUserId()
         try {
             supabase.from("messages").insert(
-                buildMap {
-                    put("chat_id", chatId)
-                    put("sender_id", userId)
-                    put("type", "video")
-                    put("file_url", fileUrl)
-                    put("file_name", fileName)
-                    put("file_size", fileSize)
-                    put("mime_type", mimeType)
-                    if (content != null) put("content", content)
-                    if (replyToId != null) put("reply_to_id", replyToId)
-                }
+                VideoMessageInsert(
+                    chatId = chatId, senderId = userId, type = "video",
+                    fileUrl = fileUrl, fileName = fileName, fileSize = fileSize,
+                    mimeType = mimeType, replyToId = replyToId, content = content
+                )
             )
         } catch (e: Exception) {
             Log.e("FileMsg", "sendVideoMessage FAILED: ${e.message}", e)
