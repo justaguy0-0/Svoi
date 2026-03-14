@@ -29,8 +29,8 @@ class VoiceRecorder(private val context: Context) {
             mr.setAudioSource(MediaRecorder.AudioSource.MIC)
             mr.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             mr.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            mr.setAudioSamplingRate(44100)
-            mr.setAudioEncodingBitRate(96000)
+            mr.setAudioSamplingRate(16000)   // 16 kHz достаточно для речи
+            mr.setAudioEncodingBitRate(32000) // 32 kbps ≈ 240 KB/мин
             mr.setOutputFile(file.absolutePath)
             mr.prepare()
             mr.start()
