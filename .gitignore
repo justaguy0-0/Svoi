@@ -1,5 +1,7 @@
 # ── Secrets & local config (НЕ коммитить!) ────────────────────
 local.properties
+*.keystore
+*.jks
 
 # ── Android build output ───────────────────────────────────────
 *.iml
