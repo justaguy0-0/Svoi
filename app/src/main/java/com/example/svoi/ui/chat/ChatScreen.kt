@@ -481,6 +481,7 @@ fun ChatScreen(
                             "photo" -> "📷 Фото"
                             "file" -> "📎 ${pinnedContent?.fileName ?: "Файл"}"
                             "video" -> "🎬 ${pinnedContent?.fileName ?: "Видео"}"
+                            "voice" -> "🎤 Голосовое сообщение"
                             else -> pinnedContent?.content ?: ""
                         }
                         Surface(
