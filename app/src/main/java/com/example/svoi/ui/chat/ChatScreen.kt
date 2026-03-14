@@ -189,6 +189,7 @@ import com.example.svoi.util.toDateSeparator
 import com.example.svoi.util.toLastSeen
 import com.example.svoi.util.toMessageTime
 import com.example.svoi.util.toReadableSize
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -332,6 +333,25 @@ fun ChatScreen(
     }
 
     val currentDisplayEntries by rememberUpdatedState(displayEntries)
+
+    // Если пользователь уже в самом низу — скроллим к новому сообщению автоматически.
+    // Если он пролистал вверх — не трогаем его позицию.
+    LaunchedEffect(messages.size) {
+        if (messages.isEmpty()) return@LaunchedEffect
+        if (!listState.canScrollForward) {
+            val last = currentDisplayEntries.size - 1
+            if (last >= 0) listState.animateScrollToItem(last)
+        }
+    }
+
+    // Помечаем сообщения прочитанными только когда пользователь в самом низу чата
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.canScrollForward }
+            .distinctUntilChanged()
+            .collect { canScrollForward ->
+                if (!canScrollForward) viewModel.markAsRead()
+            }
+    }
 
     // Auto-play: when scroll stops, find the bottommost 50%-visible video and play it
     val currentAutoPlay by rememberUpdatedState(autoPlayVideos)
@@ -722,7 +742,15 @@ fun ChatScreen(
 
                 // Scroll to bottom button
                 val showScrollToBottom by remember { derivedStateOf { listState.canScrollForward } }
-                val unreadBadgeCount = if (firstUnreadIndex >= 0) messages.size - firstUnreadIndex else 0
+                // Живой счётчик входящих сообщений ниже текущей позиции прокрутки
+                val unreadBadgeCount by remember {
+                    derivedStateOf {
+                        val entries = currentDisplayEntries
+                        val lastIdx = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                        if (lastIdx < 0) 0
+                        else entries.drop(lastIdx + 1).count { it is ChatEntry.Msg && !it.item.isOwn }
+                    }
+                }
                 if (showScrollToBottom && !isSelectionMode) {
                     Box(
                         modifier = Modifier

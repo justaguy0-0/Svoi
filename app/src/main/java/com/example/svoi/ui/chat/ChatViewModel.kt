@@ -445,11 +445,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun markAsRead() {
-        // NonCancellable: the read receipt must be sent even if the user navigates away
-        // while the coroutine is still running.
-        withContext(NonCancellable) {
-            messageRepo.markMessagesAsRead(chatId)
+    fun markAsRead() {
+        viewModelScope.launch {
+            // NonCancellable: the read receipt must be sent even if the user navigates away
+            withContext(NonCancellable) {
+                messageRepo.markMessagesAsRead(chatId)
+            }
         }
     }
 
@@ -529,7 +530,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val updated = _messages.value + item
                 _messages.value = updated
                 lastKnownMessageId = newMsg.id
-                _scrollToBottomEvent.value++
+                // Скролл вниз управляется из ChatScreen: только если пользователь уже внизу
 
                 // Trigger entrance animation; clean up after it finishes
                 val msgId = newMsg.id
@@ -539,7 +540,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     _animatingMessageIds.value = _animatingMessageIds.value - msgId
                 }
 
-                markAsRead()
+                // Не помечаем прочитанным здесь — это делает ChatScreen когда пользователь внизу
                 cache.saveMessages(chatId, updated.map { it.message })
             }
         }
