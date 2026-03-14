@@ -188,8 +188,8 @@ import com.example.svoi.util.toDateSeparator
 import com.example.svoi.util.toLastSeen
 import com.example.svoi.util.toMessageTime
 import com.example.svoi.util.toReadableSize
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberUpdatedState
@@ -360,11 +360,13 @@ fun ChatScreen(
     // Scroll to first unread or bottom
     LaunchedEffect(scrollToBottomEvent) {
         if (scrollToBottomEvent == 0) return@LaunchedEffect
-        if (displayEntries.isEmpty()) return@LaunchedEffect
-        // Small delay so the LazyColumn finishes its first layout pass after items appear
-        delay(60)
-        val unreadEntryIdx = displayEntries.indexOfFirst { it is ChatEntry.UnreadDivider }
-        val target = if (unreadEntryIdx >= 0) unreadEntryIdx else displayEntries.size - 1
+        // Wait until the LazyColumn has actually laid out items (handles the case where
+        // messages arrive from the network while isLoading spinner is showing)
+        snapshotFlow { listState.layoutInfo.totalItemsCount }
+            .first { it > 0 }
+        val entries = currentDisplayEntries
+        val unreadEntryIdx = entries.indexOfFirst { it is ChatEntry.UnreadDivider }
+        val target = if (unreadEntryIdx >= 0) unreadEntryIdx else entries.size - 1
         if (target >= 0) {
             val offset = if (unreadEntryIdx >= 0) -(screenHeightPx / 2) else 0
             listState.scrollToItem(target, scrollOffset = offset)

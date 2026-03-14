@@ -278,9 +278,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         break
                     }
                 } else {
-                    // Personal chat: check if partner left (only current user remains)
+                    // Personal chat: check if partner soft-deleted the chat (left_at set)
                     val members = chatRepo.getChatMembers(chatId)
-                    if (members.size <= 1) {
+                    val otherMember = members.firstOrNull { it.userId != currentUserId }
+                    if (otherMember?.leftAt != null) {
                         _isPartnerLeft.value = true
                     }
                 }
@@ -311,7 +312,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _isGroup.value = chat.type == "group"
 
         val members = chatRepo.getChatMembers(chatId)
-        _memberCount.value = members.size
         val profiles = userRepo.getProfiles(members.map { it.userId })
         profiles.forEach { profileCache[it.id] = it }
 
@@ -327,9 +327,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _isMuted.value = mutedInDb
         app.themeManager.setChatMuted(chatId, mutedInDb)
 
+        // Count only active (not left) members
+        _memberCount.value = members.count { it.leftAt == null }
+
         if (chat.type == "personal") {
-            // Partner left if only current user remains in the chat
-            if (members.size <= 1) {
+            // Partner left if their left_at is set
+            val otherMember = members.firstOrNull { it.userId != myId }
+            if (otherMember?.leftAt != null) {
                 _isPartnerLeft.value = true
             }
             val other = profiles.firstOrNull { it.id != myId }
@@ -1114,7 +1118,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deletePersonalChat(onDeleted: () -> Unit) {
         viewModelScope.launch {
-            chatRepo.removeMember(chatId, currentUserId)
+            chatRepo.markAsLeft(chatId)
             onDeleted()
         }
     }

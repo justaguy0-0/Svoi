@@ -40,11 +40,12 @@ class ChatRepository(private val supabase: SupabaseClient) {
             return emptyList()
         }
 
-        // 1. Get chat memberships
+        // 1. Get chat memberships (exclude chats the user has soft-deleted via left_at)
         val memberships = try {
             supabase.from("chat_members")
                 .select { filter { eq("user_id", userId) } }
                 .decodeList<ChatMember>()
+                .filter { it.leftAt == null }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -209,14 +210,34 @@ class ChatRepository(private val supabase: SupabaseClient) {
         }.sortedByDescending { it.lastMessageTime }
     }
 
+    /** Set left_at = now() for current user in a personal chat (soft delete for the requester) */
+    suspend fun markAsLeft(chatId: String): Boolean {
+        val userId = currentUserId()
+        return try {
+            supabase.from("chat_members").update({
+                set("left_at", java.time.Instant.now().toString())
+            }) {
+                filter {
+                    eq("chat_id", chatId)
+                    eq("user_id", userId)
+                }
+            }
+            true
+        } catch (e: Exception) {
+            Log.e("ChatRepo", "markAsLeft FAILED: chatId=$chatId", e)
+            false
+        }
+    }
+
     /** Find existing personal chat between two users, or null if none exists */
     suspend fun findPersonalChat(otherUserId: String): String? {
         val userId = currentUserId()
         return try {
-            // Get chats where both users are members
+            // Get chats where both users are active members (leftAt == null for current user)
             val myChats = supabase.from("chat_members")
                 .select { filter { eq("user_id", userId) } }
                 .decodeList<ChatMember>()
+                .filter { it.leftAt == null }
                 .map { it.chatId }
 
             val theirChats = supabase.from("chat_members")
