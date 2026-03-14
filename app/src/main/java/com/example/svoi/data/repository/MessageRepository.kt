@@ -206,6 +206,16 @@ class MessageRepository(private val supabase: SupabaseClient) {
         }
     }
 
+    @Serializable
+    private data class VoiceMessageInsert(
+        @SerialName("chat_id") val chatId: String,
+        @SerialName("sender_id") val senderId: String,
+        val type: String = "voice",
+        @SerialName("file_url") val fileUrl: String,
+        val duration: Int,
+        @SerialName("reply_to_id") val replyToId: String? = null
+    )
+
     suspend fun sendVoiceMessage(
         chatId: String,
         fileUrl: String,
@@ -215,14 +225,13 @@ class MessageRepository(private val supabase: SupabaseClient) {
         val userId = currentUserId()
         try {
             supabase.from("messages").insert(
-                buildMap {
-                    put("chat_id", chatId)
-                    put("sender_id", userId)
-                    put("type", "voice")
-                    put("file_url", fileUrl)
-                    put("duration", durationSec)
-                    if (replyToId != null) put("reply_to_id", replyToId)
-                }
+                VoiceMessageInsert(
+                    chatId = chatId,
+                    senderId = userId,
+                    fileUrl = fileUrl,
+                    duration = durationSec,
+                    replyToId = replyToId
+                )
             )
         } catch (e: Exception) {
             Log.e("MessageRepo", "sendVoiceMessage FAILED: ${e.message}")
