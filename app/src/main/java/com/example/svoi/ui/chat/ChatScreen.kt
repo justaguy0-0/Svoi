@@ -2197,6 +2197,14 @@ private fun MessageItem(
                                         )
                                     }
                                 }
+                                if (!msg.content.isNullOrBlank()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = msg.content,
+                                        color = textColor,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
                             }
                             "file" -> {
                                 val ctx = LocalContext.current
