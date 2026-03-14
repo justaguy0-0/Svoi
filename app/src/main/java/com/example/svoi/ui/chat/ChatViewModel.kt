@@ -214,7 +214,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val hasFullCache = cachedInfo != null && cachedMessages != null && cachedPinned != null
 
             if (hasFullCache) {
-                // ── FAST PATH: show everything at once, no jumps ──────────────────
+                // ── FAST PATH: show cached content immediately, then refresh ──────
                 cachedProfiles.forEach { profileCache[it.key] = it.value }
 
                 _chatName.value    = cachedInfo!!.name
@@ -223,23 +223,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 otherUserIdVal     = cachedInfo.otherUserId
                 _otherUserId.value = cachedInfo.otherUserId
 
-                // Set pinned BEFORE messages so the banner height is already stable
-                // when LazyColumn does its first layout pass.
                 _pinnedMessage.value        = cachedPinned!!.pinnedMessage
                 _pinnedMessageContent.value = cachedPinned.messageContent
 
                 _messages.value = buildUiItems(cachedMessages!!)
                 lastKnownMessageId = cachedMessages.lastOrNull()?.id
-
                 _isLoading.value = false
-                _scrollToBottomEvent.value++   // single, stable scroll
 
-                // ── Silent background refresh — NO extra scroll ───────────────────
+                // Refresh chat info and pinned without waiting
                 loadChatInfo()
                 loadPinnedMessage()
+                // IMPORTANT: loadMessages() must complete BEFORE the scroll fires.
+                // _firstUnreadIndex is computed inside loadMessages(). If we scroll
+                // before it's computed, initialScrollDone becomes true at the bottom
+                // (no divider yet), markAsRead() fires, sendReadReceipts() races with
+                // the subsequent getReadMessageIdsByUser call → all msgs appear read.
                 loadMessages(scrollAfter = false)
-                // Badge starts from first unread; server receipts sent only when user reaches bottom
                 _lastSeenMsgCount.value = if (_firstUnreadIndex.value >= 0) _firstUnreadIndex.value else _messages.value.size
+                _scrollToBottomEvent.value++   // scroll AFTER firstUnreadIndex is known
             } else {
                 // ── SLOW PATH: first visit or incomplete cache — show spinner ─────
                 if (cachedInfo != null) {
