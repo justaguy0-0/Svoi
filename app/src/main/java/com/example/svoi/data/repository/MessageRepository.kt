@@ -210,7 +210,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
     private data class VoiceMessageInsert(
         @SerialName("chat_id") val chatId: String,
         @SerialName("sender_id") val senderId: String,
-        val type: String = "voice",
+        val type: String,
         @SerialName("file_url") val fileUrl: String,
         val duration: Int,
         @SerialName("reply_to_id") val replyToId: String? = null
@@ -229,6 +229,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
                 VoiceMessageInsert(
                     chatId = chatId,
                     senderId = userId,
+                    type = "voice",
                     fileUrl = fileUrl,
                     duration = durationSec,
                     replyToId = replyToId
