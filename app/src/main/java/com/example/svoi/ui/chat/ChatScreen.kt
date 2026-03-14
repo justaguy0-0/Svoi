@@ -234,6 +234,7 @@ fun ChatScreen(
     val isOnline by viewModel.isOnline.collectAsState()
     val memberCount by viewModel.memberCount.collectAsState()
     val error by viewModel.error.collectAsState()
+    val snapToBottomEvent by viewModel.snapToBottomEvent.collectAsState()
     val scrollToBottomEvent by viewModel.scrollToBottomEvent.collectAsState()
     val scrollToOwnMessageEvent by viewModel.scrollToOwnMessageEvent.collectAsState()
     val firstUnreadIndex by viewModel.firstUnreadIndex.collectAsState()
@@ -393,7 +394,16 @@ fun ChatScreen(
             }
     }
 
-    // Scroll to first unread or bottom (initial entry)
+    // Fast path: мгновенный snap к низу кэша — пользователь не видит верх списка.
+    // initialScrollDone НЕ ставится здесь, чтобы markAsRead не сработал раньше времени.
+    LaunchedEffect(snapToBottomEvent) {
+        if (snapToBottomEvent == 0) return@LaunchedEffect
+        snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
+        val last = currentDisplayEntries.size - 1
+        if (last >= 0) listState.scrollToItem(last)
+    }
+
+    // Финальный скролл к разделителю непрочитанных (или к низу) после загрузки с сервера
     LaunchedEffect(scrollToBottomEvent) {
         if (scrollToBottomEvent == 0) return@LaunchedEffect
         // Wait until the LazyColumn has actually laid out items

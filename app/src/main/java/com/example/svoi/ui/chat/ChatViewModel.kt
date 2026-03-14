@@ -117,7 +117,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    // Incremented to signal scroll (initial entry — may go to unread divider)
+    // Fast path: немедленный snap к низу кэша, не разрешает markAsRead
+    private val _snapToBottomEvent = MutableStateFlow(0)
+    val snapToBottomEvent: StateFlow<Int> = _snapToBottomEvent
+
+    // После вычисления firstUnreadIndex: скролл к разделителю/низу, разрешает markAsRead
     private val _scrollToBottomEvent = MutableStateFlow(0)
     val scrollToBottomEvent: StateFlow<Int> = _scrollToBottomEvent
 
@@ -229,18 +233,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _messages.value = buildUiItems(cachedMessages!!)
                 lastKnownMessageId = cachedMessages.lastOrNull()?.id
                 _isLoading.value = false
+                // Немедленный snap к низу кэша — пользователь не видит верх списка.
+                // initialScrollDone НЕ устанавливается здесь → markAsRead не сработает.
+                _snapToBottomEvent.value++
 
-                // Refresh chat info and pinned without waiting
+                // Фоновое обновление: firstUnreadIndex вычислится в loadMessages().
                 loadChatInfo()
                 loadPinnedMessage()
-                // IMPORTANT: loadMessages() must complete BEFORE the scroll fires.
-                // _firstUnreadIndex is computed inside loadMessages(). If we scroll
-                // before it's computed, initialScrollDone becomes true at the bottom
-                // (no divider yet), markAsRead() fires, sendReadReceipts() races with
-                // the subsequent getReadMessageIdsByUser call → all msgs appear read.
                 loadMessages(scrollAfter = false)
                 _lastSeenMsgCount.value = if (_firstUnreadIndex.value >= 0) _firstUnreadIndex.value else _messages.value.size
-                _scrollToBottomEvent.value++   // scroll AFTER firstUnreadIndex is known
+                // Финальный скролл к разделителю непрочитанных (или к низу).
+                // Этот скролл устанавливает initialScrollDone → markAsRead разрешён.
+                _scrollToBottomEvent.value++
             } else {
                 // ── SLOW PATH: first visit or incomplete cache — show spinner ─────
                 if (cachedInfo != null) {
