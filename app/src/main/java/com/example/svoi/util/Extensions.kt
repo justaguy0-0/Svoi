@@ -81,6 +81,14 @@ fun Long.toReadableSize(): String = when {
     else -> "${this / (1024 * 1024 * 1024)} ГБ"
 }
 
+/** Formats an ISO-8601 timestamp to "12 марта 2024" for registration date display */
+fun String.toRegistrationDate(): String = runCatching {
+    val instant = Instant.parse(this)
+    val formatter = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru"))
+        .withZone(ZoneId.systemDefault())
+    formatter.format(instant)
+}.getOrDefault("")
+
 /** Extracts date part from ISO-8601 string for grouping messages by day */
 fun String.toDateKey(): String = runCatching {
     Instant.parse(this).atZone(ZoneId.systemDefault()).toLocalDate().toString()

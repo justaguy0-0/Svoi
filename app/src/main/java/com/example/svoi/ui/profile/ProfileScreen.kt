@@ -60,6 +60,7 @@ import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.EmojiPicker
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.theme.AvatarColors
+import com.example.svoi.util.toRegistrationDate
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -192,6 +193,16 @@ fun ProfileScreen(
                 } else {
                     Text(if (isOnline) "Сохранить" else "Нет подключения")
                 }
+            }
+
+            // Registration date
+            val regDate = profile?.createdAt?.toRegistrationDate()
+            if (!regDate.isNullOrBlank()) {
+                Text(
+                    text = "В Свои с $regDate",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             // Avatar edit button
