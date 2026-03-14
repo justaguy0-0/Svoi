@@ -235,6 +235,7 @@ fun ChatScreen(
     val memberCount by viewModel.memberCount.collectAsState()
     val error by viewModel.error.collectAsState()
     val scrollToBottomEvent by viewModel.scrollToBottomEvent.collectAsState()
+    val scrollToOwnMessageEvent by viewModel.scrollToOwnMessageEvent.collectAsState()
     val firstUnreadIndex by viewModel.firstUnreadIndex.collectAsState()
     val typingUsers by viewModel.typingUsers.collectAsState()
     val highlightedMessageId by viewModel.highlightedMessageId.collectAsState()
@@ -401,6 +402,13 @@ fun ChatScreen(
             val offset = if (unreadEntryIdx >= 0) -(screenHeightPx / 2) else 0
             listState.scrollToItem(target, scrollOffset = offset)
         }
+    }
+
+    // Scroll to absolute bottom when user sends their own message
+    LaunchedEffect(scrollToOwnMessageEvent) {
+        if (scrollToOwnMessageEvent == 0) return@LaunchedEffect
+        val last = currentDisplayEntries.size - 1
+        if (last >= 0) listState.animateScrollToItem(last)
     }
 
     // Scroll to specific message (from pinned banner or system message click)

@@ -117,9 +117,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    // Incremented to signal scroll
+    // Incremented to signal scroll (initial entry — may go to unread divider)
     private val _scrollToBottomEvent = MutableStateFlow(0)
     val scrollToBottomEvent: StateFlow<Int> = _scrollToBottomEvent
+
+    // Incremented when user sends own message — always scrolls to absolute bottom
+    private val _scrollToOwnMessageEvent = MutableStateFlow(0)
+    val scrollToOwnMessageEvent: StateFlow<Int> = _scrollToOwnMessageEvent
 
     // Index of first unread message for the separator (-1 = none)
     private val _firstUnreadIndex = MutableStateFlow(-1)
@@ -234,7 +238,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 loadChatInfo()
                 loadPinnedMessage()
                 loadMessages(scrollAfter = false)
-                markAsRead()
+                // Initialize badge: count from first unread (don't mark all as seen yet)
+                _lastSeenMsgCount.value = if (_firstUnreadIndex.value >= 0) _firstUnreadIndex.value else _messages.value.size
+                sendReadReceipts()
             } else {
                 // ── SLOW PATH: first visit or incomplete cache — show spinner ─────
                 if (cachedInfo != null) {
@@ -248,7 +254,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 loadChatInfo()
                 loadPinnedMessage()
                 loadMessages(scrollAfter = false)
-                markAsRead()
+                // Initialize badge: count from first unread (don't mark all as seen yet)
+                _lastSeenMsgCount.value = if (_firstUnreadIndex.value >= 0) _firstUnreadIndex.value else _messages.value.size
+                sendReadReceipts()
 
                 _isLoading.value = false
                 _scrollToBottomEvent.value++   // single, stable scroll after full load
@@ -449,14 +457,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun markAsRead() {
-        _lastSeenMsgCount.value = _messages.value.size
+    /** Server-side only: sends read receipts without updating the badge counter */
+    private fun sendReadReceipts() {
         viewModelScope.launch {
-            // NonCancellable: the read receipt must be sent even if the user navigates away
             withContext(NonCancellable) {
                 messageRepo.markMessagesAsRead(chatId)
             }
         }
+    }
+
+    /** Called by ChatScreen when user reaches the bottom — clears the unread badge */
+    fun markAsRead() {
+        _lastSeenMsgCount.value = _messages.value.size
+        sendReadReceipts()
     }
 
     private suspend fun loadPinnedMessage() {
@@ -653,6 +666,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 messageRepo.editMessage(editing.id, content.trim())
                 _editingMessage.value = null
             } else {
+                _scrollToOwnMessageEvent.value++
                 messageRepo.sendTextMessage(chatId, content.trim(), replyId)
                 _replyTo.value = null
             }
@@ -724,7 +738,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 isPending = true, pendingLocalUris = photos.map { it.uri.toString() }
             )
             _messages.value = _messages.value + pendingItem
-            _scrollToBottomEvent.value++
+            _scrollToOwnMessageEvent.value++
             _uploadProgresses.value = List(photos.size) { 0f }
 
             val displayName = myProfile?.displayName ?: ""
@@ -801,7 +815,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val pendingItem = MessageUiItem(message = pendingMsg, senderProfile = profileCache[myId],
             isOwn = true, isRead = false, isPending = true)
         _messages.value = _messages.value + pendingItem
-        _scrollToBottomEvent.value++
+        _scrollToOwnMessageEvent.value++
 
         val displayName = profileCache[myId]?.displayName ?: ""
         if (activeUploadCount.incrementAndGet() == 1) {
@@ -1011,7 +1025,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _messages.value = _messages.value + MessageUiItem(
             message = pendingMsg, senderProfile = profileCache[myId],
             isOwn = true, isRead = false, isPending = true)
-        _scrollToBottomEvent.value++
+        _scrollToOwnMessageEvent.value++
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val bytes = file.readBytes(); file.delete()
