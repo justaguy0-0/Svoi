@@ -185,6 +185,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
                     if (senderName != null) "$senderName: 🎥 $name" else "🎥 $name"
                 }
                 lastMsg.type == "file" -> if (senderName != null) "$senderName: 📎 ${lastMsg.fileName ?: "Файл"}" else "📎 ${lastMsg.fileName ?: "Файл"}"
+                lastMsg.type == "voice" -> if (senderName != null) "$senderName: 🎤 Голосовое сообщение" else "🎤 Голосовое сообщение"
                 else -> {
                     val text = lastMsg.content ?: ""
                     if (senderName != null && text.isNotEmpty()) "$senderName: $text" else text

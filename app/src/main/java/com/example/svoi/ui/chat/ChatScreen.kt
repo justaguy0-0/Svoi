@@ -762,6 +762,7 @@ fun ChatScreen(
                                             msg.type == "photo" -> "📷 Фото"
                                             msg.type == "file" -> "📎 ${msg.fileName ?: "Файл"}"
                                             msg.type == "video" -> "🎬 ${msg.fileName ?: "Видео"}"
+                                            msg.type == "voice" -> "🎤 Голосовое сообщение"
                                             else -> msg.content ?: "[медиа]"
                                         },
                                         style = MaterialTheme.typography.bodySmall,

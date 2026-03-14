@@ -67,7 +67,8 @@ Deno.serve(async (req) => {
     if (!record) return new Response('No record', { status: 400 })
 
     const { chat_id, sender_id, content, type } = record
-    if (!['text', 'media', 'system'].includes(type)) {
+    const SUPPORTED_TYPES = ['text', 'photo', 'album', 'video', 'voice', 'file', 'system']
+    if (!SUPPORTED_TYPES.includes(type)) {
       return new Response('Skip unsupported message type', { status: 200 })
     }
 
@@ -103,14 +104,26 @@ Deno.serve(async (req) => {
     const chatName = chat?.name ?? ''
 
     const notificationTitle = isGroup ? chatName || 'Групповой чат' : senderName
-    let notificationBody: string
+    let messagePreview: string
     if (type === 'system') {
-      notificationBody = content
-    } else if (type === 'media') {
-      notificationBody = isGroup ? `${senderName}: 📷 Медиа` : '📷 Медиа'
+      messagePreview = content ?? ''
+    } else if (type === 'photo') {
+      messagePreview = '📷 Фото'
+    } else if (type === 'album') {
+      messagePreview = '📷 Фото'
+    } else if (type === 'video') {
+      messagePreview = '🎥 Видео'
+    } else if (type === 'voice') {
+      messagePreview = '🎤 Голосовое сообщение'
+    } else if (type === 'file') {
+      messagePreview = `📎 ${record.file_name ?? 'Файл'}`
     } else {
-      notificationBody = isGroup ? `${senderName}: ${content}` : content
+      messagePreview = content ?? ''
     }
+
+    const notificationBody = (isGroup && type !== 'system')
+      ? `${senderName}: ${messagePreview}`
+      : messagePreview
 
     // Avatar: for group — first letter of chat name on dark circle; for personal — sender emoji + color
     const avatarEmoji = sender?.emoji ?? '😊'
