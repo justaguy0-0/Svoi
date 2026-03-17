@@ -136,6 +136,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import com.example.svoi.SvoiApp
 import com.example.svoi.ui.voice.GlobalVoiceMiniPlayer
+import com.example.svoi.ui.voice.GlobalVoicePlayer
+import com.example.svoi.ui.voice.GlobalVoiceState
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -687,26 +689,6 @@ fun ChatScreen(
                 )
             }
 
-            // Global voice mini-player: under top bar, visible when audio is playing
-            var lastVoiceState by remember { mutableStateOf(globalVoiceState) }
-            if (globalVoiceState != null) lastVoiceState = globalVoiceState
-            AnimatedVisibility(
-                visible = globalVoiceState != null,
-                enter = slideInVertically(tween(220)) { -it } + fadeIn(tween(220)),
-                exit  = slideOutVertically(tween(200)) { -it } + fadeOut(tween(200))
-            ) {
-                lastVoiceState?.let { vs ->
-                    GlobalVoiceMiniPlayer(
-                        state = vs,
-                        onPlayPause = {
-                            if (vs.isPlaying) app.globalVoicePlayer.pause()
-                            else app.globalVoicePlayer.resume()
-                        },
-                        onClose = { app.globalVoicePlayer.stop() }
-                    )
-                }
-            }
-
             // Messages
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (isLoading) {
@@ -855,6 +837,9 @@ fun ChatScreen(
                         }
                     }
                 }
+
+                // Mini-player overlay: floats under top bar, doesn't shift messages
+                MiniPlayerOverlay(state = globalVoiceState, player = app.globalVoicePlayer)
             }
 
             // Input area or Selection action bar
@@ -2705,6 +2690,30 @@ private suspend fun LazyListState.smoothScrollToItem(index: Int, scrollOffset: I
         ) { value, _ ->
             scrollBy(value - prev)
             prev = value
+        }
+    }
+}
+
+/**
+ * Mini-player overlay: extracted into a standalone @Composable so AnimatedVisibility
+ * resolves to the generic overload (not ColumnScope.AnimatedVisibility, which the compiler
+ * would incorrectly pick when called directly inside a Box that's nested inside a Column).
+ */
+@Composable
+private fun MiniPlayerOverlay(state: GlobalVoiceState?, player: GlobalVoicePlayer) {
+    var lastState by remember { mutableStateOf(state) }
+    if (state != null) lastState = state
+    AnimatedVisibility(
+        visible = state != null,
+        enter = slideInVertically(tween(220)) { -it } + fadeIn(tween(220)),
+        exit  = slideOutVertically(tween(200)) { -it } + fadeOut(tween(200))
+    ) {
+        lastState?.let { vs ->
+            GlobalVoiceMiniPlayer(
+                state = vs,
+                onPlayPause = { if (vs.isPlaying) player.pause() else player.resume() },
+                onClose = { player.stop() }
+            )
         }
     }
 }
