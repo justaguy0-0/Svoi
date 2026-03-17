@@ -671,12 +671,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val existing = item.reactions.toMutableList()
             val group = existing.find { it.emoji == emoji }
             val updated = if (group != null && group.hasMyReaction) {
+                // Removing own reaction — always allowed
                 if (group.count == 1) existing.filter { it.emoji != emoji }
                 else existing.map { if (it.emoji == emoji) it.copy(count = it.count - 1, hasMyReaction = false) else it }
-            } else if (group != null) {
-                existing.map { if (it.emoji == emoji) it.copy(count = it.count + 1, hasMyReaction = true) else it }
             } else {
-                existing + ReactionGroup(emoji, 1, true)
+                // Adding reaction — check max 3 per user per message
+                val myReactionCount = existing.count { it.hasMyReaction }
+                if (myReactionCount >= 3) return@map item
+                if (group != null) {
+                    existing.map { if (it.emoji == emoji) it.copy(count = it.count + 1, hasMyReaction = true) else it }
+                } else {
+                    existing + ReactionGroup(emoji, 1, true)
+                }
             }
             item.copy(reactions = updated.sortedByDescending { it.count })
         }

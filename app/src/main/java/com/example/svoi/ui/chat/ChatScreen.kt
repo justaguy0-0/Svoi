@@ -2118,13 +2118,14 @@ private fun MessageItem(
                 )
             }
 
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .offset(x = swipeOffsetDp),
-                horizontalArrangement = if (item.isOwn) Arrangement.End else Arrangement.Start,
-                verticalAlignment = Alignment.Bottom
+                horizontalAlignment = if (item.isOwn) Alignment.End else Alignment.Start
             ) {
+                // Bubble row: Avatar + Surface — avatar aligns to bottom of bubble only
+                Row(verticalAlignment = Alignment.Bottom) {
                 if (!item.isOwn && isGroup) {
                     item.senderProfile?.let { profile ->
                         Avatar(
@@ -2141,10 +2142,6 @@ private fun MessageItem(
                         )
                     } ?: Spacer(Modifier.width(32.dp))
                 }
-
-                Column(
-                    horizontalAlignment = if (item.isOwn) Alignment.End else Alignment.Start
-                ) {
                 Surface(
                     shape = bubbleShape,
                     color = bubbleColor,
@@ -2456,15 +2453,16 @@ private fun MessageItem(
                         }
                     }
                 }
-                // Reactions row — below the bubble, inside the Column wrapper
+                } // close Row (Avatar + Surface)
+                // Reactions row — below the bubble, outside the Row so avatar stays at bubble bottom
                 if (item.reactions.isNotEmpty()) {
                     ReactionsRow(
                         reactions = item.reactions,
                         isOwn = item.isOwn,
+                        hasAvatarSpace = !item.isOwn && isGroup,
                         onReactionClick = { emoji -> onReactionToggle(item.message.id, emoji) }
                     )
                 }
-                } // close Column wrapper
             }
         }
     }
@@ -2572,12 +2570,13 @@ private fun VoiceMessageBubble(
 private fun ReactionsRow(
     reactions: List<ReactionGroup>,
     isOwn: Boolean,
+    hasAvatarSpace: Boolean = false,
     onReactionClick: (emoji: String) -> Unit
 ) {
     Row(
         modifier = Modifier
-            .padding(top = 4.dp)
-            .padding(horizontal = 4.dp),
+            .padding(top = 2.dp)
+            .padding(start = if (hasAvatarSpace) 32.dp else 4.dp, end = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         reactions.forEach { group ->
@@ -2588,7 +2587,7 @@ private fun ReactionsRow(
                 else
                     MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier
-                    .height(28.dp)
+                    .defaultMinSize(minHeight = 30.dp)
                     .clickable { onReactionClick(group.emoji) }
             ) {
                 Row(
@@ -2596,7 +2595,7 @@ private fun ReactionsRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
-                    Text(group.emoji, fontSize = 14.sp)
+                    Text(group.emoji, fontSize = 16.sp, lineHeight = 18.sp)
                     if (group.count > 1) {
                         Text(
                             "${group.count}",

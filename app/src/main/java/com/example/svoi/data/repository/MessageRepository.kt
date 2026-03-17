@@ -326,6 +326,11 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     filter { eq("message_id", messageId); eq("user_id", userId); eq("emoji", emoji) }
                 }
             } else {
+                // Max 3 reactions per user per message
+                val myCount = supabase.from("message_reactions")
+                    .select { filter { eq("message_id", messageId); eq("user_id", userId) } }
+                    .decodeList<MessageReaction>().size
+                if (myCount >= 3) return false
                 supabase.from("message_reactions").insert(
                     ReactionInsert(messageId = messageId, userId = userId, emoji = emoji)
                 )
