@@ -134,6 +134,8 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import com.example.svoi.SvoiApp
+import com.example.svoi.ui.voice.GlobalVoiceMiniPlayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -269,6 +271,8 @@ fun ChatScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val haptic = LocalHapticFeedback.current
+    val app = context.applicationContext as SvoiApp
+    val globalVoiceState by app.globalVoicePlayer.state.collectAsState()
 
     // Keep screen on while recording voice (prevents phone sleep during locked recording)
     val isRecordingVoice = voiceRecordState is VoiceRecordState.Recording
@@ -830,6 +834,24 @@ fun ChatScreen(
                             }
                         }
                     }
+                }
+            }
+
+            // Global voice mini-player: visible when audio from another chat is playing
+            AnimatedVisibility(
+                visible = globalVoiceState != null,
+                enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
+                exit  = slideOutVertically(tween(200)) { it } + fadeOut(tween(200))
+            ) {
+                globalVoiceState?.let { vs ->
+                    GlobalVoiceMiniPlayer(
+                        state = vs,
+                        onPlayPause = {
+                            if (vs.isPlaying) app.globalVoicePlayer.pause()
+                            else app.globalVoicePlayer.resume()
+                        },
+                        onClose = { app.globalVoicePlayer.stop() }
+                    )
                 }
             }
 

@@ -1,5 +1,11 @@
 package com.example.svoi.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
@@ -32,15 +38,21 @@ fun MainBottomBar(
 
     Column {
         // Mini-player sits above the tab bar when voice is playing outside a chat
-        if (voiceState != null) {
-            GlobalVoiceMiniPlayer(
-                state = voiceState!!,
-                onPlayPause = {
-                    if (voiceState!!.isPlaying) app.globalVoicePlayer.pause()
-                    else app.globalVoicePlayer.resume()
-                },
-                onClose = { app.globalVoicePlayer.stop() }
-            )
+        AnimatedVisibility(
+            visible = voiceState != null,
+            enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
+            exit  = slideOutVertically(tween(200)) { it } + fadeOut(tween(200))
+        ) {
+            voiceState?.let { vs ->
+                GlobalVoiceMiniPlayer(
+                    state = vs,
+                    onPlayPause = {
+                        if (vs.isPlaying) app.globalVoicePlayer.pause()
+                        else app.globalVoicePlayer.resume()
+                    },
+                    onClose = { app.globalVoicePlayer.stop() }
+                )
+            }
         }
 
         NavigationBar {
