@@ -141,7 +141,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val isOnline: StateFlow<Boolean> = app.networkMonitor.isOnline
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
-    private val currentUserId get() = authRepo.currentUserId() ?: ""
+    // Cached at init() time so it stays stable even if SDK session expires while offline.
+    // Never reset to "" during a session — once captured, it remains valid for the lifetime
+    // of the ViewModel. This prevents messages from flip-flopping to "others'" side when
+    // the Supabase SDK loses its in-memory session due to a connectivity problem.
+    private var currentUserId: String = authRepo.currentUserId() ?: ""
 
     /** Becomes true when the group chat is deleted externally — screen must close */
     private val _isChatDeleted = MutableStateFlow(false)
@@ -208,6 +212,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun init(chatId: String) {
         if (this.chatId == chatId) return
         this.chatId = chatId
+
+        // Refresh cached userId if it was empty at ViewModel creation (e.g. session was still loading)
+        if (currentUserId.isEmpty()) currentUserId = authRepo.currentUserId() ?: ""
 
         dismissChatNotification(chatId)
 
