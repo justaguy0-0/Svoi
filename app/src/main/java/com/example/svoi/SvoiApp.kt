@@ -57,7 +57,7 @@ class SvoiApp : Application() {
     val pushTokenRepository by lazy { PushTokenRepository(supabase) }
 
     // Heartbeat: keeps online=true while app is in foreground.
-    // Fires immediately on start, then every 5s.
+    // Fires immediately on start, then every 3s.
     private val heartbeatScope = CoroutineScope(Dispatchers.IO)
     private var heartbeatJob: Job? = null
 
@@ -68,7 +68,7 @@ class SvoiApp : Application() {
                 if (authRepository.isLoggedIn()) {
                     userRepository.setOnline(true)
                 }
-                delay(5_000L)
+                delay(3_000L)
             }
         }
     }

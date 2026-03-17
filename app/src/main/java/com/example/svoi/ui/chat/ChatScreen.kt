@@ -254,7 +254,7 @@ fun ChatScreen(
     val voicePlayState by viewModel.voicePlayState.collectAsState()
     val isMuted by viewModel.isMuted.collectAsState()
     val isPartnerLeft by viewModel.isPartnerLeft.collectAsState()
-    val lastSeenMsgCount by viewModel.lastSeenMsgCount.collectAsState()
+    val myReadMessageIds by viewModel.myReadMessageIds.collectAsState()
 
     // If the group chat was deleted by the admin, kick this user back to chat list
     LaunchedEffect(isChatDeleted) {
@@ -365,7 +365,7 @@ fun ChatScreen(
     val shouldMarkRead by remember {
         derivedStateOf { initialScrollDone && !listState.canScrollForward && listState.layoutInfo.totalItemsCount > 0 }
     }
-    LaunchedEffect(shouldMarkRead) {
+    LaunchedEffect(shouldMarkRead, messages.size) {
         if (shouldMarkRead) viewModel.markAsRead()
     }
 
@@ -775,10 +775,9 @@ fun ChatScreen(
 
                 // Scroll to bottom button
                 val showScrollToBottom by remember { derivedStateOf { listState.canScrollForward } }
-                // Входящие сообщения, пришедшие после того, как пользователь последний раз
-                // был внизу (lastSeenMsgCount). Не зависит от прокрутки — это именно «новые».
-                val unreadBadgeCount = if (lastSeenMsgCount >= messages.size) 0
-                    else messages.drop(lastSeenMsgCount).count { !it.isOwn }
+                // Входящие сообщения, которые ещё не помечены прочитанными.
+                // Используем реальные read receipts, а не позиционный счётчик.
+                val unreadBadgeCount = messages.count { !it.isOwn && it.message.id !in myReadMessageIds }
                 if (showScrollToBottom && !isSelectionMode) {
                     Box(
                         modifier = Modifier

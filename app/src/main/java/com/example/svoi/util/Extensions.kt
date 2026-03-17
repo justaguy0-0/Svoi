@@ -60,16 +60,20 @@ fun String.toDateSeparator(): String = runCatching {
     }
 }.getOrDefault("")
 
-/** Formats an ISO-8601 timestamp string to "last seen HH:mm" or "last seen 12 мар" */
+/** Formats an ISO-8601 timestamp string to "был(а) в HH:mm", "был(а) вчера в HH:mm", etc. */
 fun String.toLastSeen(): String = runCatching {
     val instant = Instant.parse(this)
-    val time = toChatListTime()
-    val messageDate = instant.atZone(ZoneId.systemDefault()).toLocalDate()
+    val zone = ZoneId.systemDefault()
+    val timeOnly = DateTimeFormatter.ofPattern("HH:mm").withZone(zone).format(instant)
+    val messageDate = instant.atZone(zone).toLocalDate()
     val today = LocalDate.now()
     when {
-        messageDate == today -> "был(а) в $time"
-        messageDate == today.minusDays(1) -> "был(а) вчера в $time"
-        else -> "был(а) $time"
+        messageDate == today -> "был(а) в $timeOnly"
+        messageDate == today.minusDays(1) -> "был(а) вчера в $timeOnly"
+        messageDate.year == today.year ->
+            "был(а) ${DateTimeFormatter.ofPattern("d MMM", Locale("ru")).withZone(zone).format(instant)} в $timeOnly"
+        else ->
+            "был(а) ${DateTimeFormatter.ofPattern("d MMM yyyy", Locale("ru")).withZone(zone).format(instant)}"
     }
 }.getOrDefault("")
 

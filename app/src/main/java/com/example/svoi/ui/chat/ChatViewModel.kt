@@ -150,6 +150,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _lastSeenMsgCount = MutableStateFlow(0)
     val lastSeenMsgCount: StateFlow<Int> = _lastSeenMsgCount
 
+    /** IDs of incoming messages that the current user has already read */
+    private val _myReadMessageIds = MutableStateFlow<Set<String>>(emptySet())
+    val myReadMessageIds: StateFlow<Set<String>> = _myReadMessageIds
+
     /** Mute state for this chat (notifications) */
     private val _isMuted = MutableStateFlow(false)
     val isMuted: StateFlow<Boolean> = _isMuted
@@ -377,17 +381,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _otherUserPresence.value = userRepo.getPresence(userId)
             while (true) {
-                delay(10_000L)
+                delay(5_000L)
                 val presence = userRepo.getPresence(userId)
                 if (presence != null) _otherUserPresence.value = presence
             }
         }
-        // Realtime on top: instant updates when presence changes
+        // Realtime on top: instant updates when presence changes. Retry on failure.
         viewModelScope.launch {
-            runCatching {
-                userRepo.presenceUpdateFlow(userId).collect { presence ->
-                    Log.d("Presence", "realtime update for $userId: $presence")
-                    _otherUserPresence.value = presence
+            while (true) {
+                try {
+                    userRepo.presenceUpdateFlow(userId).collect { presence ->
+                        Log.d("Presence", "realtime update for $userId: $presence")
+                        _otherUserPresence.value = presence
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("Presence", "Realtime presence failed, retry in 3s: ${e.message}")
+                    delay(3_000L)
                 }
             }
         }
@@ -407,6 +418,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val alreadyReadByMe = messageRepo.getReadMessageIdsByUser(incomingIds, myId)
             val idx = raw.indexOfFirst { it.senderId != myId && it.id !in alreadyReadByMe }
             _firstUnreadIndex.value = idx
+            _myReadMessageIds.value = alreadyReadByMe
             Log.d("UnreadSep", "firstUnreadIndex=$idx, incoming=${incomingIds.size}, alreadyRead=${alreadyReadByMe.size}")
         }
 
@@ -472,6 +484,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /** Called by ChatScreen when user reaches the bottom — clears the unread badge */
     fun markAsRead() {
         _lastSeenMsgCount.value = _messages.value.size
+        val incomingIds = _messages.value.filter { !it.isOwn }.map { it.message.id }.toSet()
+        _myReadMessageIds.value = incomingIds
         sendReadReceipts()
     }
 
