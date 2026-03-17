@@ -393,13 +393,19 @@ fun ChatScreen(
     }
 
     // When keyboard opens — scroll to bottom so latest messages are visible.
-    // imeVisible is read in composition context, LaunchedEffect re-runs every time it becomes true.
-    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    LaunchedEffect(imeVisible) {
-        if (imeVisible && initialScrollDone) {
-            val last = currentDisplayEntries.size - 1
-            if (last >= 0) listState.scrollToItem(last)
-        }
+    // rememberUpdatedState wraps IME height in a snapshot-observable State so snapshotFlow
+    // can reliably detect every keyboard open event, no matter how many times.
+    val imeBottomState = rememberUpdatedState(WindowInsets.ime.getBottom(LocalDensity.current))
+    LaunchedEffect("imeScroll") {
+        snapshotFlow { imeBottomState.value > 0 }
+            .distinctUntilChanged()
+            .filter { it }
+            .collect {
+                if (initialScrollDone) {
+                    val last = currentDisplayEntries.size - 1
+                    if (last >= 0) listState.scrollToItem(last)
+                }
+            }
     }
 
     // Auto-play: when scroll stops, find the bottommost 50%-visible video and play it
