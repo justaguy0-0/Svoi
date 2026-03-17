@@ -62,6 +62,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -281,6 +282,15 @@ fun ChatScreen(
     val app = context.applicationContext as SvoiApp
     val globalVoiceState by app.globalVoicePlayer.state.collectAsState()
 
+    // Chat reveal: invisible until scrolled to position, then fade-in
+    var chatReady by remember { mutableStateOf(false) }
+    val chatAlpha by animateFloatAsState(
+        targetValue = if (chatReady) 1f else 0f,
+        animationSpec = tween(durationMillis = 150),
+        label = "chatReveal"
+    )
+    LaunchedEffect(isLoading) { if (isLoading) chatReady = false }
+
     // Keep screen on while recording voice (prevents phone sleep during locked recording)
     val isRecordingVoice = voiceRecordState is VoiceRecordState.Recording
     DisposableEffect(isRecordingVoice) {
@@ -455,6 +465,8 @@ fun ChatScreen(
             val offset = if (unreadEntryIdx >= 0) -(screenHeightPx / 2) else 0
             listState.scrollToItem(target, scrollOffset = offset)
         }
+        // Reveal chat after positioning — user sees final state immediately
+        chatReady = true
         // After initial scroll, allow markAsRead to fire when user reaches the bottom
         initialScrollDone = true
     }
@@ -711,14 +723,13 @@ fun ChatScreen(
 
             // Messages
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                } else {
+                if (!isLoading) {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 8.dp),
+                            .padding(horizontal = 8.dp)
+                            .graphicsLayer { alpha = chatAlpha },
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         items(
