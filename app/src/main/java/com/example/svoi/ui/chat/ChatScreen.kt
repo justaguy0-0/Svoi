@@ -1981,11 +1981,7 @@ private fun MessageItem(
                 if (!isSelectionMode) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
-                            if (item.isOwn) {
-                                if (swipeOffset.value <= -swipeThresholdPx) onReply()
-                            } else {
-                                if (swipeOffset.value >= swipeThresholdPx) onReply()
-                            }
+                            if (swipeOffset.value <= -swipeThresholdPx) onReply()
                             replyTriggered.value = false
                             scope.launch {
                                 swipeOffset.animateTo(
@@ -1999,27 +1995,14 @@ private fun MessageItem(
                             scope.launch { swipeOffset.animateTo(0f) }
                         },
                         onHorizontalDrag = { _, dragAmount ->
-                            if (item.isOwn) {
-                                // Own messages: swipe left (negative)
-                                if (dragAmount < 0) {
-                                    val newOffset = (swipeOffset.value + dragAmount)
-                                        .coerceIn(-swipeThresholdPx * 1.3f, 0f)
-                                    scope.launch { swipeOffset.snapTo(newOffset) }
-                                    if (newOffset <= -swipeThresholdPx && !replyTriggered.value) {
-                                        replyTriggered.value = true
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    }
-                                }
-                            } else {
-                                // Others' messages: swipe right (positive)
-                                if (dragAmount > 0) {
-                                    val newOffset = (swipeOffset.value + dragAmount)
-                                        .coerceIn(0f, swipeThresholdPx * 1.3f)
-                                    scope.launch { swipeOffset.snapTo(newOffset) }
-                                    if (newOffset >= swipeThresholdPx && !replyTriggered.value) {
-                                        replyTriggered.value = true
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    }
+                            // All messages: swipe left (negative) to reply
+                            if (dragAmount < 0) {
+                                val newOffset = (swipeOffset.value + dragAmount)
+                                    .coerceIn(-swipeThresholdPx * 1.3f, 0f)
+                                scope.launch { swipeOffset.snapTo(newOffset) }
+                                if (newOffset <= -swipeThresholdPx && !replyTriggered.value) {
+                                    replyTriggered.value = true
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 }
                             }
                         }
@@ -2039,7 +2022,7 @@ private fun MessageItem(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary.copy(alpha = replyIconAlpha),
                     modifier = Modifier
-                        .align(if (item.isOwn) Alignment.CenterEnd else Alignment.CenterStart)
+                        .align(Alignment.CenterEnd)
                         .padding(horizontal = 12.dp)
                         .size(20.dp)
                 )
