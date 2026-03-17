@@ -268,6 +268,7 @@ fun ChatScreen(
 
     var inputValue by remember { mutableStateOf(TextFieldValue("")) }
     var showEmojiPicker by remember { mutableStateOf(false) }
+    var isTextFieldFocused by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -1047,38 +1048,54 @@ fun ChatScreen(
                                     }
                                 }
                             } else {
-                                // Normal inputs
+                                // Normal inputs: [ 📎 ] [ 😀 TextField ] right→ mic/send
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.Bottom
                                 ) {
-                                    IconButton(
-                                        onClick = { showEmojiPicker = !showEmojiPicker; if (showEmojiPicker) keyboardController?.hide() },
-                                        modifier = Modifier.size(40.dp)
-                                    ) {
-                                        Icon(Icons.Default.EmojiEmotions, contentDescription = "Эмодзи",
-                                            modifier = Modifier.size(22.dp),
-                                            tint = if (showEmojiPicker) MaterialTheme.colorScheme.primary
-                                                   else MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                                    // Attach button
                                     IconButton(
                                         onClick = { mediaPicker.launch(Unit) },
-                                        modifier = Modifier.size(40.dp)
+                                        modifier = Modifier.size(44.dp)
                                     ) {
-                                        Icon(Icons.Default.Image, contentDescription = "Медиа",
+                                        Icon(
+                                            Icons.Default.AttachFile,
+                                            contentDescription = "Прикрепить",
                                             modifier = Modifier.size(22.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
-                                    Spacer(Modifier.width(2.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    // Text field with emoji button inside as leading icon
                                     TextField(
                                         value = inputValue,
                                         onValueChange = { inputValue = it; viewModel.onInputTextChanged(it.text) },
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(24.dp))
-                                            .onFocusChanged { if (it.isFocused) showEmojiPicker = false },
+                                            .onFocusChanged {
+                                                isTextFieldFocused = it.isFocused
+                                                if (it.isFocused) showEmojiPicker = false
+                                            },
                                         placeholder = { Text("Сообщение...") },
                                         maxLines = 5,
+                                        leadingIcon = {
+                                            IconButton(
+                                                onClick = {
+                                                    showEmojiPicker = !showEmojiPicker
+                                                    if (showEmojiPicker) keyboardController?.hide()
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.EmojiEmotions,
+                                                    contentDescription = "Эмодзи",
+                                                    modifier = Modifier.size(18.dp),
+                                                    tint = if (showEmojiPicker) MaterialTheme.colorScheme.primary
+                                                           else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        },
                                         colors = TextFieldDefaults.colors(
                                             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -1097,7 +1114,7 @@ fun ChatScreen(
                         // When has text/media and not recording → Send (tap to send message)
                         // Otherwise → Mic (hold-to-record gesture)
                         val hasContent = inputValue.text.isNotBlank() || stagedMedia.isNotEmpty()
-                        val showSend = isLocked || (hasContent && !isRecording)
+                        val showSend = isLocked || (!isRecording && (isTextFieldFocused || hasContent))
                         AnimatedContent(
                             targetState = showSend,
                             transitionSpec = {
