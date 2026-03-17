@@ -225,57 +225,30 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val cachedProfiles = cache.loadProfileMap()
             val cachedPinned   = cache.loadPinnedContent(chatId)
 
-            // "Full cache" = we have everything needed to show a stable, final-looking screen.
-            // cachedPinned != null means pinned state was saved previously (even if null = no pinned).
-            val hasFullCache = cachedInfo != null && cachedMessages != null && cachedPinned != null
-
-            if (hasFullCache) {
-                // ── FAST PATH: show cached content immediately, then refresh ──────
-                cachedProfiles.forEach { profileCache[it.key] = it.value }
-
-                _chatName.value    = cachedInfo!!.name
+            // Restore cached info for TopAppBar while loading
+            if (cachedInfo != null) {
+                _chatName.value    = cachedInfo.name
                 _isGroup.value     = cachedInfo.isGroup
                 _memberCount.value = cachedInfo.memberCount
                 otherUserIdVal     = cachedInfo.otherUserId
                 _otherUserId.value = cachedInfo.otherUserId
-
-                _pinnedMessage.value        = cachedPinned!!.pinnedMessage
-                _pinnedMessageContent.value = cachedPinned.messageContent
-
-                _messages.value = buildUiItems(cachedMessages!!)
-                lastKnownMessageId = cachedMessages.lastOrNull()?.id
-                _isLoading.value = false
-                // Немедленный snap к низу кэша — пользователь не видит верх списка.
-                // initialScrollDone НЕ устанавливается здесь → markAsRead не сработает.
-                _snapToBottomEvent.value++
-
-                // Фоновое обновление: firstUnreadIndex вычислится в loadMessages().
-                loadChatInfo()
-                loadPinnedMessage()
-                loadMessages(scrollAfter = false)
-                _lastSeenMsgCount.value = if (_firstUnreadIndex.value >= 0) _firstUnreadIndex.value else _messages.value.size
-                // Финальный скролл к разделителю непрочитанных (или к низу).
-                // Этот скролл устанавливает initialScrollDone → markAsRead разрешён.
-                _scrollToBottomEvent.value++
-            } else {
-                // ── SLOW PATH: first visit or incomplete cache — show spinner ─────
-                if (cachedInfo != null) {
-                    // At least show the chat name in the TopAppBar while loading
-                    _chatName.value    = cachedInfo.name
-                    _isGroup.value     = cachedInfo.isGroup
-                    _memberCount.value = cachedInfo.memberCount
-                }
-                _isLoading.value = true
-
-                loadChatInfo()
-                loadPinnedMessage()
-                loadMessages(scrollAfter = false)
-                // Badge starts from first unread; server receipts sent only when user reaches bottom
-                _lastSeenMsgCount.value = if (_firstUnreadIndex.value >= 0) _firstUnreadIndex.value else _messages.value.size
-
-                _isLoading.value = false
-                _scrollToBottomEvent.value++   // single, stable scroll after full load
             }
+            if (cachedPinned != null) {
+                _pinnedMessage.value        = cachedPinned.pinnedMessage
+                _pinnedMessageContent.value = cachedPinned.messageContent
+            }
+            cachedProfiles.forEach { profileCache[it.key] = it.value }
+
+            // Always show spinner until fully enriched messages are ready
+            _isLoading.value = true
+
+            loadChatInfo()
+            loadPinnedMessage()
+            loadMessages(scrollAfter = false)
+
+            _lastSeenMsgCount.value = if (_firstUnreadIndex.value >= 0) _firstUnreadIndex.value else _messages.value.size
+            _isLoading.value = false
+            _scrollToBottomEvent.value++
 
             // Clear unread separator after 5 s
             if (_firstUnreadIndex.value >= 0) {
