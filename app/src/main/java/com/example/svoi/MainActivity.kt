@@ -31,6 +31,11 @@ class MainActivity : ComponentActivity() {
     // chat_id из уведомления — обновляется при onCreate и onNewIntent
     private val pendingChatId = mutableStateOf<String?>(null)
 
+    // Set to true after restoreSession() completes in LaunchedEffect.
+    // Guards onResume from calling tryRestoreSessionSilently() concurrently with
+    // restoreSession() — two simultaneous importSession() calls break the SDK session.
+    @Volatile private var initialRestoreCompleted = false
+
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
 
@@ -58,6 +63,7 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(Unit) {
                     val restored = app.authRepository.restoreSession()
+                    initialRestoreCompleted = true
                     startDestination = if (restored) Routes.CHAT_LIST else Routes.LOGIN
                     // setOnline is handled by startPresenceHeartbeat() in onResume
                     if (restored) app.registerFcmToken()
@@ -105,9 +111,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         app.startPresenceHeartbeat()
-        // If the SDK session was lost at startup (blocked internet on import timeout),
-        // silently retry now that connectivity may have restored.
-        if (!app.authRepository.isLoggedIn() && app.prefs.hasSession()) {
+        // If the SDK session was lost after the initial restore (e.g. blocked internet cleared),
+        // silently re-import now that connectivity may have restored.
+        // Guard: only after initialRestoreCompleted to avoid concurrent importSession() calls
+        // with restoreSession() — two simultaneous imports corrupt the SDK session state.
+        if (initialRestoreCompleted && !app.authRepository.isLoggedIn() && app.prefs.hasSession()) {
             lifecycleScope.launch {
                 if (app.authRepository.tryRestoreSessionSilently()) {
                     app.startPresenceHeartbeat()
