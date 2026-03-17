@@ -6,20 +6,27 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
-import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.svoi.SvoiApp
+import com.example.svoi.ui.voice.GlobalVoiceMiniPlayer
 import com.example.svoi.data.local.ThemeMode
 import com.example.svoi.ui.auth.AuthViewModel
 import com.example.svoi.ui.auth.InviteKeyScreen
@@ -79,7 +86,14 @@ fun NavGraph(
     // Shared animation specs
     val fadeSpec = tween<Float>(220, easing = FastOutSlowInEasing)
 
+    // Global mini-player — shown on all screens except the chat itself
+    val app = LocalContext.current.applicationContext as SvoiApp
+    val globalVoiceState by app.globalVoicePlayer.state.collectAsState()
+    val currentBackStack by navController.currentBackStackEntryAsState()
+    val isInChat = currentBackStack?.destination?.route == Routes.CHAT
+
     Surface(modifier = Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
             startDestination = startDestination,
@@ -320,5 +334,19 @@ fun NavGraph(
                 )
             }
         }
+
+        // Mini-player: voice continues playing outside the chat
+        if (globalVoiceState != null && !isInChat) {
+            GlobalVoiceMiniPlayer(
+                state = globalVoiceState!!,
+                onPlayPause = {
+                    if (globalVoiceState!!.isPlaying) app.globalVoicePlayer.pause()
+                    else app.globalVoicePlayer.resume()
+                },
+                onClose = { app.globalVoicePlayer.stop() },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+        } // end Box
     }
 }

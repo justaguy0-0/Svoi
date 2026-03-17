@@ -13,6 +13,7 @@ import com.example.svoi.data.repository.ChatRepository
 import com.example.svoi.data.repository.MessageRepository
 import com.example.svoi.data.repository.PushTokenRepository
 import com.example.svoi.data.repository.UserRepository
+import com.example.svoi.ui.voice.GlobalVoicePlayer
 import com.google.firebase.messaging.FirebaseMessaging
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.createSupabaseClient
@@ -55,6 +56,7 @@ class SvoiApp : Application() {
     val chatRepository by lazy { ChatRepository(supabase) }
     val messageRepository by lazy { MessageRepository(supabase) }
     val pushTokenRepository by lazy { PushTokenRepository(supabase) }
+    val globalVoicePlayer by lazy { GlobalVoicePlayer() }
 
     // Heartbeat: keeps online=true while app is in foreground.
     // Fires immediately on start, then every 3s.

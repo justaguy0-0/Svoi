@@ -268,6 +268,19 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val haptic = LocalHapticFeedback.current
+
+    // Keep screen on while recording voice (prevents phone sleep during locked recording)
+    val isRecordingVoice = voiceRecordState is VoiceRecordState.Recording
+    DisposableEffect(isRecordingVoice) {
+        val window = (context as? android.app.Activity)?.window
+        if (isRecordingVoice) {
+            window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
 
     // Microphone permission
     var micPermissionGranted by remember {
@@ -1101,6 +1114,7 @@ fun ChatScreen(
                                                 val down = awaitFirstDown(requireUnconsumed = false)
                                                 down.consume()
                                                 viewModel.startVoiceRecording()
+                                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                                                 var cancelled = false
                                                 var locked = false
                                                 val cancelThreshold = 80.dp.toPx()
@@ -1124,6 +1138,7 @@ fun ChatScreen(
                                                     }
                                                     if (!locked && offset.y < -lockThreshold) {
                                                         viewModel.lockRecording()
+                                                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                                                         locked = true
                                                         voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
                                                     }
