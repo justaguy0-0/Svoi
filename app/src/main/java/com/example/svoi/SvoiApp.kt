@@ -16,6 +16,8 @@ import com.example.svoi.data.repository.UserRepository
 import com.example.svoi.ui.voice.GlobalVoicePlayer
 import com.google.firebase.messaging.FirebaseMessaging
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
@@ -32,6 +34,25 @@ class SvoiApp : Application() {
     override fun onCreate() {
         super.onCreate()
         EmojiCompat.init(BundledEmojiCompatConfig(this))
+        // Persist token refreshes: the Supabase SDK auto-refreshes the access/refresh token
+        // internally. Without this, prefs always stores the original login tokens. After the
+        // first SDK refresh cycle, the old refresh token is invalidated (token rotation), and
+        // the next importSession() call fails with "refresh_token_already_used".
+        // Fix: whenever the SDK reports Authenticated, save the current session to prefs.
+        heartbeatScope.launch {
+            supabase.auth.sessionStatus.collect { status ->
+                if (status is SessionStatus.Authenticated) {
+                    supabase.auth.currentSessionOrNull()?.let { session ->
+                        prefs.saveSession(
+                            accessToken = session.accessToken,
+                            refreshToken = session.refreshToken,
+                            expiresAt = session.expiresAt.epochSeconds
+                        )
+                        Log.d("Auth", "SvoiApp: session persisted to prefs (token refresh)")
+                    }
+                }
+            }
+        }
     }
 
     val supabase by lazy {

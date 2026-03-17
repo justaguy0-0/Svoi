@@ -61,9 +61,9 @@ class AuthRepository(
         val refreshToken = prefs.getRefreshToken() ?: return false
 
         // Try to load the session into the SDK. If the network is blocked this will time out —
-        // that does NOT mean the tokens are invalid. Never clear tokens here.
+        // that does NOT mean the tokens are invalid.
         return try {
-            withTimeoutOrNull(3_000L) {
+            val timedOut = withTimeoutOrNull(3_000L) {
                 supabase.auth.importSession(
                     UserSession(
                         accessToken = accessToken,
@@ -73,15 +73,28 @@ class AuthRepository(
                         refreshToken = refreshToken
                     )
                 )
-            }
+            } == null
             val sessionLoaded = supabase.auth.currentSessionOrNull() != null
-            Log.d("Auth", "restoreSession: importSession sessionLoaded=$sessionLoaded")
-            if (!sessionLoaded) {
-                // importSession timed out — network is blocked.
-                // Tokens are still valid; we'll retry silently when internet restores.
-                Log.w("Auth", "restoreSession: import timed out — keeping tokens, proceeding to app")
+            Log.d("Auth", "restoreSession: timedOut=$timedOut sessionLoaded=$sessionLoaded")
+            when {
+                sessionLoaded -> {
+                    Log.d("Auth", "restoreSession: importSession success, userId=${supabase.auth.currentUserOrNull()?.id}")
+                    true
+                }
+                timedOut -> {
+                    // Network is blocked — tokens are likely still valid; retry on next resume.
+                    Log.w("Auth", "restoreSession: import timed out — keeping tokens, proceeding to app")
+                    true
+                }
+                else -> {
+                    // Import completed without timeout but session was NOT loaded.
+                    // This means the SDK rejected the tokens (e.g. refresh_token_already_used,
+                    // revoked token). Tokens are permanently invalid — must re-authenticate.
+                    Log.w("Auth", "restoreSession: import failed (bad tokens) — clearing prefs, going to login")
+                    prefs.clearSession()
+                    false
+                }
             }
-            true  // we have saved tokens → stay in the app, not on login screen
         } catch (e: Exception) {
             // Network or unknown error — do NOT clear tokens, do NOT log out.
             // Tokens are considered valid until the server explicitly rejects them.
