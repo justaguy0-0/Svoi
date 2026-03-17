@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -391,12 +392,13 @@ fun ChatScreen(
         if (shouldMarkRead) viewModel.markAsRead()
     }
 
-    // When keyboard opens (field focused) — scroll to bottom so latest messages are visible
-    LaunchedEffect(isTextFieldFocused) {
-        if (isTextFieldFocused && initialScrollDone) {
-            delay(300) // wait for keyboard animation to complete
+    // When keyboard opens — scroll to bottom so latest messages are visible.
+    // imeVisible is read in composition context, LaunchedEffect re-runs every time it becomes true.
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    LaunchedEffect(imeVisible) {
+        if (imeVisible && initialScrollDone) {
             val last = currentDisplayEntries.size - 1
-            if (last >= 0) listState.animateScrollToItem(last)
+            if (last >= 0) listState.scrollToItem(last)
         }
     }
 
