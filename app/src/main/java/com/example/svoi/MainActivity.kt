@@ -102,10 +102,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Heartbeat fires immediately (no initial delay), then every 5s.
-        if (app.authRepository.isLoggedIn()) {
-            app.startPresenceHeartbeat()
-        }
+        // Always start the heartbeat loop — the loop itself checks isLoggedIn() before each tick.
+        // This covers the case where the user logs in during the current Activity session
+        // (after which onResume is not called again).
+        app.startPresenceHeartbeat()
     }
 
     override fun onPause() {
@@ -119,12 +119,12 @@ class MainActivity : ComponentActivity() {
         // the network request completes before the process can be suspended.
         // Android lifecycle guarantees onStop() always completes before onResume() runs,
         // so there is no race condition between setOnline(false) and setOnline(true).
-        if (app.authRepository.isLoggedIn()) {
-            runBlocking {
-                try {
+        runBlocking {
+            try {
+                if (app.authRepository.isLoggedIn()) {
                     withTimeout(1_500) { app.userRepository.setOnline(false) }
-                } catch (_: Exception) {}
-            }
+                }
+            } catch (_: Exception) {}
         }
     }
 }

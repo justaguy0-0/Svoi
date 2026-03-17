@@ -60,6 +60,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 bgColor = bgColor
             )
             if (err == null) {
+                app.startPresenceHeartbeat()
                 app.registerFcmToken()
                 onSuccess()
             } else {
@@ -122,6 +123,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 bgColor = bgColor
             )
             if (err == null) {
+                app.startPresenceHeartbeat()
                 app.registerFcmToken()
                 onSuccess()
             } else {
@@ -140,7 +142,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             _error.value = null
             val err = authRepo.signIn(email.trim().lowercase(), password)
             if (err == null) {
-                app.userRepository.setOnline(true)
+                app.startPresenceHeartbeat()
                 app.registerFcmToken()
                 onSuccess()
             } else {
