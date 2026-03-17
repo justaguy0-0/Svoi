@@ -723,6 +723,9 @@ fun ChatScreen(
 
             // Messages
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                if (isLoading || !chatReady) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
                 if (!isLoading) {
                     LazyColumn(
                         state = listState,
