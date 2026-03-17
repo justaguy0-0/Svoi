@@ -404,7 +404,7 @@ fun ChatScreen(
                 if (initialScrollDone) {
                     delay(150)
                     val last = currentDisplayEntries.size - 1
-                    if (last >= 0) listState.scrollToItem(last)
+                    if (last >= 0) listState.animateScrollToItem(last)
                 }
             }
     }
