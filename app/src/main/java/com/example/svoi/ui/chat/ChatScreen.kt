@@ -714,15 +714,34 @@ fun ChatScreen(
                             val isNew = entry is ChatEntry.Msg &&
                                 entry.item.message.id in animatingMessageIds
 
+                            // Full-width tap zone: makes selection easier on short messages.
+                            // Inner MessageItem clickables (photo, video, etc.) still win
+                            // because Compose routes events to the innermost handler first.
+                            val rowMessageId = (entry as? ChatEntry.Msg)
+                                ?.takeIf { it.item.message.type != "system" }
+                                ?.item?.message?.id
                             Box(
-                                modifier = Modifier.animateItem(
-                                    fadeInSpec = null,
-                                    placementSpec = if (isSelectionMode) null else spring(
-                                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    ),
-                                    fadeOutSpec = null
-                                )
+                                modifier = Modifier
+                                    .animateItem(
+                                        fadeInSpec = null,
+                                        placementSpec = if (isSelectionMode) null else spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        ),
+                                        fadeOutSpec = null
+                                    )
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (rowMessageId != null) Modifier.combinedClickable(
+                                            onClick = {
+                                                if (isSelectionMode) viewModel.toggleSelection(rowMessageId)
+                                            },
+                                            onLongClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                viewModel.toggleSelection(rowMessageId)
+                                            }
+                                        ) else Modifier
+                                    )
                             ) {
                                 NewMessageAnimation(isNew = isNew) {
                                     when (entry) {
