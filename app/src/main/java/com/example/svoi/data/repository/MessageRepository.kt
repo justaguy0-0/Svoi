@@ -6,6 +6,7 @@ import com.example.svoi.data.model.MessageRead
 import com.example.svoi.data.model.MessageUiItem
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.TypingStatus
+import com.example.svoi.data.model.VoiceListen
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
@@ -214,6 +215,12 @@ class MessageRepository(private val supabase: SupabaseClient) {
     }
 
     @Serializable
+    private data class VoiceListenInsert(
+        @SerialName("message_id") val messageId: String,
+        @SerialName("user_id") val userId: String
+    )
+
+    @Serializable
     private data class VoiceMessageInsert(
         @SerialName("chat_id") val chatId: String,
         @SerialName("sender_id") val senderId: String,
@@ -243,6 +250,57 @@ class MessageRepository(private val supabase: SupabaseClient) {
             )
         } catch (e: Exception) {
             Log.e("MessageRepo", "sendVoiceMessage FAILED: ${e.message}", e)
+        }
+    }
+
+    /** Records that the current user has listened to a voice message. */
+    suspend fun markVoiceListened(messageId: String) {
+        val userId = currentUserId()
+        try {
+            supabase.from("voice_listens").upsert(
+                VoiceListenInsert(messageId = messageId, userId = userId)
+            )
+        } catch (e: Exception) {
+            Log.e("VoiceListen", "markVoiceListened failed: ${e.message}")
+        }
+    }
+
+    /** Returns the subset of [messageIds] that the current user has listened to. */
+    suspend fun getMyListenedVoiceIds(messageIds: List<String>): Set<String> {
+        if (messageIds.isEmpty()) return emptySet()
+        val userId = currentUserId()
+        return try {
+            supabase.from("voice_listens")
+                .select { filter { isIn("message_id", messageIds); eq("user_id", userId) } }
+                .decodeList<VoiceListen>()
+                .map { it.messageId }.toSet()
+        } catch (e: Exception) { emptySet() }
+    }
+
+    /** Returns the subset of [messageIds] that have been listened to by someone other than the current user. */
+    suspend fun getOtherListenedVoiceIds(messageIds: List<String>): Set<String> {
+        if (messageIds.isEmpty()) return emptySet()
+        val userId = currentUserId()
+        return try {
+            supabase.from("voice_listens")
+                .select { filter { isIn("message_id", messageIds); neq("user_id", userId) } }
+                .decodeList<VoiceListen>()
+                .map { it.messageId }.toSet()
+        } catch (e: Exception) { emptySet() }
+    }
+
+    /** Realtime flow — any voice_listens insert (for sender to see when their message was listened to). */
+    fun voiceListenInsertFlow(): Flow<VoiceListen> = channelFlow {
+        val channel = supabase.channel("voice-listens-insert-${java.util.UUID.randomUUID()}")
+        channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+            table = "voice_listens"
+        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
+        channel.subscribe()
+        awaitClose {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { channel.unsubscribe() }
+                runCatching { supabase.realtime.removeChannel(channel) }
+            }
         }
     }
 

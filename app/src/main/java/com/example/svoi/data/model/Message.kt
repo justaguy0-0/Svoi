@@ -34,6 +34,12 @@ data class MessageRead(
 )
 
 @Serializable
+data class VoiceListen(
+    @SerialName("message_id") val messageId: String = "",
+    @SerialName("user_id") val userId: String = ""
+)
+
+@Serializable
 data class PinnedMessage(
     @SerialName("chat_id") val chatId: String = "",
     @SerialName("message_id") val messageId: String = "",
@@ -57,6 +63,9 @@ data class MessageUiItem(
     val senderProfile: Profile?,
     val isOwn: Boolean,
     val isRead: Boolean,
+    /** For own voice messages: true when the recipient has listened.
+     *  For received voice messages: true when the current user has listened. */
+    val isListened: Boolean = false,
     val replyToMessage: Message? = null,
     val replyToSenderProfile: Profile? = null,
     val forwardedFromProfile: Profile? = null,

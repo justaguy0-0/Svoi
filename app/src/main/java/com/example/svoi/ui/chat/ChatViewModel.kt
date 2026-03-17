@@ -287,6 +287,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             observeNewMessages()
             observeUpdatedMessages()
             observeReadReceipts()
+            observeVoiceListens()
             startTypingPolling()
             startChatDeletionWatch()
         }
@@ -464,14 +465,33 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val myMessageIds = raw.filter { it.senderId == myId }.map { it.id }
         val readIds = messageRepo.getReadMessageIds(myMessageIds)
 
+        // Voice listen state
+        val voiceIds = raw.filter { it.type == "voice" }.map { it.id }
+        val myListenedVoiceIds: Set<String>
+        val otherListenedVoiceIds: Set<String>
+        if (voiceIds.isNotEmpty()) {
+            myListenedVoiceIds = messageRepo.getMyListenedVoiceIds(voiceIds)
+            otherListenedVoiceIds = messageRepo.getOtherListenedVoiceIds(voiceIds)
+        } else {
+            myListenedVoiceIds = emptySet()
+            otherListenedVoiceIds = emptySet()
+        }
+
         val messageMap = raw.associateBy { it.id }
         return raw.map { msg ->
             val replyMsg = msg.replyToId?.let { messageMap[it] ?: messageRepo.getMessage(it) }
+            val isOwn = msg.senderId == myId
+            val isListened = msg.type == "voice" && if (isOwn) {
+                msg.id in otherListenedVoiceIds
+            } else {
+                msg.id in myListenedVoiceIds
+            }
             MessageUiItem(
                 message = msg,
                 senderProfile = msg.senderId?.let { profileCache[it] },
-                isOwn = msg.senderId == myId,
+                isOwn = isOwn,
                 isRead = msg.id in readIds,
+                isListened = isListened,
                 replyToMessage = replyMsg,
                 replyToSenderProfile = replyMsg?.senderId?.let { profileCache[it] },
                 forwardedFromProfile = msg.forwardedFromUserId?.let { profileCache[it] }
@@ -626,6 +646,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+        }
+    }
+
+    private fun observeVoiceListens() {
+        viewModelScope.launch {
+            try {
+                messageRepo.voiceListenInsertFlow().collect { listen ->
+                    // Update own voice message: someone else just listened to it
+                    val idx = _messages.value.indexOfFirst {
+                        it.message.id == listen.messageId && it.isOwn && !it.isListened
+                    }
+                    if (idx >= 0) {
+                        _messages.value = _messages.value.toMutableList().also {
+                            it[idx] = it[idx].copy(isListened = true)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
         }
     }
 
@@ -1071,8 +1109,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // ── Voice playback methods ────────────────────────────────────────────────
 
     fun playVoice(messageId: String, url: String, durationSec: Int) {
-        val title = _messages.value.find { it.message.id == messageId }
-            ?.senderProfile?.displayName ?: "Голосовое сообщение"
+        val item = _messages.value.find { it.message.id == messageId }
+        // Mark as listened when the recipient presses play (mirrors Telegram behaviour)
+        if (item != null && !item.isOwn && !item.isListened) {
+            _messages.value = _messages.value.map {
+                if (it.message.id == messageId) it.copy(isListened = true) else it
+            }
+            viewModelScope.launch(Dispatchers.IO) {
+                messageRepo.markVoiceListened(messageId)
+            }
+        }
+        val title = item?.senderProfile?.displayName ?: "Голосовое сообщение"
         app.globalVoicePlayer.play(messageId, url, durationSec, title)
     }
 

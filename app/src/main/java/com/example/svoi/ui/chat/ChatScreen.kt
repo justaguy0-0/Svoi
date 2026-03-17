@@ -77,6 +77,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PlayArrow
@@ -2314,6 +2315,7 @@ private fun MessageItem(
                                             url = url,
                                             durationSec = msg.duration ?: 0,
                                             isOwn = item.isOwn,
+                                            isListened = item.isListened,
                                             voicePlayState = voicePlayState,
                                             onPlay = { onVoicePlay(msg.id, url, msg.duration ?: 0) },
                                             onPause = onVoicePause,
@@ -2362,10 +2364,19 @@ private fun MessageItem(
                                 )
                             } else if (item.isOwn) {
                                 Spacer(Modifier.width(3.dp))
+                                val isVoice = msg.type == "voice"
                                 Icon(
-                                    imageVector = if (item.isRead) Icons.Default.DoneAll else Icons.Default.Check,
+                                    imageVector = when {
+                                        isVoice && item.isListened -> Icons.Default.Hearing
+                                        item.isRead -> Icons.Default.DoneAll
+                                        else -> Icons.Default.Check
+                                    },
                                     contentDescription = null,
-                                    tint = if (item.isRead) Color.White else textColor.copy(0.7f),
+                                    tint = when {
+                                        isVoice && item.isListened -> Color.White
+                                        item.isRead -> Color.White
+                                        else -> textColor.copy(0.7f)
+                                    },
                                     modifier = Modifier.size(14.dp)
                                 )
                             }
@@ -2396,6 +2407,7 @@ private fun VoiceMessageBubble(
     url: String,
     durationSec: Int,
     isOwn: Boolean,
+    isListened: Boolean,
     voicePlayState: VoicePlayState?,
     onPlay: () -> Unit,
     onPause: () -> Unit,
@@ -2416,26 +2428,42 @@ private fun VoiceMessageBubble(
     val displaySec = if (isThisActive) positionMs / 1000 else durationSec
     val timeStr = displaySec.toVoiceDuration()
 
+    // Dot color: shown on received unlistened messages
+    val dotColor = MaterialTheme.colorScheme.primary
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.width(220.dp)
     ) {
-        IconButton(
-            onClick = {
-                when {
-                    !isThisActive -> onPlay()
-                    isThisPlaying -> onPause()
-                    else -> onResume()
-                }
-            },
-            modifier = Modifier.size(40.dp)
-        ) {
-            Icon(
-                imageVector = if (isThisPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = if (isThisPlaying) "Пауза" else "Играть",
-                tint = if (isOwn) Color.White else MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(26.dp)
-            )
+        // Play button wrapped in Box so we can overlay the "unlistened" dot badge
+        Box(modifier = Modifier.size(40.dp)) {
+            IconButton(
+                onClick = {
+                    when {
+                        !isThisActive -> onPlay()
+                        isThisPlaying -> onPause()
+                        else -> onResume()
+                    }
+                },
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = if (isThisPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isThisPlaying) "Пауза" else "Играть",
+                    tint = if (isOwn) Color.White else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+            // Unlistened dot badge — visible only on received messages that haven't been played yet
+            if (!isOwn && !isListened) {
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(dotColor)
+                        .align(Alignment.TopEnd)
+                )
+            }
         }
         Column(modifier = Modifier.weight(1f)) {
             Slider(
