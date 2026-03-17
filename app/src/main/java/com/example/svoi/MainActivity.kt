@@ -19,6 +19,8 @@ import androidx.navigation.compose.rememberNavController
 import com.example.svoi.navigation.NavGraph
 import com.example.svoi.navigation.Routes
 import com.example.svoi.ui.theme.SvoiTheme
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 
@@ -102,10 +104,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Always start the heartbeat loop — the loop itself checks isLoggedIn() before each tick.
-        // This covers the case where the user logs in during the current Activity session
-        // (after which onResume is not called again).
         app.startPresenceHeartbeat()
+        // If the SDK session was lost at startup (blocked internet on import timeout),
+        // silently retry now that connectivity may have restored.
+        if (!app.authRepository.isLoggedIn() && app.prefs.hasSession()) {
+            lifecycleScope.launch {
+                if (app.authRepository.tryRestoreSessionSilently()) {
+                    app.startPresenceHeartbeat()
+                }
+            }
+        }
     }
 
     override fun onPause() {

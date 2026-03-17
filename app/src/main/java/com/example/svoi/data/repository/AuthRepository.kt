@@ -29,14 +29,6 @@ class AuthRepository(
         }
         Log.d("Auth", "restoreSession: status=${status?.let { it::class.simpleName } ?: "timeout(offline?)"}")
 
-        // RefreshFailure = SDK loaded session from storage but couldn't refresh token (offline)
-        // Trust the in-memory session — it's still valid for reading cached data
-        if (status is SessionStatus.RefreshFailure) {
-            val hasSession = supabase.auth.currentSessionOrNull() != null
-            Log.w("Auth", "restoreSession: RefreshFailure (offline?), hasSession=$hasSession")
-            return hasSession
-        }
-
         if (status is SessionStatus.Authenticated) {
             if (supabase.auth.currentUserOrNull() == null) {
                 Log.w("Auth", "restoreSession: session loaded but user is null, fetching...")
@@ -44,24 +36,33 @@ class AuthRepository(
                     supabase.auth.retrieveUserForCurrentSession(updateSession = true)
                 } catch (e: Exception) {
                     Log.w("Auth", "restoreSession: couldn't fetch user (offline?) — ${e.message}")
-                    // Session exists but server unreachable — trust it for offline mode
-                    return supabase.auth.currentSessionOrNull() != null
+                    return supabase.auth.currentSessionOrNull() != null || prefs.hasSession()
                 }
             }
             Log.d("Auth", "restoreSession: SDK authenticated, userId=${supabase.auth.currentUserOrNull()?.id}")
             return supabase.auth.currentUserOrNull() != null
         }
 
-        // SDK timed out (offline + expired token) or returned not-authenticated.
-        // Fall back to EncryptedPrefsManager.
+        // RefreshFailure = SDK had a session but couldn't refresh (offline/blocked).
+        // Trust in-memory session if present; otherwise fall through to prefs.
+        if (status is SessionStatus.RefreshFailure) {
+            val hasSession = supabase.auth.currentSessionOrNull() != null
+            Log.w("Auth", "restoreSession: RefreshFailure, hasSession=$hasSession")
+            if (hasSession) return true
+            // In-memory session was cleared by SDK — fall through to prefs fallback below
+        }
+
+        // Timeout, NotAuthenticated, or RefreshFailure with no in-memory session.
+        // Fall back to locally-saved tokens.
         val accessToken = prefs.getAccessToken() ?: run {
-            Log.w("Auth", "restoreSession: no saved tokens")
+            Log.w("Auth", "restoreSession: no saved tokens → truly logged out")
             return false
         }
         val refreshToken = prefs.getRefreshToken() ?: return false
 
+        // Try to load the session into the SDK. If the network is blocked this will time out —
+        // that does NOT mean the tokens are invalid. Never clear tokens here.
         return try {
-            // Import with timeout — importSession also tries to refresh and can hang offline
             withTimeoutOrNull(3_000L) {
                 supabase.auth.importSession(
                     UserSession(
@@ -73,14 +74,47 @@ class AuthRepository(
                     )
                 )
             }
-            // After import (or timeout), check if session was set in memory
-            val success = supabase.auth.currentSessionOrNull() != null
-            Log.d("Auth", "restoreSession: importSession hasSession=$success, userId=${supabase.auth.currentUserOrNull()?.id}")
-            if (!success) prefs.clearSession()
-            success
+            val sessionLoaded = supabase.auth.currentSessionOrNull() != null
+            Log.d("Auth", "restoreSession: importSession sessionLoaded=$sessionLoaded")
+            if (!sessionLoaded) {
+                // importSession timed out — network is blocked.
+                // Tokens are still valid; we'll retry silently when internet restores.
+                Log.w("Auth", "restoreSession: import timed out — keeping tokens, proceeding to app")
+            }
+            true  // we have saved tokens → stay in the app, not on login screen
         } catch (e: Exception) {
-            Log.e("Auth", "restoreSession: FAILED — ${e.message}", e)
-            prefs.clearSession()
+            // Network or unknown error — do NOT clear tokens, do NOT log out.
+            // Tokens are considered valid until the server explicitly rejects them.
+            Log.w("Auth", "restoreSession: import threw (network?) — ${e.message}, keeping tokens")
+            true
+        }
+    }
+
+    /**
+     * Silently re-imports the session from prefs into the SDK.
+     * Call after connectivity is restored (e.g. from onResume) when the SDK
+     * has no active session but we have saved tokens.
+     */
+    suspend fun tryRestoreSessionSilently(): Boolean {
+        if (supabase.auth.currentUserOrNull() != null) return true  // already live
+        if (!prefs.hasSession()) return false
+        return try {
+            withTimeoutOrNull(5_000L) {
+                supabase.auth.importSession(
+                    UserSession(
+                        accessToken = prefs.getAccessToken()!!,
+                        tokenType = "bearer",
+                        expiresIn = 3600,
+                        expiresAt = Instant.fromEpochSeconds(prefs.getExpiresAt()),
+                        refreshToken = prefs.getRefreshToken()!!
+                    )
+                )
+            }
+            val ok = supabase.auth.currentUserOrNull() != null
+            Log.d("Auth", "tryRestoreSessionSilently: ok=$ok")
+            ok
+        } catch (e: Exception) {
+            Log.w("Auth", "tryRestoreSessionSilently: ${e.message}")
             false
         }
     }
