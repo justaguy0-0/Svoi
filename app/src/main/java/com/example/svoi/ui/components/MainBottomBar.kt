@@ -18,6 +18,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,6 +38,8 @@ fun MainBottomBar(
 ) {
     val app = LocalContext.current.applicationContext as SvoiApp
     val voiceState by app.globalVoicePlayer.state.collectAsState()
+    var lastVoiceState by remember { mutableStateOf(voiceState) }
+    if (voiceState != null) lastVoiceState = voiceState
 
     Column {
         // Mini-player sits above the tab bar when voice is playing outside a chat
@@ -43,7 +48,7 @@ fun MainBottomBar(
             enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
             exit  = slideOutVertically(tween(200)) { it } + fadeOut(tween(200))
         ) {
-            voiceState?.let { vs ->
+            lastVoiceState?.let { vs ->
                 GlobalVoiceMiniPlayer(
                     state = vs,
                     onPlayPause = {

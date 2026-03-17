@@ -687,6 +687,26 @@ fun ChatScreen(
                 )
             }
 
+            // Global voice mini-player: under top bar, visible when audio is playing
+            var lastVoiceState by remember { mutableStateOf(globalVoiceState) }
+            if (globalVoiceState != null) lastVoiceState = globalVoiceState
+            AnimatedVisibility(
+                visible = globalVoiceState != null,
+                enter = slideInVertically(tween(220)) { -it } + fadeIn(tween(220)),
+                exit  = slideOutVertically(tween(200)) { -it } + fadeOut(tween(200))
+            ) {
+                lastVoiceState?.let { vs ->
+                    GlobalVoiceMiniPlayer(
+                        state = vs,
+                        onPlayPause = {
+                            if (vs.isPlaying) app.globalVoicePlayer.pause()
+                            else app.globalVoicePlayer.resume()
+                        },
+                        onClose = { app.globalVoicePlayer.stop() }
+                    )
+                }
+            }
+
             // Messages
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (isLoading) {
@@ -834,24 +854,6 @@ fun ChatScreen(
                             }
                         }
                     }
-                }
-            }
-
-            // Global voice mini-player: visible when audio from another chat is playing
-            AnimatedVisibility(
-                visible = globalVoiceState != null,
-                enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
-                exit  = slideOutVertically(tween(200)) { it } + fadeOut(tween(200))
-            ) {
-                globalVoiceState?.let { vs ->
-                    GlobalVoiceMiniPlayer(
-                        state = vs,
-                        onPlayPause = {
-                            if (vs.isPlaying) app.globalVoicePlayer.pause()
-                            else app.globalVoicePlayer.resume()
-                        },
-                        onClose = { app.globalVoicePlayer.stop() }
-                    )
                 }
             }
 
