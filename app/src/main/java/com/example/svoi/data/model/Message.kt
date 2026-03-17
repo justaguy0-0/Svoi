@@ -40,6 +40,22 @@ data class VoiceListen(
 )
 
 @Serializable
+data class MessageReaction(
+    val id: String = "",
+    @SerialName("message_id") val messageId: String = "",
+    @SerialName("user_id") val userId: String = "",
+    val emoji: String = ""
+)
+
+/** Aggregated reaction for display: emoji + count + whether current user reacted */
+@Immutable
+data class ReactionGroup(
+    val emoji: String,
+    val count: Int,
+    val hasMyReaction: Boolean
+)
+
+@Serializable
 data class PinnedMessage(
     @SerialName("chat_id") val chatId: String = "",
     @SerialName("message_id") val messageId: String = "",
@@ -72,5 +88,7 @@ data class MessageUiItem(
     /** True while images are still uploading (local-only placeholder) */
     val isPending: Boolean = false,
     /** Content-URI strings of locally-staged images (used while isPending=true) */
-    val pendingLocalUris: List<String> = emptyList()
+    val pendingLocalUris: List<String> = emptyList(),
+    /** Aggregated emoji reactions on this message */
+    val reactions: List<ReactionGroup> = emptyList()
 )

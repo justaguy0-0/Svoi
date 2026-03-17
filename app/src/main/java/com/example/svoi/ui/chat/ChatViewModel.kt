@@ -14,6 +14,7 @@ import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
 import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
+import com.example.svoi.data.model.ReactionGroup
 import com.example.svoi.data.model.UserPresence
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -288,6 +289,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             observeUpdatedMessages()
             observeReadReceipts()
             observeVoiceListens()
+            observeReactions()
             startTypingPolling()
             startChatDeletionWatch()
         }
@@ -477,6 +479,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             otherListenedVoiceIds = emptySet()
         }
 
+        // Reactions
+        val allMsgIds = raw.map { it.id }
+        val allReactions = messageRepo.getReactions(allMsgIds)
+        val reactionsByMsg = allReactions.groupBy { it.messageId }
+
         val messageMap = raw.associateBy { it.id }
         return raw.map { msg ->
             val replyMsg = msg.replyToId?.let { messageMap[it] ?: messageRepo.getMessage(it) }
@@ -486,6 +493,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 msg.id in myListenedVoiceIds
             }
+            val msgReactions = reactionsByMsg[msg.id] ?: emptyList()
+            val groups = msgReactions.groupBy { it.emoji }.map { (emoji, list) ->
+                ReactionGroup(emoji, list.size, list.any { it.userId == myId })
+            }.sortedByDescending { it.count }
             MessageUiItem(
                 message = msg,
                 senderProfile = msg.senderId?.let { profileCache[it] },
@@ -494,7 +505,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 isListened = isListened,
                 replyToMessage = replyMsg,
                 replyToSenderProfile = replyMsg?.senderId?.let { profileCache[it] },
-                forwardedFromProfile = msg.forwardedFromUserId?.let { profileCache[it] }
+                forwardedFromProfile = msg.forwardedFromUserId?.let { profileCache[it] },
+                reactions = groups
             )
         }
     }
@@ -646,6 +658,82 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+        }
+    }
+
+    // ── Reactions ──────────────────────────────────────────────────────────────
+
+    fun toggleReaction(messageId: String, emoji: String) {
+        // Optimistic update
+        val myId = currentUserId
+        _messages.value = _messages.value.map { item ->
+            if (item.message.id != messageId) return@map item
+            val existing = item.reactions.toMutableList()
+            val group = existing.find { it.emoji == emoji }
+            val updated = if (group != null && group.hasMyReaction) {
+                if (group.count == 1) existing.filter { it.emoji != emoji }
+                else existing.map { if (it.emoji == emoji) it.copy(count = it.count - 1, hasMyReaction = false) else it }
+            } else if (group != null) {
+                existing.map { if (it.emoji == emoji) it.copy(count = it.count + 1, hasMyReaction = true) else it }
+            } else {
+                existing + ReactionGroup(emoji, 1, true)
+            }
+            item.copy(reactions = updated.sortedByDescending { it.count })
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            messageRepo.toggleReaction(messageId, emoji)
+        }
+    }
+
+    private fun refreshReactionsForMessage(messageId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val reactions = messageRepo.getReactions(listOf(messageId))
+            val myId = currentUserId
+            val groups = reactions.groupBy { it.emoji }.map { (emoji, list) ->
+                ReactionGroup(emoji, list.size, list.any { it.userId == myId })
+            }.sortedByDescending { it.count }
+            withContext(Dispatchers.Main) {
+                _messages.value = _messages.value.map { item ->
+                    if (item.message.id == messageId) item.copy(reactions = groups) else item
+                }
+            }
+        }
+    }
+
+    private fun observeReactions() {
+        // React to inserts
+        viewModelScope.launch {
+            try {
+                messageRepo.reactionInsertFlow().collect { reaction ->
+                    if (reaction.userId != currentUserId) {
+                        refreshReactionsForMessage(reaction.messageId)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        // React to deletes — we don't get the old record, so refresh all visible messages
+        viewModelScope.launch {
+            try {
+                messageRepo.reactionDeleteFlow().collect {
+                    // Refresh reactions for all currently visible messages that have reactions
+                    val msgIds = _messages.value.filter { it.reactions.isNotEmpty() }.map { it.message.id }
+                    if (msgIds.isNotEmpty()) {
+                        val reactions = messageRepo.getReactions(msgIds)
+                        val myId = currentUserId
+                        val reactionsByMsg = reactions.groupBy { it.messageId }
+                        withContext(Dispatchers.Main) {
+                            _messages.value = _messages.value.map { item ->
+                                if (item.reactions.isEmpty() && item.message.id !in reactionsByMsg) return@map item
+                                val groups = (reactionsByMsg[item.message.id] ?: emptyList())
+                                    .groupBy { it.emoji }
+                                    .map { (emoji, list) -> ReactionGroup(emoji, list.size, list.any { it.userId == myId }) }
+                                    .sortedByDescending { it.count }
+                                item.copy(reactions = groups)
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
         }
     }
 

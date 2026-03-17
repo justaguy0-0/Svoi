@@ -180,6 +180,7 @@ import coil.compose.SubcomposeAsyncImageContent
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
+import com.example.svoi.data.model.ReactionGroup
 import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.theme.BubbleOther
@@ -817,7 +818,8 @@ fun ChatScreen(
                                                     onVoicePlay = { msgId, url, dur -> viewModel.playVoice(msgId, url, dur) },
                                                     onVoicePause = { viewModel.pauseVoice() },
                                                     onVoiceResume = { viewModel.resumeVoice() },
-                                                    onVoiceSeek = { viewModel.seekVoice(it) }
+                                                    onVoiceSeek = { viewModel.seekVoice(it) },
+                                                    onReactionToggle = { msgId, emoji -> viewModel.toggleReaction(msgId, emoji) }
                                                 )
                                             }
                                         }
@@ -1281,6 +1283,39 @@ fun ChatScreen(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                // Quick reactions row
+                val quickEmojis = listOf("👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👎")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    val myReactions = selected.reactions
+                        .filter { it.hasMyReaction }
+                        .map { it.emoji }
+                        .toSet()
+                    quickEmojis.forEach { emoji ->
+                        val isActive = emoji in myReactions
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                    else Color.Transparent
+                                )
+                                .clickable {
+                                    viewModel.toggleReaction(selected.message.id, emoji)
+                                    selectedMessage = null
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(emoji, fontSize = 22.sp)
+                        }
+                    }
+                }
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
@@ -1980,7 +2015,8 @@ private fun MessageItem(
     onVoicePlay: (msgId: String, url: String, durationSec: Int) -> Unit = { _, _, _ -> },
     onVoicePause: () -> Unit = {},
     onVoiceResume: () -> Unit = {},
-    onVoiceSeek: (Int) -> Unit = {}
+    onVoiceSeek: (Int) -> Unit = {},
+    onReactionToggle: (messageId: String, emoji: String) -> Unit = { _, _ -> }
 ) {
     val msg = item.message
     if (msg.deletedForAll) {
@@ -2106,6 +2142,9 @@ private fun MessageItem(
                     } ?: Spacer(Modifier.width(32.dp))
                 }
 
+                Column(
+                    horizontalAlignment = if (item.isOwn) Alignment.End else Alignment.Start
+                ) {
                 Surface(
                     shape = bubbleShape,
                     color = bubbleColor,
@@ -2417,6 +2456,15 @@ private fun MessageItem(
                         }
                     }
                 }
+                // Reactions row — below the bubble, inside the Column wrapper
+                if (item.reactions.isNotEmpty()) {
+                    ReactionsRow(
+                        reactions = item.reactions,
+                        isOwn = item.isOwn,
+                        onReactionClick = { emoji -> onReactionToggle(item.message.id, emoji) }
+                    )
+                }
+                } // close Column wrapper
             }
         }
     }
@@ -2516,6 +2564,52 @@ private fun VoiceMessageBubble(
                 color = if (isOwn) Color.White.copy(0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp).offset(y = (-6).dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun ReactionsRow(
+    reactions: List<ReactionGroup>,
+    isOwn: Boolean,
+    onReactionClick: (emoji: String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .padding(top = 4.dp)
+            .padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        reactions.forEach { group ->
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (group.hasMyReaction)
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                else
+                    MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier
+                    .height(28.dp)
+                    .clickable { onReactionClick(group.emoji) }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(group.emoji, fontSize = 14.sp)
+                    if (group.count > 1) {
+                        Text(
+                            "${group.count}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (group.hasMyReaction)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     }
 }

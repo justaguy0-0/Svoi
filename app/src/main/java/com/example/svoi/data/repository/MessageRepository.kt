@@ -6,6 +6,7 @@ import com.example.svoi.data.model.MessageRead
 import com.example.svoi.data.model.MessageUiItem
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.TypingStatus
+import com.example.svoi.data.model.MessageReaction
 import com.example.svoi.data.model.VoiceListen
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
@@ -295,6 +296,81 @@ class MessageRepository(private val supabase: SupabaseClient) {
         channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
             table = "voice_listens"
         }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
+        channel.subscribe()
+        awaitClose {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { channel.unsubscribe() }
+                runCatching { supabase.realtime.removeChannel(channel) }
+            }
+        }
+    }
+
+    // ── Reactions ──────────────────────────────────────────────────────────────
+
+    @Serializable
+    private data class ReactionInsert(
+        @SerialName("message_id") val messageId: String,
+        @SerialName("user_id") val userId: String,
+        val emoji: String
+    )
+
+    /** Toggle a reaction: if the user already reacted with this emoji — remove it, otherwise — add. */
+    suspend fun toggleReaction(messageId: String, emoji: String): Boolean {
+        val userId = currentUserId()
+        return try {
+            val existing = supabase.from("message_reactions")
+                .select { filter { eq("message_id", messageId); eq("user_id", userId); eq("emoji", emoji) } }
+                .decodeList<MessageReaction>()
+            if (existing.isNotEmpty()) {
+                supabase.from("message_reactions").delete {
+                    filter { eq("message_id", messageId); eq("user_id", userId); eq("emoji", emoji) }
+                }
+            } else {
+                supabase.from("message_reactions").insert(
+                    ReactionInsert(messageId = messageId, userId = userId, emoji = emoji)
+                )
+            }
+            true
+        } catch (e: Exception) {
+            Log.e("Reactions", "toggleReaction failed: ${e.message}")
+            false
+        }
+    }
+
+    /** Get all reactions for a list of messages. */
+    suspend fun getReactions(messageIds: List<String>): List<MessageReaction> {
+        if (messageIds.isEmpty()) return emptyList()
+        return try {
+            supabase.from("message_reactions")
+                .select { filter { isIn("message_id", messageIds) } }
+                .decodeList<MessageReaction>()
+        } catch (e: Exception) {
+            Log.e("Reactions", "getReactions failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /** Realtime flow for reaction inserts in this chat's messages. */
+    fun reactionInsertFlow(): Flow<MessageReaction> = channelFlow {
+        val channel = supabase.channel("reactions-insert-${java.util.UUID.randomUUID()}")
+        channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+            table = "message_reactions"
+        }.onEach { trySend(it.decodeRecord()) }.launchIn(this)
+        channel.subscribe()
+        awaitClose {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { channel.unsubscribe() }
+                runCatching { supabase.realtime.removeChannel(channel) }
+            }
+        }
+    }
+
+    /** Realtime flow for reaction deletes. */
+    fun reactionDeleteFlow(): Flow<Unit> = channelFlow {
+        val channel = supabase.channel("reactions-delete-${java.util.UUID.randomUUID()}")
+        channel.postgresChangeFlow<PostgresAction.Delete>(schema = "public") {
+            table = "message_reactions"
+        }.onEach { trySend(Unit) }.launchIn(this)
         channel.subscribe()
         awaitClose {
             CoroutineScope(Dispatchers.IO).launch {
