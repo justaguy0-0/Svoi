@@ -2428,8 +2428,8 @@ private fun VoiceMessageBubble(
     val displaySec = if (isThisActive) positionMs / 1000 else durationSec
     val timeStr = displaySec.toVoiceDuration()
 
-    // Dot color: shown on received unlistened messages
-    val dotColor = MaterialTheme.colorScheme.primary
+    // Dot color: white on own (blue) bubble
+    val dotColor = Color.White
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -2454,14 +2454,14 @@ private fun VoiceMessageBubble(
                     modifier = Modifier.size(26.dp)
                 )
             }
-            // Unlistened dot badge — visible only on received messages that haven't been played yet
-            if (!isOwn && !isListened) {
+            // Unlistened dot badge — visible on own messages until the recipient listens
+            if (isOwn && !isListened) {
                 Box(
                     modifier = Modifier
                         .size(9.dp)
                         .clip(CircleShape)
                         .background(dotColor)
-                        .align(Alignment.TopEnd)
+                        .align(Alignment.BottomEnd)
                 )
             }
         }
