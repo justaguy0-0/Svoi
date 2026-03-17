@@ -401,10 +401,9 @@ fun ChatScreen(
             .distinctUntilChanged()
             .filter { it }
             .collect {
-                if (initialScrollDone) {
-                    val last = currentDisplayEntries.size - 1
-                    if (last >= 0) listState.animateScrollToItem(last)
-                }
+                delay(200)
+                val last = currentDisplayEntries.size - 1
+                if (last >= 0) listState.animateScrollToItem(last)
             }
     }
 
