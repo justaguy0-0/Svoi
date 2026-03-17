@@ -197,6 +197,7 @@ import com.example.svoi.util.toReadableSize
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberUpdatedState
@@ -388,6 +389,15 @@ fun ChatScreen(
     }
     LaunchedEffect(shouldMarkRead, messages.size) {
         if (shouldMarkRead) viewModel.markAsRead()
+    }
+
+    // When keyboard opens (field focused) — scroll to bottom so latest messages are visible
+    LaunchedEffect(isTextFieldFocused) {
+        if (isTextFieldFocused && initialScrollDone) {
+            delay(300) // wait for keyboard animation to complete
+            val last = currentDisplayEntries.size - 1
+            if (last >= 0) listState.animateScrollToItem(last)
+        }
     }
 
     // Auto-play: when scroll stops, find the bottommost 50%-visible video and play it
@@ -1051,7 +1061,7 @@ fun ChatScreen(
                                 // Normal inputs: [ 📎 ] [ 😀 TextField ] right→ mic/send
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.Bottom
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // Attach button
                                     IconButton(
