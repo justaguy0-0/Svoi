@@ -53,8 +53,7 @@ class GlobalVoicePlayer {
                     player.start()
                     startProgressUpdates()
                     player.setOnCompletionListener {
-                        _state.value = _state.value?.copy(isPlaying = false, positionMs = 0)
-                        progressJob?.cancel()
+                        stopInternal()
                     }
                 }
             } catch (e: Exception) {
