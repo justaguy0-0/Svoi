@@ -174,8 +174,14 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
@@ -1024,59 +1030,6 @@ fun ChatScreen(
                     val density = LocalDensity.current
                     var showSendMenu by remember { mutableStateOf(false) }
 
-                    // "Send without sound" inline strip — no Popup, no focus/keyboard issues
-                    AnimatedVisibility(
-                        visible = showSendMenu,
-                        enter = slideInVertically { it } + fadeIn(tween(120)),
-                        exit = slideOutVertically { it } + fadeOut(tween(120))
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable {
-                                    showSendMenu = false
-                                    if (isLocked) {
-                                        viewModel.sendVoiceRecording(context, silent = true)
-                                    } else {
-                                        val text = inputValue.text
-                                        val media = stagedMedia
-                                        inputValue = TextFieldValue("")
-                                        viewModel.onInputTextChanged("")
-                                        if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context, silent = true)
-                                        else viewModel.sendText(text, silent = true)
-                                    }
-                                }
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.NotificationsOff,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                "Отправить без звука",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Закрыть",
-                                modifier = Modifier
-                                    .size(18.dp)
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null
-                                    ) { showSendMenu = false },
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1281,9 +1234,8 @@ fun ChatScreen(
                                 }
                             }
                         }
-                        // Gesture overlay — sits on top of AnimatedContent, outside it.
-                        // detectTapGestures works here (problem only existed INSIDE AnimatedContent).
-                        // rememberUpdatedState keeps lambdas fresh even with pointerInput(Unit).
+                        // Gesture overlay — outside AnimatedContent so detectTapGestures works.
+                        // Popup(focusable=false) → keyboard never hides on long press.
                         if (showSend) {
                             val onTapSend by rememberUpdatedState<() -> Unit> {
                                 if (isLocked) {
@@ -1310,7 +1262,73 @@ fun ChatScreen(
                                             }
                                         )
                                     }
-                            )
+                            ) {
+                                if (showSendMenu) {
+                                    val popupPositionProvider = remember {
+                                        object : PopupPositionProvider {
+                                            override fun calculatePosition(
+                                                anchorBounds: IntRect,
+                                                windowSize: IntSize,
+                                                layoutDirection: LayoutDirection,
+                                                popupContentSize: IntSize
+                                            ): IntOffset {
+                                                val gap = with(density) { 8.dp.roundToPx() }
+                                                return IntOffset(
+                                                    x = (anchorBounds.right - popupContentSize.width)
+                                                        .coerceAtLeast(with(density) { 8.dp.roundToPx() }),
+                                                    y = anchorBounds.top - popupContentSize.height - gap
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Popup(
+                                        popupPositionProvider = popupPositionProvider,
+                                        onDismissRequest = { showSendMenu = false },
+                                        properties = PopupProperties(
+                                            focusable = false,
+                                            dismissOnClickOutside = true
+                                        )
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            shadowElevation = 8.dp,
+                                            tonalElevation = 2.dp,
+                                            color = MaterialTheme.colorScheme.surface
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .clickable {
+                                                        showSendMenu = false
+                                                        if (isLocked) {
+                                                            viewModel.sendVoiceRecording(context, silent = true)
+                                                        } else {
+                                                            val text = inputValue.text
+                                                            val media = stagedMedia
+                                                            inputValue = TextFieldValue("")
+                                                            viewModel.onInputTextChanged("")
+                                                            if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context, silent = true)
+                                                            else viewModel.sendText(text, silent = true)
+                                                        }
+                                                    }
+                                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.NotificationsOff,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(20.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Spacer(Modifier.width(12.dp))
+                                                Text(
+                                                    "Отправить без звука",
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                         } // close outer Box
                     }
