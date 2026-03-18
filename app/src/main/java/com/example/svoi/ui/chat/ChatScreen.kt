@@ -145,14 +145,20 @@ import com.example.svoi.ui.voice.GlobalVoiceState
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import com.example.svoi.ui.components.EmojiPicker
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -2377,10 +2383,12 @@ private fun MessageItem(
                                     // Caption text (if present)
                                     if (!msg.content.isNullOrBlank()) {
                                         Spacer(Modifier.height(4.dp))
-                                        Text(
+                                        LinkText(
                                             text = msg.content,
                                             color = textColor,
-                                            style = MaterialTheme.typography.bodyMedium
+                                            isOwn = item.isOwn,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            onOtherTap = onTap
                                         )
                                     }
                                 } else {
@@ -2404,10 +2412,12 @@ private fun MessageItem(
                                 }
                                 if (!msg.content.isNullOrBlank()) {
                                     Spacer(Modifier.height(4.dp))
-                                    Text(
+                                    LinkText(
                                         text = msg.content,
                                         color = textColor,
-                                        style = MaterialTheme.typography.bodyMedium
+                                        isOwn = item.isOwn,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        onOtherTap = onTap
                                     )
                                 }
                             }
@@ -2505,10 +2515,12 @@ private fun MessageItem(
                                 }
                             }
                             else -> {
-                                Text(
+                                LinkText(
                                     text = msg.content ?: "",
                                     color = textColor,
-                                    style = MaterialTheme.typography.bodyMedium
+                                    isOwn = item.isOwn,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    onOtherTap = onTap
                                 )
                             }
                         }
@@ -2582,6 +2594,67 @@ private fun memberCountText(count: Int) = when {
     count % 10 == 1 -> "$count участник"
     count % 10 in 2..4 -> "$count участника"
     else -> "$count участников"
+}
+
+// ── Кликабельные ссылки в тексте ────────────────────────────────────────────
+
+private val URL_REGEX = Regex(
+    "(https?://[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+|www\\.[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+)"
+)
+
+@Composable
+private fun LinkText(
+    text: String,
+    color: Color,
+    isOwn: Boolean,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    onOtherTap: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    val primary = MaterialTheme.colorScheme.primary
+    val linkColor = if (isOwn) Color.White else primary
+
+    val matches = remember(text) { URL_REGEX.findAll(text).toList() }
+
+    if (matches.isEmpty()) {
+        Text(text = text, color = color, style = style, modifier = modifier)
+        return
+    }
+
+    val annotated = remember(text, linkColor) {
+        buildAnnotatedString {
+            var cursor = 0
+            matches.forEach { match ->
+                if (match.range.first > cursor) append(text.substring(cursor, match.range.first))
+                pushStringAnnotation("URL", match.value)
+                withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
+                    append(match.value)
+                }
+                pop()
+                cursor = match.range.last + 1
+            }
+            if (cursor < text.length) append(text.substring(cursor))
+        }
+    }
+
+    ClickableText(
+        text = annotated,
+        style = style.copy(color = color),
+        modifier = modifier,
+        onClick = { offset ->
+            val urlAnnotation = annotated
+                .getStringAnnotations("URL", offset, offset)
+                .firstOrNull()
+            if (urlAnnotation != null) {
+                val raw = urlAnnotation.item
+                val uri = if (raw.startsWith("www.")) Uri.parse("https://$raw") else Uri.parse(raw)
+                try { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (_: Exception) {}
+            } else {
+                onOtherTap()
+            }
+        }
+    )
 }
 
 private fun Int.toVoiceDuration(): String {
