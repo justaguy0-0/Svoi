@@ -15,40 +15,40 @@ data class AccentPalette(
 
 val AccentPalettes: Map<SvoiAccent, AccentPalette> = mapOf(
     SvoiAccent.BLUE to AccentPalette(
-        primary       = Color(0xFF1E88E5),
-        primaryDark   = Color(0xFF64B5F6),
+        primary       = Color(0xFF1565C0),   // Material Blue 800 — тёмно-синий
+        primaryDark   = Color(0xFF5C9CE5),
         container     = Color(0xFFBBDEFB),
         onContainer   = Color(0xFF0D47A1)
     ),
     SvoiAccent.ORANGE to AccentPalette(
-        primary       = Color(0xFFE07C42),
-        primaryDark   = Color(0xFFFFAB76),
+        primary       = Color(0xFFBF5517),   // тёмный жжёный оранжевый
+        primaryDark   = Color(0xFFFF9A5C),
         container     = Color(0xFFFFE0CC),
-        onContainer   = Color(0xFF8B3800)
+        onContainer   = Color(0xFF7A2E00)
     ),
     SvoiAccent.RED to AccentPalette(
-        primary       = Color(0xFFC44040),
-        primaryDark   = Color(0xFFEF9A9A),
+        primary       = Color(0xFFA52828),   // тёмный кирпичный красный
+        primaryDark   = Color(0xFFE57373),
         container     = Color(0xFFFFCDD2),
-        onContainer   = Color(0xFF7A1515)
+        onContainer   = Color(0xFF6A0F0F)
     ),
     SvoiAccent.GREEN to AccentPalette(
-        primary       = Color(0xFF3D9159),
-        primaryDark   = Color(0xFF80C99A),
+        primary       = Color(0xFF276B3A),   // тёмный лесной зелёный
+        primaryDark   = Color(0xFF66BB6A),
         container     = Color(0xFFC8E6C9),
-        onContainer   = Color(0xFF1B4D2B)
+        onContainer   = Color(0xFF14381D)
     ),
     SvoiAccent.PINK to AccentPalette(
-        primary       = Color(0xFFC4577A),
-        primaryDark   = Color(0xFFF48FB1),
+        primary       = Color(0xFF9C3060),   // тёмный малиново-розовый
+        primaryDark   = Color(0xFFE879A0),
         container     = Color(0xFFFCE4EC),
-        onContainer   = Color(0xFF7A1540)
+        onContainer   = Color(0xFF65103C)
     ),
     SvoiAccent.PURPLE to AccentPalette(
-        primary       = Color(0xFF7B5FC4),
-        primaryDark   = Color(0xFFB39DDB),
+        primary       = Color(0xFF5E35B1),   // Material Deep Purple 600
+        primaryDark   = Color(0xFF9B7FD4),
         container     = Color(0xFFEDE7F6),
-        onContainer   = Color(0xFF3A1E8A)
+        onContainer   = Color(0xFF311B92)
     )
 )
 
