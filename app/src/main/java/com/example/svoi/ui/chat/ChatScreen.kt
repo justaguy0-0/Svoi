@@ -1159,30 +1159,49 @@ fun ChatScreen(
                         ) { isSend ->
                             if (isSend) {
                                 var showSendMenu by remember { mutableStateOf(false) }
-                                Box {
+
+                                // Send action (normal)
+                                val doSend: () -> Unit = {
+                                    if (isLocked) {
+                                        viewModel.sendVoiceRecording(context)
+                                    } else {
+                                        val text = inputValue.text
+                                        val media = stagedMedia
+                                        inputValue = TextFieldValue("")
+                                        viewModel.onInputTextChanged("")
+                                        if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
+                                        else viewModel.sendText(text)
+                                    }
+                                }
+
+                                // Send action (silent)
+                                val doSendSilent: () -> Unit = {
+                                    showSendMenu = false
+                                    if (isLocked) {
+                                        viewModel.sendVoiceRecording(context, silent = true)
+                                    } else {
+                                        val text = inputValue.text
+                                        val media = stagedMedia
+                                        inputValue = TextFieldValue("")
+                                        viewModel.onInputTextChanged("")
+                                        if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context, silent = true)
+                                        else viewModel.sendText(text, silent = true)
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(onLongPress = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                showSendMenu = true
+                                            })
+                                        }
+                                ) {
                                     Box(
                                         modifier = Modifier.size(48.dp).clip(CircleShape)
                                             .background(MaterialTheme.colorScheme.primary)
-                                            .pointerInput(Unit) {
-                                                detectTapGestures(
-                                                    onTap = {
-                                                        if (isLocked) {
-                                                            viewModel.sendVoiceRecording(context)
-                                                        } else {
-                                                            val text = inputValue.text
-                                                            val media = stagedMedia
-                                                            inputValue = TextFieldValue("")
-                                                            viewModel.onInputTextChanged("")
-                                                            if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
-                                                            else viewModel.sendText(text)
-                                                        }
-                                                    },
-                                                    onLongPress = {
-                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                        showSendMenu = true
-                                                    }
-                                                )
-                                            },
+                                            .clickable { doSend() },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(Icons.Default.Send, contentDescription = "Отправить",
@@ -1194,19 +1213,7 @@ fun ChatScreen(
                                     ) {
                                         DropdownMenuItem(
                                             text = { Text("Отправить без звука") },
-                                            onClick = {
-                                                showSendMenu = false
-                                                if (isLocked) {
-                                                    viewModel.sendVoiceRecording(context, silent = true)
-                                                } else {
-                                                    val text = inputValue.text
-                                                    val media = stagedMedia
-                                                    inputValue = TextFieldValue("")
-                                                    viewModel.onInputTextChanged("")
-                                                    if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context, silent = true)
-                                                    else viewModel.sendText(text, silent = true)
-                                                }
-                                            },
+                                            onClick = doSendSilent,
                                             leadingIcon = {
                                                 Icon(Icons.Default.NotificationsOff, contentDescription = null,
                                                     modifier = Modifier.size(20.dp))
