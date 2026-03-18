@@ -132,6 +132,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -1157,25 +1158,61 @@ fun ChatScreen(
                             label = "micSendToggle"
                         ) { isSend ->
                             if (isSend) {
-                                Box(
-                                    modifier = Modifier.size(48.dp).clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary)
-                                        .clickable {
-                                            if (isLocked) {
-                                                viewModel.sendVoiceRecording(context)
-                                            } else {
-                                                val text = inputValue.text
-                                                val media = stagedMedia
-                                                inputValue = TextFieldValue("")
-                                                viewModel.onInputTextChanged("")
-                                                if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
-                                                else viewModel.sendText(text)
+                                var showSendMenu by remember { mutableStateOf(false) }
+                                Box {
+                                    Box(
+                                        modifier = Modifier.size(48.dp).clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary)
+                                            .pointerInput(Unit) {
+                                                detectTapGestures(
+                                                    onTap = {
+                                                        if (isLocked) {
+                                                            viewModel.sendVoiceRecording(context)
+                                                        } else {
+                                                            val text = inputValue.text
+                                                            val media = stagedMedia
+                                                            inputValue = TextFieldValue("")
+                                                            viewModel.onInputTextChanged("")
+                                                            if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
+                                                            else viewModel.sendText(text)
+                                                        }
+                                                    },
+                                                    onLongPress = {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        showSendMenu = true
+                                                    }
+                                                )
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Send, contentDescription = "Отправить",
+                                            tint = Color.White, modifier = Modifier.size(20.dp))
+                                    }
+                                    DropdownMenu(
+                                        expanded = showSendMenu,
+                                        onDismissRequest = { showSendMenu = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Отправить без звука") },
+                                            onClick = {
+                                                showSendMenu = false
+                                                if (isLocked) {
+                                                    viewModel.sendVoiceRecording(context, silent = true)
+                                                } else {
+                                                    val text = inputValue.text
+                                                    val media = stagedMedia
+                                                    inputValue = TextFieldValue("")
+                                                    viewModel.onInputTextChanged("")
+                                                    if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context, silent = true)
+                                                    else viewModel.sendText(text, silent = true)
+                                                }
+                                            },
+                                            leadingIcon = {
+                                                Icon(Icons.Default.NotificationsOff, contentDescription = null,
+                                                    modifier = Modifier.size(20.dp))
                                             }
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.Send, contentDescription = "Отправить",
-                                        tint = Color.White, modifier = Modifier.size(20.dp))
+                                        )
+                                    }
                                 }
                             } else {
                                 // Mic button — stays in composition while recording (non-locked)

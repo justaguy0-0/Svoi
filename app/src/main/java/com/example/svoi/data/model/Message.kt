@@ -23,7 +23,8 @@ data class Message(
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("mime_type") val mimeType: String? = null,
-    val duration: Int? = null // voice message duration in seconds
+    val duration: Int? = null, // voice message duration in seconds
+    val silent: Boolean = false
 )
 
 @Serializable

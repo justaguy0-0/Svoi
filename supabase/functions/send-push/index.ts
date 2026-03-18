@@ -66,7 +66,8 @@ Deno.serve(async (req) => {
     const record = body.record
     if (!record) return new Response('No record', { status: 400 })
 
-    const { chat_id, sender_id, content, type } = record
+    const { chat_id, sender_id, content, type, silent } = record
+    if (silent) return new Response('Silent message — skip push', { status: 200 })
     const SUPPORTED_TYPES = ['text', 'photo', 'album', 'video', 'voice', 'file', 'system']
     if (!SUPPORTED_TYPES.includes(type)) {
       return new Response('Skip unsupported message type', { status: 200 })

@@ -48,6 +48,7 @@ private data class AlbumMessageInsert(
     @SerialName("photo_urls") val photoUrls: List<String>? = null,
     val content: String? = null,
     @SerialName("reply_to_id") val replyToId: String? = null,
+    val silent: Boolean = false,
 )
 
 @Serializable
@@ -61,6 +62,7 @@ private data class VideoMessageInsert(
     @SerialName("mime_type") val mimeType: String? = null,
     @SerialName("reply_to_id") val replyToId: String? = null,
     val content: String? = null,
+    val silent: Boolean = false,
 )
 
 @Serializable
@@ -119,7 +121,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { null }
     }
 
-    suspend fun sendTextMessage(chatId: String, content: String, replyToId: String? = null): Message? {
+    suspend fun sendTextMessage(chatId: String, content: String, replyToId: String? = null, silent: Boolean = false): Message? {
         val userId = currentUserId()
         return try {
             supabase.from("messages").insert(
@@ -129,12 +131,13 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     put("content", content)
                     put("type", "text")
                     if (replyToId != null) put("reply_to_id", replyToId)
+                    if (silent) put("silent", true)
                 }
             ).decodeSingle<Message>()
         } catch (e: Exception) { null }
     }
 
-    suspend fun sendPhotoMessage(chatId: String, fileUrl: String, replyToId: String? = null, content: String? = null): Message? {
+    suspend fun sendPhotoMessage(chatId: String, fileUrl: String, replyToId: String? = null, content: String? = null, silent: Boolean = false): Message? {
         val userId = currentUserId()
         return try {
             supabase.from("messages").insert(
@@ -145,6 +148,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     put("file_url", fileUrl)
                     if (content != null) put("content", content)
                     if (replyToId != null) put("reply_to_id", replyToId)
+                    if (silent) put("silent", true)
                 }
             ).decodeSingle<Message>()
         } catch (e: Exception) { null }
@@ -179,7 +183,8 @@ class MessageRepository(private val supabase: SupabaseClient) {
         fileSize: Long,
         mimeType: String,
         replyToId: String? = null,
-        content: String? = null
+        content: String? = null,
+        silent: Boolean = false
     ) {
         val userId = currentUserId()
         try {
@@ -187,7 +192,8 @@ class MessageRepository(private val supabase: SupabaseClient) {
                 VideoMessageInsert(
                     chatId = chatId, senderId = userId, type = "video",
                     fileUrl = fileUrl, fileName = fileName, fileSize = fileSize,
-                    mimeType = mimeType, replyToId = replyToId, content = content
+                    mimeType = mimeType, replyToId = replyToId, content = content,
+                    silent = silent
                 )
             )
         } catch (e: Exception) {
@@ -228,14 +234,16 @@ class MessageRepository(private val supabase: SupabaseClient) {
         val type: String,
         @SerialName("file_url") val fileUrl: String,
         val duration: Int,
-        @SerialName("reply_to_id") val replyToId: String? = null
+        @SerialName("reply_to_id") val replyToId: String? = null,
+        val silent: Boolean = false
     )
 
     suspend fun sendVoiceMessage(
         chatId: String,
         fileUrl: String,
         durationSec: Int,
-        replyToId: String? = null
+        replyToId: String? = null,
+        silent: Boolean = false
     ) {
         val userId = currentUserId()
         try {
@@ -246,7 +254,8 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     type = "voice",
                     fileUrl = fileUrl,
                     duration = durationSec,
-                    replyToId = replyToId
+                    replyToId = replyToId,
+                    silent = silent
                 )
             )
         } catch (e: Exception) {
@@ -690,7 +699,8 @@ class MessageRepository(private val supabase: SupabaseClient) {
         chatId: String,
         photoUrls: List<String>,
         content: String?,
-        replyToId: String? = null
+        replyToId: String? = null,
+        silent: Boolean = false
     ): Message? {
         val userId = currentUserId() ?: return null
         return try {
@@ -702,7 +712,8 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     fileUrl = if (photoUrls.size == 1) photoUrls.first() else null,
                     photoUrls = if (photoUrls.size > 1) photoUrls else null,
                     content = content,
-                    replyToId = replyToId
+                    replyToId = replyToId,
+                    silent = silent
                 )
             ).decodeSingle<Message>()
         } catch (e: Exception) { null }

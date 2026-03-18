@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 data class TypingInfo(val userId: String, val displayName: String, val status: String = "typing")
@@ -239,16 +241,69 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             cachedProfiles.forEach { profileCache[it.key] = it.value }
 
-            // Always show spinner until fully enriched messages are ready
+            // Show spinner until messages are ready (server or cache fallback)
             _isLoading.value = true
 
-            loadChatInfo()
-            loadPinnedMessage()
-            loadMessages(scrollAfter = false)
+            val revealMutex = Mutex()
+            var revealDone = false
 
-            _lastSeenMsgCount.value = if (_firstUnreadIndex.value >= 0) _firstUnreadIndex.value else _messages.value.size
-            _isLoading.value = false
-            _scrollToBottomEvent.value++
+            // Helper: reveal chat from cached messages
+            suspend fun revealFromCache() {
+                val items = buildUiItems(cachedMessages ?: emptyList())
+                _messages.value = items
+                _lastSeenMsgCount.value = items.size
+                _firstUnreadIndex.value = -1
+                _isLoading.value = false
+                _scrollToBottomEvent.value++
+                revealDone = true
+            }
+
+            val hasCache = !cachedMessages.isNullOrEmpty()
+
+            // Early exit: if definitely offline and cache available — show immediately
+            if (!isOnline.value && hasCache) {
+                revealFromCache()
+            }
+
+            // Server load (background coroutine)
+            val serverJob = launch {
+                loadChatInfo()
+                loadPinnedMessage()
+                loadMessages(scrollAfter = false)
+            }
+
+            // Fallback timer: show cache after 2.5s if server hasn't responded
+            val fallbackJob = if (!revealDone && hasCache) {
+                launch {
+                    delay(2_500L)
+                    revealMutex.withLock {
+                        if (!revealDone) revealFromCache()
+                    }
+                }
+            } else null
+
+            // Wait for server to finish
+            serverJob.join()
+            fallbackJob?.cancel()
+
+            revealMutex.withLock {
+                if (!revealDone && _messages.value.isEmpty() && hasCache) {
+                    // Server failed fast (offline) — fall back to cache
+                    revealFromCache()
+                } else if (!revealDone) {
+                    // Server responded first with data (happy path)
+                    val idx = _firstUnreadIndex.value
+                    _lastSeenMsgCount.value = if (idx >= 0) idx else _messages.value.size
+                    _isLoading.value = false
+                    _scrollToBottomEvent.value++
+                    revealDone = true
+                } else {
+                    // Cache was already shown, server caught up — silent merge
+                    // loadMessages() already updated _messages via smart merge
+                    val idx = _firstUnreadIndex.value
+                    _lastSeenMsgCount.value = if (idx >= 0) idx else _messages.value.size
+                }
+            }
 
             // Clear unread separator after 5 s
             if (_firstUnreadIndex.value >= 0) {
@@ -779,7 +834,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (message != null) _replyTo.value = null
     }
 
-    fun sendText(content: String) {
+    fun sendText(content: String, silent: Boolean = false) {
         if (content.isBlank()) return
         val replyId = _replyTo.value?.id
         val editing = _editingMessage.value
@@ -795,7 +850,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _editingMessage.value = null
             } else {
                 _scrollToOwnMessageEvent.value++
-                messageRepo.sendTextMessage(chatId, content.trim(), replyId)
+                messageRepo.sendTextMessage(chatId, content.trim(), replyId, silent)
                 _replyTo.value = null
             }
             _isSending.value = false
@@ -840,7 +895,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Send all staged content (photos as album, videos individually, + optional text).
      *  Clears staged state immediately, then uploads in background. */
-    fun sendWithAttachments(text: String, media: List<StagedMedia>, context: Context) {
+    fun sendWithAttachments(text: String, media: List<StagedMedia>, context: Context, silent: Boolean = false) {
         val replyId = _replyTo.value?.id
         val myId = currentUserId
         val myProfile = profileCache[myId]
@@ -900,9 +955,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         uploadedUrls.add(url)
                     }
                     if (photos.size == 1) {
-                        messageRepo.sendPhotoMessage(chatId, uploadedUrls[0], replyId, text.trim().ifBlank { null })
+                        messageRepo.sendPhotoMessage(chatId, uploadedUrls[0], replyId, text.trim().ifBlank { null }, silent)
                     } else {
-                        messageRepo.sendAlbumMessage(chatId, uploadedUrls, text.trim().ifBlank { null }, replyId)
+                        messageRepo.sendAlbumMessage(chatId, uploadedUrls, text.trim().ifBlank { null }, replyId, silent)
                     }
                     _messages.value = _messages.value.filter { it.message.id != pendingId }
                 } catch (e: Exception) {
@@ -921,10 +976,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         // ── Videos (each as separate message) ─────────────────────────────────
         val caption = text.trim().ifBlank { null }
-        videos.forEach { staged -> sendVideoInternal(staged, context, replyId, caption) }
+        videos.forEach { staged -> sendVideoInternal(staged, context, replyId, caption, silent) }
     }
 
-    private fun sendVideoInternal(staged: StagedMedia, context: Context, replyId: String?, caption: String? = null) {
+    private fun sendVideoInternal(staged: StagedMedia, context: Context, replyId: String?, caption: String? = null, silent: Boolean = false) {
         val myId = currentUserId
         val mimeType = context.contentResolver.getType(staged.uri) ?: "video/mp4"
         val name = getVideoNameFromUri(staged.uri, context)
@@ -968,7 +1023,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val fileName = "video_${System.currentTimeMillis()}.$ext"
                 val url = messageRepo.uploadFile(chatId, fileName, bytes)
                 if (url != null) {
-                    messageRepo.sendVideoMessage(chatId, url, name, bytes.size.toLong(), mimeType, replyId, caption)
+                    messageRepo.sendVideoMessage(chatId, url, name, bytes.size.toLong(), mimeType, replyId, caption, silent)
                 } else {
                     _error.value = "Ошибка загрузки видео"
                 }
@@ -1136,7 +1191,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _voiceElapsedMs.value = 0L
     }
 
-    fun sendVoiceRecording(context: android.content.Context) {
+    fun sendVoiceRecording(context: android.content.Context, silent: Boolean = false) {
         if (voiceRecorder.elapsedMs < 500L) { cancelVoiceRecording(); return }
         voiceTimerJob?.cancel()
         _voiceRecordState.value = VoiceRecordState.Idle
@@ -1159,7 +1214,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val bytes = file.readBytes(); file.delete()
                 val url = messageRepo.uploadFile(chatId, "voice_${System.currentTimeMillis()}.m4a", bytes)
                 if (url != null) {
-                    messageRepo.sendVoiceMessage(chatId, url, durationSec, replyId)
+                    messageRepo.sendVoiceMessage(chatId, url, durationSec, replyId, silent)
                 } else {
                     _error.value = "Ошибка загрузки голосового"
                 }
