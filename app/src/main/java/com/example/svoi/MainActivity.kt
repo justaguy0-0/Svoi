@@ -69,6 +69,11 @@ class MainActivity : ComponentActivity() {
                     startDestination = if (restored) Routes.CHAT_LIST else Routes.LOGIN
                     // setOnline is handled by startPresenceHeartbeat() in onResume
                     if (restored) app.registerFcmToken()
+                    // Проверка обновления — один раз за запуск, в фоне
+                    launch {
+                        val update = app.appUpdateRepository.checkForUpdate()
+                        app.setUpdateAvailable(update)
+                    }
                 }
 
                 // Навигация в чат по уведомлению.

@@ -8,6 +8,8 @@ import com.example.svoi.data.NetworkMonitor
 import com.example.svoi.data.local.CacheManager
 import com.example.svoi.data.local.EncryptedPrefsManager
 import com.example.svoi.data.local.ThemeManager
+import com.example.svoi.data.model.AppVersion
+import com.example.svoi.data.repository.AppUpdateRepository
 import com.example.svoi.data.repository.AuthRepository
 import com.example.svoi.data.repository.ChatRepository
 import com.example.svoi.data.repository.MessageRepository
@@ -26,6 +28,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -77,7 +81,16 @@ class SvoiApp : Application() {
     val chatRepository by lazy { ChatRepository(supabase) }
     val messageRepository by lazy { MessageRepository(supabase) }
     val pushTokenRepository by lazy { PushTokenRepository(supabase) }
+    val appUpdateRepository by lazy { AppUpdateRepository(supabase) }
     val globalVoicePlayer by lazy { GlobalVoicePlayer() }
+
+    // Результат проверки обновления — null пока не проверено / нет обновления
+    private val _updateAvailable = MutableStateFlow<AppVersion?>(null)
+    val updateAvailable: StateFlow<AppVersion?> = _updateAvailable
+
+    fun setUpdateAvailable(version: AppVersion?) {
+        _updateAvailable.value = version
+    }
 
     // Heartbeat: keeps online=true while app is in foreground.
     // Fires immediately on start, then every 3s.
