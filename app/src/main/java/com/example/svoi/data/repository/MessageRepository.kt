@@ -142,32 +142,29 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { null }
     }
 
-    suspend fun sendTextMessage(chatId: String, content: String, replyToId: String? = null, silent: Boolean = false): Message? {
+    suspend fun sendTextMessage(chatId: String, content: String, replyToId: String? = null, silent: Boolean = false) {
         val userId = currentUserId()
-        return try {
+        try {
             supabase.from("messages").insert(
                 TextMessageInsert(
                     chatId = chatId, senderId = userId, content = content,
                     type = "text", replyToId = replyToId, silent = silent
                 )
-            ).decodeSingle<Message>()
-        } catch (e: Exception) {
-            android.util.Log.e("SendDebug", "sendTextMessage: EXCEPTION", e)
-            null
-        }
+            )
+        } catch (_: Exception) {}
     }
 
-    suspend fun sendPhotoMessage(chatId: String, fileUrl: String, replyToId: String? = null, content: String? = null, silent: Boolean = false): Message? {
+    suspend fun sendPhotoMessage(chatId: String, fileUrl: String, replyToId: String? = null, content: String? = null, silent: Boolean = false) {
         val userId = currentUserId()
-        return try {
+        try {
             supabase.from("messages").insert(
                 PhotoMessageInsert(
                     chatId = chatId, senderId = userId, type = "photo",
                     fileUrl = fileUrl, content = content,
                     replyToId = replyToId, silent = silent
                 )
-            ).decodeSingle<Message>()
-        } catch (e: Exception) { null }
+            )
+        } catch (_: Exception) {}
     }
 
     suspend fun sendFileMessage(
@@ -731,7 +728,8 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     replyToId = replyToId,
                     silent = silent
                 )
-            ).decodeSingle<Message>()
+            )
+            null // Message arrives via realtime
         } catch (e: Exception) { null }
     }
 }
