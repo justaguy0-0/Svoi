@@ -477,6 +477,10 @@ class MessageRepository(private val supabase: SupabaseClient) {
 
     suspend fun markMessagesAsRead(chatId: String) {
         val userId = currentUserId()
+        if (userId.isEmpty()) {
+            Log.w("ReadReceipts", "markMessagesAsRead: userId empty, session not ready — skipping")
+            return
+        }
         try {
             val messages = supabase.from("messages")
                 .select {

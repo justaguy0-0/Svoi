@@ -16,9 +16,14 @@ import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.ReactionGroup
 import com.example.svoi.data.model.UserPresence
+import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +38,14 @@ import kotlinx.coroutines.withContext
 
 data class TypingInfo(val userId: String, val displayName: String, val status: String = "typing")
 data class StagedMedia(val uri: Uri, val isVideo: Boolean)
+
+data class OgData(
+    val title: String?,
+    val description: String?,
+    val imageUrl: String?,
+    val siteName: String?,
+    val url: String
+)
 
 sealed class VoiceRecordState {
     object Idle : VoiceRecordState()
@@ -192,6 +205,103 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val voiceElapsedMs: StateFlow<Long> = _voiceElapsedMs
     private var voiceTimerJob: Job? = null
 
+    // ── Open Graph preview cache ───────────────────────────────────────────────
+    val ogCache = mutableStateMapOf<String, OgData>()
+    private val ogAttempted = mutableSetOf<String>()
+
+    fun ensureOgFetched(url: String) {
+        if (url in ogAttempted) return
+        ogAttempted.add(url)
+        viewModelScope.launch(Dispatchers.IO) {
+            val data = fetchOgData(url)
+            if (data != null) withContext(Dispatchers.Main) { ogCache[url] = data }
+        }
+    }
+
+    private suspend fun fetchOgData(url: String): OgData? = withContext(Dispatchers.IO) {
+        try {
+            val conn = URL(url).openConnection() as HttpURLConnection
+            conn.connectTimeout = 5_000
+            conn.readTimeout   = 5_000
+            conn.instanceFollowRedirects = true
+            conn.setRequestProperty("User-Agent",
+                "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36")
+            conn.setRequestProperty("Accept", "text/html,application/xhtml+xml")
+            try {
+                val reader = BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8))
+                val sb = StringBuilder()
+                var totalChars = 0
+                var line: String?
+                while (reader.readLine().also { line = it } != null && totalChars < 65_536) {
+                    sb.append(line)
+                    totalChars += line!!.length
+                    // Stop reading once we've passed the <head> section
+                    if (line!!.contains("<body", ignoreCase = true) ||
+                        line!!.contains("</head>", ignoreCase = true)) break
+                }
+                reader.close()
+                parseOgData(sb.toString(), url)
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: Exception) {
+            Log.d("OgFetch", "Failed to fetch OG for $url: ${e.message}")
+            null
+        }
+    }
+
+    private fun parseOgData(html: String, sourceUrl: String): OgData? {
+        fun meta(vararg properties: String): String? {
+            for (prop in properties) {
+                val escaped = Regex.escape(prop)
+                // <meta property="og:title" content="..."> — attribute order varies
+                val r1 = Regex("""<meta[^>]+(?:property|name)\s*=\s*["']$escaped["'][^>]+content\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                val r2 = Regex("""<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]+(?:property|name)\s*=\s*["']$escaped["']""", RegexOption.IGNORE_CASE)
+                val result = (r1.find(html) ?: r2.find(html))?.groupValues?.get(1)
+                if (!result.isNullOrBlank()) return decodeHtmlEntities(result.trim())
+            }
+            return null
+        }
+
+        val title = meta("og:title", "twitter:title")
+            ?: Regex("<title[^>]*>([^<]+)</title>", RegexOption.IGNORE_CASE)
+                .find(html)?.groupValues?.get(1)?.let { decodeHtmlEntities(it.trim()) }
+
+        val description = meta("og:description", "twitter:description", "description")
+        val rawImageUrl = meta("og:image", "twitter:image", "twitter:image:src")
+        val siteName    = meta("og:site_name")
+
+        if (title.isNullOrBlank() && rawImageUrl.isNullOrBlank()) return null
+
+        val imageUrl = when {
+            rawImageUrl.isNullOrBlank()      -> null
+            rawImageUrl.startsWith("http")   -> rawImageUrl
+            rawImageUrl.startsWith("//")     -> "https:$rawImageUrl"
+            rawImageUrl.startsWith("/")      -> {
+                val base = Uri.parse(sourceUrl)
+                "${base.scheme}://${base.host}$rawImageUrl"
+            }
+            else -> rawImageUrl
+        }
+
+        return OgData(
+            title       = title?.take(120),
+            description = description?.take(240),
+            imageUrl    = imageUrl,
+            siteName    = siteName?.take(60),
+            url         = sourceUrl
+        )
+    }
+
+    private fun decodeHtmlEntities(text: String) = text
+        .replace("&amp;",  "&")
+        .replace("&lt;",   "<")
+        .replace("&gt;",   ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;",  "'")
+        .replace("&nbsp;", " ")
+        .replace(Regex("&#(\\d+);")) { it.groupValues[1].toIntOrNull()?.toChar()?.toString() ?: "" }
+
     // ── Voice playback — delegated to GlobalVoicePlayer (survives navigation) ─
     val voicePlayState: StateFlow<VoicePlayState?> = app.globalVoicePlayer.state
         .map { gs -> gs?.let { VoicePlayState(it.messageId, it.isPlaying, it.positionMs, it.durationMs) } }
@@ -216,14 +326,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (this.chatId == chatId) return
         this.chatId = chatId
 
-        // Refresh cached userId if it was empty at ViewModel creation (e.g. session was still loading)
-        if (currentUserId.isEmpty()) currentUserId = authRepo.currentUserId() ?: ""
-
         app.globalVoicePlayer.onCompletion = { finishedId -> playNextVoiceAfter(finishedId) }
 
         dismissChatNotification(chatId)
 
         viewModelScope.launch {
+            // Wait for session to become available (handles race between SDK auto-refresh and
+            // manual importSession — during this window currentUserOrNull() may be null even
+            // though network requests succeed with the refreshed token).
+            if (currentUserId.isEmpty()) {
+                repeat(10) {
+                    currentUserId = authRepo.currentUserId() ?: ""
+                    if (currentUserId.isNotEmpty()) return@repeat
+                    delay(300)
+                }
+                Log.d("ChatVM", "init: currentUserId after retry = '$currentUserId'")
+            }
             val cachedInfo     = cache.loadChatInfo(chatId)
             val cachedMessages = cache.loadMessages(chatId)
             val cachedProfiles = cache.loadProfileMap()
