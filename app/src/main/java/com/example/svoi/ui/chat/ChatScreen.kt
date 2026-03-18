@@ -161,7 +161,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Stop
@@ -1022,6 +1022,60 @@ fun ChatScreen(
                     val isRecording = voiceRecordState is VoiceRecordState.Recording
                     val isLocked = isRecording && (voiceRecordState as VoiceRecordState.Recording).isLocked
                     val density = LocalDensity.current
+                    var showSendMenu by remember { mutableStateOf(false) }
+
+                    // "Send without sound" inline strip — no Popup, no focus/keyboard issues
+                    AnimatedVisibility(
+                        visible = showSendMenu,
+                        enter = slideInVertically { it } + fadeIn(tween(120)),
+                        exit = slideOutVertically { it } + fadeOut(tween(120))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable {
+                                    showSendMenu = false
+                                    if (isLocked) {
+                                        viewModel.sendVoiceRecording(context, silent = true)
+                                    } else {
+                                        val text = inputValue.text
+                                        val media = stagedMedia
+                                        inputValue = TextFieldValue("")
+                                        viewModel.onInputTextChanged("")
+                                        if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context, silent = true)
+                                        else viewModel.sendText(text, silent = true)
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.NotificationsOff,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                "Отправить без звука",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Закрыть",
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { showSendMenu = false },
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
 
                     Row(
                         modifier = Modifier
@@ -1150,7 +1204,6 @@ fun ChatScreen(
                         // Otherwise → Mic (hold-to-record gesture)
                         val hasContent = inputValue.text.isNotBlank() || stagedMedia.isNotEmpty()
                         val showSend = isLocked || (!isRecording && (isTextFieldFocused || hasContent))
-                        var showSendMenu by remember { mutableStateOf(false) }
                         Box {
                         AnimatedContent(
                             targetState = showSend,
@@ -1258,42 +1311,6 @@ fun ChatScreen(
                                         )
                                     }
                             )
-                            // DropdownMenu popup steals focus → keyboard hides.
-                            // Re-show keyboard after a frame so user can still type after dismissing.
-                            LaunchedEffect(showSendMenu) {
-                                if (showSendMenu) {
-                                    delay(50)
-                                    keyboardController?.show()
-                                }
-                            }
-                            DropdownMenu(
-                                expanded = showSendMenu,
-                                onDismissRequest = { showSendMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Отправить без звука") },
-                                    onClick = {
-                                        showSendMenu = false
-                                        if (isLocked) {
-                                            viewModel.sendVoiceRecording(context, silent = true)
-                                        } else {
-                                            val text = inputValue.text
-                                            val media = stagedMedia
-                                            inputValue = TextFieldValue("")
-                                            viewModel.onInputTextChanged("")
-                                            if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context, silent = true)
-                                            else viewModel.sendText(text, silent = true)
-                                        }
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.NotificationsOff,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                )
-                            }
                         }
                         } // close outer Box
                     }
