@@ -40,6 +40,27 @@ private data class MessageReadInsert(
 )
 
 @Serializable
+private data class TextMessageInsert(
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("sender_id") val senderId: String,
+    val content: String,
+    val type: String,
+    @SerialName("reply_to_id") val replyToId: String? = null,
+    val silent: Boolean = false,
+)
+
+@Serializable
+private data class PhotoMessageInsert(
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("sender_id") val senderId: String,
+    val type: String,
+    @SerialName("file_url") val fileUrl: String,
+    val content: String? = null,
+    @SerialName("reply_to_id") val replyToId: String? = null,
+    val silent: Boolean = false,
+)
+
+@Serializable
 private data class AlbumMessageInsert(
     @SerialName("chat_id") val chatId: String,
     @SerialName("sender_id") val senderId: String,
@@ -123,20 +144,13 @@ class MessageRepository(private val supabase: SupabaseClient) {
 
     suspend fun sendTextMessage(chatId: String, content: String, replyToId: String? = null, silent: Boolean = false): Message? {
         val userId = currentUserId()
-        android.util.Log.d("SendDebug", "sendTextMessage: chatId=$chatId, userId=$userId, content='$content', silent=$silent")
         return try {
-            val result = supabase.from("messages").insert(
-                buildMap {
-                    put("chat_id", chatId)
-                    put("sender_id", userId)
-                    put("content", content)
-                    put("type", "text")
-                    if (replyToId != null) put("reply_to_id", replyToId)
-                    if (silent) put("silent", true)
-                }
+            supabase.from("messages").insert(
+                TextMessageInsert(
+                    chatId = chatId, senderId = userId, content = content,
+                    type = "text", replyToId = replyToId, silent = silent
+                )
             ).decodeSingle<Message>()
-            android.util.Log.d("SendDebug", "sendTextMessage: SUCCESS id=${result.id}")
-            result
         } catch (e: Exception) {
             android.util.Log.e("SendDebug", "sendTextMessage: EXCEPTION", e)
             null
@@ -147,15 +161,11 @@ class MessageRepository(private val supabase: SupabaseClient) {
         val userId = currentUserId()
         return try {
             supabase.from("messages").insert(
-                buildMap {
-                    put("chat_id", chatId)
-                    put("sender_id", userId)
-                    put("type", "photo")
-                    put("file_url", fileUrl)
-                    if (content != null) put("content", content)
-                    if (replyToId != null) put("reply_to_id", replyToId)
-                    if (silent) put("silent", true)
-                }
+                PhotoMessageInsert(
+                    chatId = chatId, senderId = userId, type = "photo",
+                    fileUrl = fileUrl, content = content,
+                    replyToId = replyToId, silent = silent
+                )
             ).decodeSingle<Message>()
         } catch (e: Exception) { null }
     }
