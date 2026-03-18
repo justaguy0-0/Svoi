@@ -846,7 +846,9 @@ fun ChatScreen(
                                                     onVoicePause = { viewModel.pauseVoice() },
                                                     onVoiceResume = { viewModel.resumeVoice() },
                                                     onVoiceSeek = { viewModel.seekVoice(it) },
-                                                    onReactionToggle = { msgId, emoji -> viewModel.toggleReaction(msgId, emoji) }
+                                                    onReactionToggle = { msgId, emoji -> viewModel.toggleReaction(msgId, emoji) },
+                                                    ogCache = viewModel.ogCache,
+                                                    onFetchOg = viewModel::ensureOgFetched
                                                 )
                                             }
                                         }
@@ -2131,7 +2133,9 @@ private fun MessageItem(
     onVoicePause: () -> Unit = {},
     onVoiceResume: () -> Unit = {},
     onVoiceSeek: (Int) -> Unit = {},
-    onReactionToggle: (messageId: String, emoji: String) -> Unit = { _, _ -> }
+    onReactionToggle: (messageId: String, emoji: String) -> Unit = { _, _ -> },
+    ogCache: Map<String, OgData> = emptyMap(),
+    onFetchOg: (String) -> Unit = {}
 ) {
     val msg = item.message
     if (msg.deletedForAll) {
@@ -2522,6 +2526,21 @@ private fun MessageItem(
                                     style = MaterialTheme.typography.bodyMedium,
                                     onOtherTap = onTap
                                 )
+                                // OG link preview
+                                val firstUrl = remember(msg.content) {
+                                    msg.content?.let { URL_REGEX.find(it)?.value }
+                                }
+                                LaunchedEffect(firstUrl) {
+                                    firstUrl?.let { onFetchOg(it) }
+                                }
+                                val ogData = firstUrl?.let { ogCache[it] }
+                                if (ogData != null) {
+                                    OgPreviewCard(
+                                        ogData = ogData,
+                                        isOwn = item.isOwn,
+                                        modifier = Modifier.padding(top = 6.dp)
+                                    )
+                                }
                             }
                         }
 
@@ -2655,6 +2674,82 @@ private fun LinkText(
             }
         }
     )
+}
+
+// ── OG-превью ссылок ─────────────────────────────────────────────────────────
+
+@Composable
+private fun OgPreviewCard(
+    ogData: OgData,
+    isOwn: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val accentColor = if (isOwn) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.primary
+    val bgColor = if (isOwn) Color.White.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = bgColor,
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ogData.url)))
+                } catch (_: Exception) {}
+            }
+    ) {
+        Row(modifier = Modifier.padding(0.dp)) {
+            // Left accent bar
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .heightIn(min = 48.dp)
+                    .background(accentColor)
+            )
+            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).weight(1f)) {
+                ogData.siteName?.takeIf { it.isNotBlank() }?.let { site ->
+                    Text(
+                        text = site,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = accentColor,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                ogData.title?.takeIf { it.isNotBlank() }?.let { title ->
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isOwn) Color.White else MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                ogData.description?.takeIf { it.isNotBlank() }?.let { desc ->
+                    Text(
+                        text = desc,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isOwn) Color.White.copy(0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            ogData.imageUrl?.takeIf { it.isNotBlank() }?.let { imgUrl ->
+                AsyncImage(
+                    model = imgUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
+                )
+            }
+        }
+    }
 }
 
 private fun Int.toVoiceDuration(): String {
