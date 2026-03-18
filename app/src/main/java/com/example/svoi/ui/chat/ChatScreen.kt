@@ -1258,6 +1258,14 @@ fun ChatScreen(
                                         )
                                     }
                             )
+                            // DropdownMenu popup steals focus → keyboard hides.
+                            // Re-show keyboard after a frame so user can still type after dismissing.
+                            LaunchedEffect(showSendMenu) {
+                                if (showSendMenu) {
+                                    delay(50)
+                                    keyboardController?.show()
+                                }
+                            }
                             DropdownMenu(
                                 expanded = showSendMenu,
                                 onDismissRequest = { showSendMenu = false }
