@@ -161,6 +161,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Stop
@@ -1149,6 +1150,8 @@ fun ChatScreen(
                         // Otherwise → Mic (hold-to-record gesture)
                         val hasContent = inputValue.text.isNotBlank() || stagedMedia.isNotEmpty()
                         val showSend = isLocked || (!isRecording && (isTextFieldFocused || hasContent))
+                        var showSendMenu by remember { mutableStateOf(false) }
+                        Box {
                         AnimatedContent(
                             targetState = showSend,
                             transitionSpec = {
@@ -1158,21 +1161,10 @@ fun ChatScreen(
                             label = "micSendToggle"
                         ) { isSend ->
                             if (isSend) {
+                                // Visual only — gestures handled by overlay below
                                 Box(
                                     modifier = Modifier.size(48.dp).clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary)
-                                        .clickable {
-                                            if (isLocked) {
-                                                viewModel.sendVoiceRecording(context)
-                                            } else {
-                                                val text = inputValue.text
-                                                val media = stagedMedia
-                                                inputValue = TextFieldValue("")
-                                                viewModel.onInputTextChanged("")
-                                                if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
-                                                else viewModel.sendText(text)
-                                            }
-                                        },
+                                        .background(MaterialTheme.colorScheme.primary),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(Icons.Default.Send, contentDescription = "Отправить",
@@ -1236,6 +1228,66 @@ fun ChatScreen(
                                 }
                             }
                         }
+                        // Gesture overlay — sits on top of AnimatedContent, outside it.
+                        // detectTapGestures works here (problem only existed INSIDE AnimatedContent).
+                        // rememberUpdatedState keeps lambdas fresh even with pointerInput(Unit).
+                        if (showSend) {
+                            val onTapSend by rememberUpdatedState<() -> Unit> {
+                                if (isLocked) {
+                                    viewModel.sendVoiceRecording(context)
+                                } else {
+                                    val text = inputValue.text
+                                    val media = stagedMedia
+                                    inputValue = TextFieldValue("")
+                                    viewModel.onInputTextChanged("")
+                                    if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
+                                    else viewModel.sendText(text)
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .pointerInput(Unit) {
+                                        detectTapGestures(
+                                            onTap = { onTapSend() },
+                                            onLongPress = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                showSendMenu = true
+                                            }
+                                        )
+                                    }
+                            )
+                            DropdownMenu(
+                                expanded = showSendMenu,
+                                onDismissRequest = { showSendMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Отправить без звука") },
+                                    onClick = {
+                                        showSendMenu = false
+                                        if (isLocked) {
+                                            viewModel.sendVoiceRecording(context, silent = true)
+                                        } else {
+                                            val text = inputValue.text
+                                            val media = stagedMedia
+                                            inputValue = TextFieldValue("")
+                                            viewModel.onInputTextChanged("")
+                                            if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context, silent = true)
+                                            else viewModel.sendText(text, silent = true)
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.NotificationsOff,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                        } // close outer Box
                     }
                 }
             }
