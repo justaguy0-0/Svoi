@@ -1158,68 +1158,25 @@ fun ChatScreen(
                             label = "micSendToggle"
                         ) { isSend ->
                             if (isSend) {
-                                var showSendMenu by remember { mutableStateOf(false) }
-
-                                // Send action (normal)
-                                val doSend: () -> Unit = {
-                                    if (isLocked) {
-                                        viewModel.sendVoiceRecording(context)
-                                    } else {
-                                        val text = inputValue.text
-                                        val media = stagedMedia
-                                        inputValue = TextFieldValue("")
-                                        viewModel.onInputTextChanged("")
-                                        if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
-                                        else viewModel.sendText(text)
-                                    }
-                                }
-
-                                // Send action (silent)
-                                val doSendSilent: () -> Unit = {
-                                    showSendMenu = false
-                                    if (isLocked) {
-                                        viewModel.sendVoiceRecording(context, silent = true)
-                                    } else {
-                                        val text = inputValue.text
-                                        val media = stagedMedia
-                                        inputValue = TextFieldValue("")
-                                        viewModel.onInputTextChanged("")
-                                        if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context, silent = true)
-                                        else viewModel.sendText(text, silent = true)
-                                    }
-                                }
-
                                 Box(
-                                    modifier = Modifier
-                                        .pointerInput(Unit) {
-                                            detectTapGestures(onLongPress = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                showSendMenu = true
-                                            })
-                                        }
-                                ) {
-                                    Box(
-                                        modifier = Modifier.size(48.dp).clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primary)
-                                            .clickable { doSend() },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Default.Send, contentDescription = "Отправить",
-                                            tint = Color.White, modifier = Modifier.size(20.dp))
-                                    }
-                                    DropdownMenu(
-                                        expanded = showSendMenu,
-                                        onDismissRequest = { showSendMenu = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("Отправить без звука") },
-                                            onClick = doSendSilent,
-                                            leadingIcon = {
-                                                Icon(Icons.Default.NotificationsOff, contentDescription = null,
-                                                    modifier = Modifier.size(20.dp))
+                                    modifier = Modifier.size(48.dp).clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary)
+                                        .clickable {
+                                            if (isLocked) {
+                                                viewModel.sendVoiceRecording(context)
+                                            } else {
+                                                val text = inputValue.text
+                                                val media = stagedMedia
+                                                inputValue = TextFieldValue("")
+                                                viewModel.onInputTextChanged("")
+                                                if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
+                                                else viewModel.sendText(text)
                                             }
-                                        )
-                                    }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Send, contentDescription = "Отправить",
+                                        tint = Color.White, modifier = Modifier.size(20.dp))
                                 }
                             } else {
                                 // Mic button — stays in composition while recording (non-locked)
