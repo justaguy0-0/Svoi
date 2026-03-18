@@ -69,7 +69,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.MainBottomBar
-import com.example.svoi.ui.theme.Unread
 import com.example.svoi.util.toChatListTime
 import kotlinx.coroutines.launch
 
@@ -408,7 +407,7 @@ private fun ChatListItem(
                     Box(
                         modifier = Modifier
                             .size(20.dp)
-                            .background(Unread, CircleShape),
+                            .background(MaterialTheme.colorScheme.primary, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(

@@ -10,47 +10,49 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.example.svoi.data.local.SvoiAccent
 import com.example.svoi.data.local.ThemeMode
 
-private val LightColorScheme = lightColorScheme(
-    primary = Blue500,
-    onPrimary = Color.White,
-    primaryContainer = Blue100,
-    onPrimaryContainer = Blue700,
-    secondary = Blue600,
-    onSecondary = Color.White,
-    background = Background,
-    onBackground = TextPrimary,
-    surface = Surface,
-    onSurface = TextPrimary,
-    surfaceVariant = SurfaceVariant,
-    onSurfaceVariant = TextSecondary,
-    outline = Divider,
-    error = Error,
-    onError = Color.White,
+private fun buildLightScheme(p: AccentPalette) = lightColorScheme(
+    primary            = p.primary,
+    onPrimary          = Color.White,
+    primaryContainer   = p.container,
+    onPrimaryContainer = p.onContainer,
+    secondary          = p.onContainer,
+    onSecondary        = Color.White,
+    background         = Background,
+    onBackground       = TextPrimary,
+    surface            = Surface,
+    onSurface          = TextPrimary,
+    surfaceVariant     = SurfaceVariant,
+    onSurfaceVariant   = TextSecondary,
+    outline            = Divider,
+    error              = Error,
+    onError            = Color.White,
 )
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Blue500,
-    onPrimary = Color.White,
-    primaryContainer = Blue700,
-    onPrimaryContainer = Blue100,
-    secondary = Blue200,
-    onSecondary = Color.White,
-    background = DarkBackground,
-    onBackground = DarkTextPrimary,
-    surface = DarkSurface,
-    onSurface = DarkTextPrimary,
-    surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = DarkTextSecondary,
-    outline = DarkDivider,
-    error = Error,
-    onError = Color.White,
+private fun buildDarkScheme(p: AccentPalette) = darkColorScheme(
+    primary            = p.primaryDark,
+    onPrimary          = Color.White,
+    primaryContainer   = p.onContainer,
+    onPrimaryContainer = p.container,
+    secondary          = p.primaryDark,
+    onSecondary        = Color.White,
+    background         = DarkBackground,
+    onBackground       = DarkTextPrimary,
+    surface            = DarkSurface,
+    onSurface          = DarkTextPrimary,
+    surfaceVariant     = DarkSurfaceVariant,
+    onSurfaceVariant   = DarkTextSecondary,
+    outline            = DarkDivider,
+    error              = Error,
+    onError            = Color.White,
 )
 
 @Composable
 fun SvoiTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
+    accent: SvoiAccent = SvoiAccent.BLUE,
     content: @Composable () -> Unit
 ) {
     val isDark = when (themeMode) {
@@ -58,7 +60,8 @@ fun SvoiTheme(
         ThemeMode.DARK -> true
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
-    val colorScheme = if (isDark) DarkColorScheme else LightColorScheme
+    val palette = accentPalette(accent)
+    val colorScheme = if (isDark) buildDarkScheme(palette) else buildLightScheme(palette)
 
     val view = LocalView.current
     if (!view.isInEditMode) {

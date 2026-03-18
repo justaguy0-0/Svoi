@@ -194,7 +194,6 @@ import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.theme.BubbleOther
 import com.example.svoi.ui.theme.BubbleOtherText
-import com.example.svoi.ui.theme.BubbleOwn
 import com.example.svoi.ui.theme.BubbleOwnText
 import com.example.svoi.ui.theme.DarkBackground
 import com.example.svoi.ui.theme.DarkBubbleOther
@@ -2141,7 +2140,7 @@ private fun MessageItem(
     }
 
     val isDark = MaterialTheme.colorScheme.background == DarkBackground
-    val bubbleColor = if (item.isOwn) BubbleOwn else if (isDark) DarkBubbleOther else BubbleOther
+    val bubbleColor = if (item.isOwn) MaterialTheme.colorScheme.primary else if (isDark) DarkBubbleOther else BubbleOther
     val textColor = if (item.isOwn) BubbleOwnText else if (isDark) DarkBubbleOtherText else BubbleOtherText
     val bubbleShape = if (item.isOwn) {
         RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 4.dp)

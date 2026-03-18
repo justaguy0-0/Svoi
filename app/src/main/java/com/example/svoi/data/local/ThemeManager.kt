@@ -5,6 +5,10 @@ import android.content.SharedPreferences
 
 enum class ThemeMode { LIGHT, DARK, SYSTEM }
 
+enum class SvoiAccent {
+    BLUE, ORANGE, RED, GREEN, PINK, PURPLE
+}
+
 class ThemeManager(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("svoi_settings", Context.MODE_PRIVATE)
@@ -28,6 +32,15 @@ class ThemeManager(context: Context) {
 
     fun setNotificationsMuted(muted: Boolean) {
         prefs.edit().putBoolean("notifications_muted", muted).apply()
+    }
+
+    fun getAccent(): SvoiAccent {
+        val value = prefs.getString("accent_color", SvoiAccent.BLUE.name) ?: SvoiAccent.BLUE.name
+        return runCatching { SvoiAccent.valueOf(value) }.getOrDefault(SvoiAccent.BLUE)
+    }
+
+    fun setAccent(accent: SvoiAccent) {
+        prefs.edit().putString("accent_color", accent.name).apply()
     }
 
     fun isChatMuted(chatId: String): Boolean = prefs.getBoolean("chat_muted_$chatId", false)

@@ -2,7 +2,11 @@ package com.example.svoi.ui.settings
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,8 +17,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.LightMode
@@ -45,6 +51,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -52,9 +59,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.imageLoader
 import com.example.svoi.SvoiApp
+import com.example.svoi.data.local.SvoiAccent
 import com.example.svoi.data.local.ThemeMode
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.profile.ProfileViewModel
+import com.example.svoi.ui.theme.accentPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -66,6 +75,8 @@ fun SettingsScreen(
     onThemeChanged: (ThemeMode) -> Unit,
     autoPlayVideos: Boolean = true,
     onAutoPlayChanged: (Boolean) -> Unit = {},
+    currentAccent: SvoiAccent = SvoiAccent.BLUE,
+    onAccentChanged: (SvoiAccent) -> Unit = {},
     onNavigateToChats: () -> Unit,
     onNavigateToProfile: () -> Unit,
     profileViewModel: ProfileViewModel = viewModel()
@@ -131,6 +142,11 @@ fun SettingsScreen(
                 subtitle = "Всегда тёмная тема",
                 selected = currentThemeMode == ThemeMode.DARK,
                 onClick = { onThemeChanged(ThemeMode.DARK) }
+            )
+
+            AccentColorPicker(
+                currentAccent = currentAccent,
+                onAccentChanged = onAccentChanged
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -315,6 +331,75 @@ private fun ToggleRow(
         }
         Spacer(Modifier.width(8.dp))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+// ── Выбор акцент-цвета ───────────────────────────────────────────────────────
+
+private val accentLabels = mapOf(
+    SvoiAccent.BLUE   to "Синий",
+    SvoiAccent.ORANGE to "Оранжевый",
+    SvoiAccent.RED    to "Красный",
+    SvoiAccent.GREEN  to "Зелёный",
+    SvoiAccent.PINK   to "Розовый",
+    SvoiAccent.PURPLE to "Фиолетовый"
+)
+
+@Composable
+private fun AccentColorPicker(
+    currentAccent: SvoiAccent,
+    onAccentChanged: (SvoiAccent) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Цветовая палитра",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = accentLabels[currentAccent] ?: "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SvoiAccent.entries.forEach { accent ->
+                val palette = accentPalette(accent)
+                val isSelected = accent == currentAccent
+                val scale by animateColorAsState(
+                    targetValue = if (isSelected) palette.primary else palette.primary,
+                    animationSpec = tween(200),
+                    label = "accentAnim"
+                )
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(palette.primary)
+                        .then(
+                            if (isSelected) Modifier.border(2.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f), CircleShape)
+                            else Modifier
+                        )
+                        .clickable { onAccentChanged(accent) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            tint = androidx.compose.ui.graphics.Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

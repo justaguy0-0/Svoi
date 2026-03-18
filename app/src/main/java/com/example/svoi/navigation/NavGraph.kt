@@ -20,6 +20,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.example.svoi.data.local.SvoiAccent
 import com.example.svoi.data.local.ThemeMode
 import com.example.svoi.ui.auth.AuthViewModel
 import com.example.svoi.ui.auth.InviteKeyScreen
@@ -64,7 +65,9 @@ fun NavGraph(
     onThemeChanged: (ThemeMode) -> Unit = {},
     currentThemeMode: ThemeMode = ThemeMode.SYSTEM,
     autoPlayVideos: Boolean = true,
-    onAutoPlayChanged: (Boolean) -> Unit = {}
+    onAutoPlayChanged: (Boolean) -> Unit = {},
+    currentAccent: SvoiAccent = SvoiAccent.BLUE,
+    onAccentChanged: (SvoiAccent) -> Unit = {}
 ) {
     // Shared AuthViewModel — scoped to NavGraph (Activity), so all auth screens share state
     val authViewModel: AuthViewModel = viewModel()
@@ -308,6 +311,8 @@ fun NavGraph(
                     onThemeChanged = onThemeChanged,
                     autoPlayVideos = autoPlayVideos,
                     onAutoPlayChanged = onAutoPlayChanged,
+                    currentAccent = currentAccent,
+                    onAccentChanged = onAccentChanged,
                     onNavigateToChats = {
                         if (canNav()) navController.popBackStack(Routes.CHAT_LIST, inclusive = false)
                     },

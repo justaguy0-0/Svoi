@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.svoi.data.local.SvoiAccent
 import com.example.svoi.data.local.ThemeMode
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -56,8 +57,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             var themeMode by remember { mutableStateOf(app.themeManager.getThemeMode()) }
             var autoPlayVideos by remember { mutableStateOf(app.themeManager.getAutoPlayVideos()) }
+            var accent by remember { mutableStateOf(app.themeManager.getAccent()) }
 
-            SvoiTheme(themeMode = themeMode) {
+            SvoiTheme(themeMode = themeMode, accent = accent) {
                 val navController = rememberNavController()
                 var startDestination by remember { mutableStateOf<String?>(null) }
 
@@ -95,6 +97,11 @@ class MainActivity : ComponentActivity() {
                         onAutoPlayChanged = { enabled ->
                             app.themeManager.setAutoPlayVideos(enabled)
                             autoPlayVideos = enabled
+                        },
+                        currentAccent = accent,
+                        onAccentChanged = { newAccent ->
+                            app.themeManager.setAccent(newAccent)
+                            accent = newAccent
                         }
                     )
                 }
