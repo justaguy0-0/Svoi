@@ -123,8 +123,9 @@ class MessageRepository(private val supabase: SupabaseClient) {
 
     suspend fun sendTextMessage(chatId: String, content: String, replyToId: String? = null, silent: Boolean = false): Message? {
         val userId = currentUserId()
+        android.util.Log.d("SendDebug", "sendTextMessage: chatId=$chatId, userId=$userId, content='$content', silent=$silent")
         return try {
-            supabase.from("messages").insert(
+            val result = supabase.from("messages").insert(
                 buildMap {
                     put("chat_id", chatId)
                     put("sender_id", userId)
@@ -134,7 +135,12 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     if (silent) put("silent", true)
                 }
             ).decodeSingle<Message>()
-        } catch (e: Exception) { null }
+            android.util.Log.d("SendDebug", "sendTextMessage: SUCCESS id=${result.id}")
+            result
+        } catch (e: Exception) {
+            android.util.Log.e("SendDebug", "sendTextMessage: EXCEPTION", e)
+            null
+        }
     }
 
     suspend fun sendPhotoMessage(chatId: String, fileUrl: String, replyToId: String? = null, content: String? = null, silent: Boolean = false): Message? {

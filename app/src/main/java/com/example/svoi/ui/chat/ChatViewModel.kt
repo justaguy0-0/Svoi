@@ -835,7 +835,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendText(content: String, silent: Boolean = false) {
-        if (content.isBlank()) return
+        android.util.Log.d("SendDebug", "sendText called: content='$content', chatId='$chatId', userId='$currentUserId', silent=$silent")
+        if (content.isBlank()) {
+            android.util.Log.d("SendDebug", "sendText: content is BLANK, returning")
+            return
+        }
         val replyId = _replyTo.value?.id
         val editing = _editingMessage.value
 
@@ -849,8 +853,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 messageRepo.editMessage(editing.id, content.trim())
                 _editingMessage.value = null
             } else {
+                android.util.Log.d("SendDebug", "sendText: calling sendTextMessage...")
                 _scrollToOwnMessageEvent.value++
-                messageRepo.sendTextMessage(chatId, content.trim(), replyId, silent)
+                val result = messageRepo.sendTextMessage(chatId, content.trim(), replyId, silent)
+                android.util.Log.d("SendDebug", "sendText: sendTextMessage returned: $result")
                 _replyTo.value = null
             }
             _isSending.value = false
