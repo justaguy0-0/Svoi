@@ -173,7 +173,9 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         val updated = existing.copy(
             lastMessageText = lastText,
             lastMessageTime = msg.createdAt ?: existing.lastMessageTime,
-            unreadCount = if (isOwn) existing.unreadCount else existing.unreadCount + 1
+            unreadCount = if (isOwn) existing.unreadCount else existing.unreadCount + 1,
+            lastMessageIsOwn = isOwn,
+            lastMessageIsRead = false
         )
         // Move chat to top
         _chats.value = listOf(updated) + current.filter { it.chatId != chatId }

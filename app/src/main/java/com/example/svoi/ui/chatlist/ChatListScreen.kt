@@ -28,6 +28,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
@@ -367,12 +370,23 @@ private fun ChatListItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                Text(
-                    text = item.lastMessageTime.toChatListTime(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (item.unreadCount > 0) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (item.lastMessageIsOwn) {
+                        Icon(
+                            imageVector = if (item.lastMessageIsRead) Icons.Default.DoneAll else Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp).padding(end = 2.dp),
+                            tint = if (item.lastMessageIsRead) MaterialTheme.colorScheme.primary
+                                   else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        text = item.lastMessageTime.toChatListTime(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (item.unreadCount > 0) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Row(

@@ -108,7 +108,15 @@ class ChatRepository(private val supabase: SupabaseClient) {
         val allOtherMessages = allMessages.filter { it.senderId != userId }
         val allOtherIds = allOtherMessages.map { it.id }
 
-        val (profileMap, presenceMap, readMessageIds) = coroutineScope {
+        val myOwnLastMessageIds = lastMessages.values
+            .filter { it.senderId == userId }
+            .map { it.id }
+
+        val profileMap: Map<String, Profile>
+        val presenceMap: Map<String, UserPresence>
+        val readMessageIds: Set<String>
+        val readOwnMessageIds: Set<String>
+        coroutineScope {
             val profilesDeferred = async {
                 try {
                     if (otherUserIds.isEmpty()) emptyMap()
@@ -116,7 +124,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
                         .select { filter { isIn("id", otherUserIds) } }
                         .decodeList<Profile>()
                         .associateBy { it.id }
-                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap() }
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap<String, Profile>() }
             }
             val presenceDeferred = async {
                 try {
@@ -125,7 +133,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
                         .select { filter { isIn("user_id", otherUserIds) } }
                         .decodeList<UserPresence>()
                         .associateBy { it.userId }
-                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap() }
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap<String, UserPresence>() }
             }
             val readsDeferred = async {
                 if (allOtherIds.isEmpty()) emptySet()
@@ -134,9 +142,22 @@ class ChatRepository(private val supabase: SupabaseClient) {
                         .select { filter { isIn("message_id", allOtherIds); eq("user_id", userId) } }
                         .decodeList<com.example.svoi.data.model.MessageRead>()
                         .map { it.messageId }.toSet()
-                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptySet() }
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptySet<String>() }
             }
-            Triple(profilesDeferred.await(), presenceDeferred.await(), readsDeferred.await())
+            val myOwnReadsDeferred = async {
+                if (myOwnLastMessageIds.isEmpty()) emptySet()
+                else try {
+                    supabase.from("message_reads")
+                        .select { filter { isIn("message_id", myOwnLastMessageIds) } }
+                        .decodeList<com.example.svoi.data.model.MessageRead>()
+                        .filter { it.userId != userId }
+                        .map { it.messageId }.toSet()
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptySet<String>() }
+            }
+            profileMap = profilesDeferred.await()
+            presenceMap = presenceDeferred.await()
+            readMessageIds = readsDeferred.await()
+            readOwnMessageIds = myOwnReadsDeferred.await()
         }
 
         val unreadCounts: Map<String, Int> = allOtherMessages
@@ -213,7 +234,9 @@ class ChatRepository(private val supabase: SupabaseClient) {
                 unreadCount = unreadCounts[chat.id] ?: 0,
                 otherUserId = otherMember?.userId,
                 myRole = membership?.role ?: "member",
-                isOtherOnline = isOtherOnline
+                isOtherOnline = isOtherOnline,
+                lastMessageIsOwn = lastMsg?.senderId == userId,
+                lastMessageIsRead = lastMsg?.id?.let { it in readOwnMessageIds } ?: false
             )
         }.sortedByDescending { it.lastMessageTime }
     }

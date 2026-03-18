@@ -39,5 +39,7 @@ data class ChatListItem(
     val unreadCount: Int,
     val otherUserId: String? = null,
     val myRole: String = "member",
-    val isOtherOnline: Boolean = false
+    val isOtherOnline: Boolean = false,
+    val lastMessageIsOwn: Boolean = false,
+    val lastMessageIsRead: Boolean = false
 )

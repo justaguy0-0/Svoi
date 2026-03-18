@@ -1156,7 +1156,7 @@ fun ChatScreen(
                         // When has text/media and not recording → Send (tap to send message)
                         // Otherwise → Mic (hold-to-record gesture)
                         val hasContent = inputValue.text.isNotBlank() || stagedMedia.isNotEmpty()
-                        val showSend = isLocked || (!isRecording && (isTextFieldFocused || hasContent))
+                        val showSend = isLocked || (!isRecording && hasContent)
                         Box {
                         AnimatedContent(
                             targetState = showSend,

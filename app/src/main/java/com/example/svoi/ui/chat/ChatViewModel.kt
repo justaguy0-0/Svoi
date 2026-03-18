@@ -219,6 +219,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // Refresh cached userId if it was empty at ViewModel creation (e.g. session was still loading)
         if (currentUserId.isEmpty()) currentUserId = authRepo.currentUserId() ?: ""
 
+        app.globalVoicePlayer.onCompletion = { finishedId -> playNextVoiceAfter(finishedId) }
+
         dismissChatNotification(chatId)
 
         viewModelScope.launch {
@@ -826,6 +828,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch { messageRepo.clearTyping(chatId, currentUserId) }
         }
         voiceRecorder.cancel()
+        app.globalVoicePlayer.onCompletion = null
     }
 
     fun setReplyTo(message: Message?) { _replyTo.value = message }
@@ -1229,6 +1232,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ── Voice playback methods ────────────────────────────────────────────────
+
+    private fun playNextVoiceAfter(messageId: String) {
+        val msgs = _messages.value
+        val idx = msgs.indexOfFirst { it.message.id == messageId }
+        if (idx < 0) return
+        val next = msgs.drop(idx + 1).firstOrNull {
+            it.message.type == "voice" && it.message.fileUrl != null
+        } ?: return
+        playVoice(next.message.id, next.message.fileUrl!!, next.message.duration ?: 0)
+    }
 
     fun playVoice(messageId: String, url: String, durationSec: Int) {
         val item = _messages.value.find { it.message.id == messageId }

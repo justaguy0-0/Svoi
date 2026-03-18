@@ -33,6 +33,9 @@ class GlobalVoicePlayer {
     private var progressJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
+    /** Called when playback finishes naturally (not on stop/pause). messageId of the finished message. */
+    var onCompletion: ((messageId: String) -> Unit)? = null
+
     fun play(messageId: String, url: String, durationSec: Int, title: String) {
         val cur = _state.value
         if (cur?.messageId == messageId) {
@@ -53,7 +56,9 @@ class GlobalVoicePlayer {
                     player.start()
                     startProgressUpdates()
                     player.setOnCompletionListener {
+                        val finishedId = _state.value?.messageId
                         stopInternal()
+                        if (finishedId != null) onCompletion?.invoke(finishedId)
                     }
                 }
             } catch (e: Exception) {
