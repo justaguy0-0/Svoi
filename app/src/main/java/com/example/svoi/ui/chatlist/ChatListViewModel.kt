@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.svoi.SvoiApp
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.TypingStatus
+import com.example.svoi.data.model.Message
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -121,7 +122,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     fun silentRefresh() {
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
-            delay(300) // debounce: ignore rapid-fire events
+            delay(150) // debounce: ignore rapid-fire events
             if (!refreshMutex.tryLock()) return@launch  // loadChats in progress — it will have fresh data
             try {
                 val fresh = chatRepo.getChatsForUser()
@@ -138,9 +139,44 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private fun observeNewMessages() {
         viewModelScope.launch {
             try {
-                messageRepo.messageInsertFlowAll().collect { silentRefresh() }
+                messageRepo.messageInsertFlowAll().collect { msg ->
+                    // Instant optimistic update — no network round-trip
+                    applyNewMessageOptimistic(msg)
+                    // Background full refresh for accurate unread counts, etc.
+                    silentRefresh()
+                }
             } catch (_: Exception) {}
         }
+    }
+
+    private fun applyNewMessageOptimistic(msg: Message) {
+        val current = _chats.value
+        if (current.isEmpty()) return
+        val chatId = msg.chatId
+        val existing = current.find { it.chatId == chatId } ?: return
+
+        val myId = currentUserId
+        val isOwn = msg.senderId == myId
+        val senderPrefix = if (existing.isGroup) {
+            if (isOwn) "Вы: " else ""  // full name will come from silentRefresh
+        } else ""
+
+        val lastText = when (msg.type) {
+            "photo" -> "${senderPrefix}📷 Фото"
+            "album" -> "${senderPrefix}📷 ${msg.photoUrls?.size ?: 0} фото"
+            "video" -> "${senderPrefix}🎥 ${msg.fileName ?: "Видео"}"
+            "file" -> "${senderPrefix}📎 ${msg.fileName ?: "Файл"}"
+            "voice" -> "${senderPrefix}🎤 Голосовое сообщение"
+            else -> "$senderPrefix${msg.content ?: ""}"
+        }
+
+        val updated = existing.copy(
+            lastMessageText = lastText,
+            lastMessageTime = msg.createdAt ?: existing.lastMessageTime,
+            unreadCount = if (isOwn) existing.unreadCount else existing.unreadCount + 1
+        )
+        // Move chat to top
+        _chats.value = listOf(updated) + current.filter { it.chatId != chatId }
     }
 
     // Refresh when someone reads messages (unread badge update)

@@ -4,6 +4,8 @@ import com.example.svoi.data.model.Chat
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.ChatMember
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
@@ -57,78 +59,84 @@ class ChatRepository(private val supabase: SupabaseClient) {
         if (memberships.isEmpty()) return emptyList()
         val chatIds = memberships.map { it.chatId }
 
-        // 2. Get chat details
-        val chats = try {
-            supabase.from("chats")
-                .select { filter { isIn("id", chatIds) } }
-                .decodeList<Chat>()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e("ChatRepo", "getChatsForUser: failed to load chats", e)
-            return emptyList()
+        // Parallel fetch: chats, members, and messages are independent
+        val (chats, allMembers, allMessages) = coroutineScope {
+            val chatsDeferred = async {
+                try {
+                    supabase.from("chats")
+                        .select { filter { isIn("id", chatIds) } }
+                        .decodeList<Chat>()
+                } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                    Log.e("ChatRepo", "getChatsForUser: failed to load chats", e)
+                    emptyList()
+                }
+            }
+            val membersDeferred = async {
+                try {
+                    supabase.from("chat_members")
+                        .select { filter { isIn("chat_id", chatIds) } }
+                        .decodeList<ChatMember>()
+                } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                    Log.e("ChatRepo", "getChatsForUser: failed to load allMembers", e)
+                    emptyList()
+                }
+            }
+            val messagesDeferred = async {
+                try {
+                    supabase.from("messages")
+                        .select {
+                            filter { isIn("chat_id", chatIds); eq("deleted_for_all", false) }
+                            order("created_at", Order.DESCENDING)
+                        }
+                        .decodeList<Message>()
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
+            }
+            Triple(chatsDeferred.await(), membersDeferred.await(), messagesDeferred.await())
         }
 
         Log.d("ChatRepo", "getChatsForUser: found ${chats.size} chats")
 
-        // 3. Get all chat members for personal chats (to find the other user)
-        val allMembers = try {
-            supabase.from("chat_members")
-                .select { filter { isIn("chat_id", chatIds) } }
-                .decodeList<ChatMember>()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e("ChatRepo", "getChatsForUser: failed to load allMembers", e)
-            emptyList()
-        }
-
-        // 4. Get profiles of other users in personal chats
         val otherUserIds = allMembers
             .filter { it.userId != userId }
             .map { it.userId }
             .distinct()
-        val profiles = try {
-            if (otherUserIds.isEmpty()) emptyList()
-            else supabase.from("profiles")
-                .select { filter { isIn("id", otherUserIds) } }
-                .decodeList<Profile>()
-        } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() }
-        val profileMap = profiles.associateBy { it.id }
 
-        // 4b. Get online presence for other users
-        val presenceMap: Map<String, UserPresence> = try {
-            if (otherUserIds.isEmpty()) emptyMap()
-            else supabase.from("user_presence_view")
-                .select { filter { isIn("user_id", otherUserIds) } }
-                .decodeList<UserPresence>()
-                .associateBy { it.userId }
-        } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap() }
-
-        // 5+6 combined: single query replaces N per-chat queries + separate allOtherMessages query
-        val allMessages = try {
-            supabase.from("messages")
-                .select {
-                    filter { isIn("chat_id", chatIds); eq("deleted_for_all", false) }
-                    order("created_at", Order.DESCENDING)
-                }
-                .decodeList<Message>()
-        } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
-
+        // Parallel fetch: profiles, presence, and read receipts are independent
         val lastMessages: Map<String, Message> = allMessages
             .groupBy { it.chatId }
             .mapValues { (_, msgs) -> msgs.first() }
-
         val allOtherMessages = allMessages.filter { it.senderId != userId }
-
         val allOtherIds = allOtherMessages.map { it.id }
-        val readMessageIds: Set<String> = if (allOtherIds.isEmpty()) emptySet() else {
-            try {
-                supabase.from("message_reads")
-                    .select { filter { isIn("message_id", allOtherIds); eq("user_id", userId) } }
-                    .decodeList<com.example.svoi.data.model.MessageRead>()
-                    .map { it.messageId }.toSet()
-            } catch (e: CancellationException) { throw e } catch (_: Exception) { emptySet() }
+
+        val (profileMap, presenceMap, readMessageIds) = coroutineScope {
+            val profilesDeferred = async {
+                try {
+                    if (otherUserIds.isEmpty()) emptyMap()
+                    else supabase.from("profiles")
+                        .select { filter { isIn("id", otherUserIds) } }
+                        .decodeList<Profile>()
+                        .associateBy { it.id }
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap() }
+            }
+            val presenceDeferred = async {
+                try {
+                    if (otherUserIds.isEmpty()) emptyMap()
+                    else supabase.from("user_presence_view")
+                        .select { filter { isIn("user_id", otherUserIds) } }
+                        .decodeList<UserPresence>()
+                        .associateBy { it.userId }
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap() }
+            }
+            val readsDeferred = async {
+                if (allOtherIds.isEmpty()) emptySet()
+                else try {
+                    supabase.from("message_reads")
+                        .select { filter { isIn("message_id", allOtherIds); eq("user_id", userId) } }
+                        .decodeList<com.example.svoi.data.model.MessageRead>()
+                        .map { it.messageId }.toSet()
+                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptySet() }
+            }
+            Triple(profilesDeferred.await(), presenceDeferred.await(), readsDeferred.await())
         }
 
         val unreadCounts: Map<String, Int> = allOtherMessages
