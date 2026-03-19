@@ -7,6 +7,7 @@ import com.example.svoi.SvoiApp
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.TypingStatus
 import com.example.svoi.data.model.Message
+import com.example.svoi.data.model.isTrulyOnline
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -213,11 +214,20 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Refresh when any user's presence changes (online dot update)
+    // Update online indicator in-memory when presence changes — no server roundtrip.
+    // Previously called silentRefresh() here, which fired getChatsForUser every ~1.5s
+    // (two users × 3s heartbeat = one presence event per 1.5s).
     private fun observePresenceUpdates() {
         viewModelScope.launch {
             try {
-                userRepo.presenceUpdateFlowAll().collect { silentRefresh() }
+                userRepo.presenceUpdateFlowAll().collect { presence ->
+                    val online = presence.isTrulyOnline()
+                    _chats.value = _chats.value.map { chat ->
+                        if (!chat.isGroup && chat.otherUserId == presence.userId)
+                            chat.copy(isOtherOnline = online)
+                        else chat
+                    }
+                }
             } catch (_: Exception) {}
         }
     }
