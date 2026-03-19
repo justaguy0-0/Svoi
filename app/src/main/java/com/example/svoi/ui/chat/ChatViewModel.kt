@@ -342,6 +342,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 Log.d("ChatVM", "init: currentUserId after retry = '$currentUserId'")
             }
+            // Fallback: if Supabase is blocked, session import may have timed out leaving
+            // currentUserId empty. In that case read the stable UUID from the cached profile.
+            // Profile.id never changes — safe to use as a fallback for isOwn comparisons.
+            if (currentUserId.isEmpty()) {
+                currentUserId = cache.loadOwnProfile()?.id ?: ""
+                Log.w("ChatVM", "init: currentUserId fallback from cache = '$currentUserId'")
+            }
             val cachedInfo     = cache.loadChatInfo(chatId)
             val cachedMessages = cache.loadMessages(chatId)
             val cachedProfiles = cache.loadProfileMap()
@@ -380,8 +387,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             val hasCache = !cachedMessages.isNullOrEmpty()
 
-            // Early exit: if definitely offline and cache available — show immediately
-            if (!isOnline.value && hasCache) {
+            // Early exit: if offline OR Supabase is blocked (internet up but service blocked)
+            // — show cache immediately without waiting for server timeout
+            val supabaseBlocked = !app.supabaseChecker.isReachable.value
+            if ((!isOnline.value || supabaseBlocked) && hasCache) {
                 revealFromCache()
             }
 

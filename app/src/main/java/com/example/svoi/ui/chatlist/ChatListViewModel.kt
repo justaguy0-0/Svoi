@@ -56,12 +56,25 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private var loadJob: Job? = null
 
     init {
-        // Watch for going offline so we show "Обновление..." when reconnecting
+        // Watch for going offline so we show "Обновление..." when reconnecting.
+        // On reconnect, also wait for Supabase to become reachable before fetching.
         viewModelScope.launch {
             isOnline.collect { online ->
                 if (!online) wasOffline = true
                 else if (wasOffline) {
-                    // Just came back online — do a visible refresh
+                    wasOffline = false
+                    // Probe Supabase — only reload if it's actually reachable
+                    val reachable = app.supabaseChecker.checkNow(force = true)
+                    if (reachable) loadChats(showUpdating = true)
+                    // If still blocked: cache is already shown; isReachable observer below
+                    // will trigger loadChats once connectivity is fully restored
+                }
+            }
+        }
+        // Reload automatically when Supabase transitions from blocked → reachable
+        viewModelScope.launch {
+            app.supabaseChecker.isReachable.collect { reachable ->
+                if (reachable && wasOffline) {
                     wasOffline = false
                     loadChats(showUpdating = true)
                 }
@@ -103,7 +116,16 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             val animate = showUpdating && (initialLoad || _chats.value.isEmpty())
             if (animate) _isUpdating.value = true
 
-            // 3. Fetch fresh from server — mutex ensures no parallel fetch overwrites this
+            // 3. Guard: skip server fetch if Supabase is blocked (internet up but service blocked)
+            val supabaseReachable = app.supabaseChecker.checkNow()
+            if (!supabaseReachable) {
+                initialLoad = false
+                _isUpdating.value = false
+                _isLoading.value = false
+                return@launch
+            }
+
+            // 4. Fetch fresh from server — mutex ensures no parallel fetch overwrites this
             refreshMutex.withLock {
                 val fresh = chatRepo.getChatsForUser()
                 if (fresh.isNotEmpty()) {
@@ -118,11 +140,12 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Debounced silent refresh — skips if a full loadChats() is already running
+    // Debounced silent refresh — skips if a full loadChats() is already running or Supabase blocked
     fun silentRefresh() {
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
             delay(150) // debounce: ignore rapid-fire events
+            if (!app.supabaseChecker.isReachable.value) return@launch
             if (!refreshMutex.tryLock()) return@launch  // loadChats in progress — it will have fresh data
             try {
                 val fresh = chatRepo.getChatsForUser()

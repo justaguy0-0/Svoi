@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.emoji2.bundled.BundledEmojiCompatConfig
 import androidx.emoji2.text.EmojiCompat
 import com.example.svoi.data.NetworkMonitor
+import com.example.svoi.data.SupabaseReachabilityChecker
 import com.example.svoi.data.local.CacheManager
 import com.example.svoi.data.local.EncryptedPrefsManager
 import com.example.svoi.data.local.ThemeManager
@@ -57,6 +58,28 @@ class SvoiApp : Application() {
                 }
             }
         }
+
+        // Watch OS connectivity → probe Supabase reachability immediately on reconnect.
+        // Also runs a periodic re-probe every 60 seconds while online.
+        heartbeatScope.launch {
+            var isCurrentlyOnline = false
+            networkMonitor.isOnline.collect { online ->
+                if (!online) {
+                    isCurrentlyOnline = false
+                    supabaseChecker.markOffline()
+                } else if (!isCurrentlyOnline) {
+                    // Just came online — probe immediately
+                    isCurrentlyOnline = true
+                    supabaseChecker.checkNow(force = true)
+                }
+            }
+        }
+        heartbeatScope.launch {
+            while (true) {
+                delay(60_000L)
+                supabaseChecker.checkNow()
+            }
+        }
     }
 
     val supabase by lazy {
@@ -74,6 +97,9 @@ class SvoiApp : Application() {
     val prefs by lazy { EncryptedPrefsManager(this) }
     val cacheManager by lazy { CacheManager(this) }
     val networkMonitor by lazy { NetworkMonitor(this) }
+    val supabaseChecker by lazy {
+        SupabaseReachabilityChecker(BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY)
+    }
     val themeManager by lazy { ThemeManager(this) }
 
     val authRepository by lazy { AuthRepository(supabase, prefs) }
