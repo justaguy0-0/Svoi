@@ -31,10 +31,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class TypingInfo(val userId: String, val displayName: String, val status: String = "typing")
 data class StagedMedia(val uri: Uri, val isVideo: Boolean)
@@ -208,6 +211,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // ── Open Graph preview cache ───────────────────────────────────────────────
     val ogCache = mutableStateMapOf<String, OgData>()
     private val ogAttempted = mutableSetOf<String>()
+    // Same pattern as URL_REGEX in ChatScreen — used to pre-fetch OG during loading
+    private val urlRegex = Regex(
+        "(https?://[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+|www\\.[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+)"
+    )
 
     fun ensureOgFetched(url: String) {
         if (url in ogAttempted) return
@@ -215,6 +222,39 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val data = fetchOgData(url)
             if (data != null) withContext(Dispatchers.Main) { ogCache[url] = data }
+        }
+    }
+
+    /**
+     * Pre-fetches OG data for all text messages with links, in parallel, during the invisible
+     * loading phase (while the spinner is shown). This prevents layout shifts after the chat
+     * appears — by the time the spinner hides, OG cards are already ready.
+     *
+     * Max wait: 4 seconds. If some sites don't respond in time, they'll load lazily as usual
+     * (via LaunchedEffect in the Compose tree). Already-attempted URLs are skipped.
+     */
+    private suspend fun prefetchOgForMessages(messages: List<Message>) {
+        if (!isOnline.value) return
+        val urls = messages
+            .filter { it.type == "text" || it.type == null }
+            .mapNotNull { msg -> msg.content?.let { urlRegex.find(it)?.value } }
+            .distinct()
+            .filter { it !in ogAttempted }
+        if (urls.isEmpty()) return
+
+        // Mark as attempted on main thread to prevent duplicate fetches from LaunchedEffect
+        withContext(Dispatchers.Main) { urls.forEach { ogAttempted.add(it) } }
+
+        // Fetch in parallel, cap total wait to 4 seconds so slow sites don't delay chat reveal
+        withTimeoutOrNull(4_000L) {
+            coroutineScope {
+                urls.map { url ->
+                    async(Dispatchers.IO) {
+                        val data = fetchOgData(url)
+                        if (data != null) withContext(Dispatchers.Main) { ogCache[url] = data }
+                    }
+                }.forEach { it.await() }
+            }
         }
     }
 
@@ -606,6 +646,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         lastKnownMessageId = newLastId
         if (scrollAfter) _scrollToBottomEvent.value++
+
+        // Pre-fetch OG data during the invisible loading phase so cards are ready on reveal
+        prefetchOgForMessages(raw)
 
         cache.saveMessages(chatId, raw)
         cache.saveProfiles(profileCache.values)
