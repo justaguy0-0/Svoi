@@ -142,12 +142,22 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { null }
     }
 
-    suspend fun sendTextMessage(chatId: String, content: String, replyToId: String? = null, silent: Boolean = false): Boolean {
-        val userId = currentUserId()
+    /**
+     * [senderId] must be provided explicitly by the caller (e.g. from ChatViewModel.currentUserId)
+     * so that RLS condition `auth.uid() = sender_id` is satisfied even during the brief window
+     * when the Supabase SDK has loaded the JWT token but currentUserOrNull() still returns null.
+     */
+    suspend fun sendTextMessage(
+        chatId: String,
+        senderId: String,
+        content: String,
+        replyToId: String? = null,
+        silent: Boolean = false
+    ): Boolean {
         return try {
             supabase.from("messages").insert(
                 TextMessageInsert(
-                    chatId = chatId, senderId = userId, content = content,
+                    chatId = chatId, senderId = senderId, content = content,
                     type = "text", replyToId = replyToId, silent = silent
                 )
             )

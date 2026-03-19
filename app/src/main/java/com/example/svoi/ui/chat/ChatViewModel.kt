@@ -1081,7 +1081,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             messageRepo.clearTyping(chatId, currentUserId)
             typingJob?.cancel()
 
-            val sent = messageRepo.sendTextMessage(chatId, trimmed, replyId, silent)
+            val sent = messageRepo.sendTextMessage(chatId, currentUserId, trimmed, replyId, silent)
             if (sent) {
                 // Remove pending — realtime will deliver the confirmed message
                 _messages.value = _messages.value.filter { it.message.id != localId }
@@ -1109,7 +1109,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (it.message.id == localId) it.copy(isPending = true, isFailed = false) else it
         }
         viewModelScope.launch {
-            val sent = messageRepo.sendTextMessage(chatId, outbox.content, outbox.replyToId, outbox.silent)
+            val sent = messageRepo.sendTextMessage(chatId, outbox.senderId, outbox.content, outbox.replyToId, outbox.silent)
             if (sent) {
                 app.outboxManager.remove(localId)
                 _messages.value = _messages.value.filter { it.message.id != localId }
@@ -1141,7 +1141,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     if (it.message.id == outbox.localId) it.copy(isPending = true, isFailed = false) else it
                 }
                 val sent = messageRepo.sendTextMessage(
-                    chatId, outbox.content, outbox.replyToId, outbox.silent
+                    chatId, outbox.senderId, outbox.content, outbox.replyToId, outbox.silent
                 )
                 if (sent) {
                     app.outboxManager.remove(outbox.localId)
