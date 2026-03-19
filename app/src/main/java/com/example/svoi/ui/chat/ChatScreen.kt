@@ -864,15 +864,28 @@ fun ChatScreen(
                 }
 
                 // Scroll to bottom button
-                // Используем debounce 150мс на появление: при добавлении нового сообщения
-                // canScrollForward на долю кадра становится true — без debounce кнопка мигает.
-                // Скрывается мгновенно, чтобы не оставалась при возврате на низ.
-                val rawCanScrollForward by remember { derivedStateOf { listState.canScrollForward } }
+                // Показываем кнопку только если прокручено более ~200dp от конца списка.
+                // Это убирает: (1) мигание при новом сообщении, (2) кнопку когда автоскролл
+                // недобирает пару пикселей до конца.
+                val density = LocalDensity.current
+                val scrollHideThresholdPx = with(density) { 200.dp.toPx() }
+                val rawCanScrollFar by remember(scrollHideThresholdPx) {
+                    derivedStateOf {
+                        if (!listState.canScrollForward) return@derivedStateOf false
+                        val info = listState.layoutInfo
+                        val lastVisible = info.visibleItemsInfo.lastOrNull()
+                            ?: return@derivedStateOf false
+                        val lastIndex = info.totalItemsCount - 1
+                        if (lastVisible.index < lastIndex) return@derivedStateOf true
+                        // Последний элемент частично за нижней границей вьюпорта
+                        (lastVisible.offset + lastVisible.size) - info.viewportEndOffset > scrollHideThresholdPx
+                    }
+                }
                 var showScrollToBottom by remember { mutableStateOf(false) }
-                LaunchedEffect(rawCanScrollForward) {
-                    if (rawCanScrollForward) {
-                        delay(150)
-                        if (listState.canScrollForward) showScrollToBottom = true
+                LaunchedEffect(rawCanScrollFar) {
+                    if (rawCanScrollFar) {
+                        delay(100) // пропускаем кратковременные layout-фреймы
+                        showScrollToBottom = true
                     } else {
                         showScrollToBottom = false
                     }
