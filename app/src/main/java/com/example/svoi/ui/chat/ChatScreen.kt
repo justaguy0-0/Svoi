@@ -864,7 +864,19 @@ fun ChatScreen(
                 }
 
                 // Scroll to bottom button
-                val showScrollToBottom by remember { derivedStateOf { listState.canScrollForward } }
+                // Используем debounce 150мс на появление: при добавлении нового сообщения
+                // canScrollForward на долю кадра становится true — без debounce кнопка мигает.
+                // Скрывается мгновенно, чтобы не оставалась при возврате на низ.
+                val rawCanScrollForward by remember { derivedStateOf { listState.canScrollForward } }
+                var showScrollToBottom by remember { mutableStateOf(false) }
+                LaunchedEffect(rawCanScrollForward) {
+                    if (rawCanScrollForward) {
+                        delay(150)
+                        if (listState.canScrollForward) showScrollToBottom = true
+                    } else {
+                        showScrollToBottom = false
+                    }
+                }
                 // Входящие сообщения, которые ещё не помечены прочитанными.
                 // Используем реальные read receipts, а не позиционный счётчик.
                 val unreadBadgeCount = messages.count { !it.isOwn && it.message.id !in myReadMessageIds }
