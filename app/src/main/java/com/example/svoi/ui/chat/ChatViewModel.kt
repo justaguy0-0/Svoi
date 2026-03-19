@@ -722,10 +722,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Called by ChatScreen when user reaches the bottom — clears the unread badge */
     fun markAsRead() {
-        _lastSeenMsgCount.value = _messages.value.size
         val incomingIds = _messages.value.filter { !it.isOwn }.map { it.message.id }.toSet()
+        val hasNewToMark = incomingIds.any { it !in _myReadMessageIds.value }
+        _lastSeenMsgCount.value = _messages.value.size
         _myReadMessageIds.value = incomingIds
-        sendReadReceipts()
+        if (hasNewToMark) sendReadReceipts()
     }
 
     private suspend fun loadPinnedMessage() {
