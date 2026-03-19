@@ -838,7 +838,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // Dedup: skip if already loaded (can happen during the brief window
                 // between loadMessages() completing and the Realtime subscription activating)
                 if (_messages.value.any { it.message.id == newMsg.id }) return@collect
-                val updated = _messages.value + item
+
+                // If this is our own message, try to replace a pending placeholder instead of
+                // appending — avoids the flash where the message disappears then reappears.
+                val pendingIdx = if (newMsg.senderId == currentUserId) {
+                    _messages.value.indexOfFirst { existing ->
+                        existing.message.id.startsWith("pending_") &&
+                            !existing.isFailed &&
+                            existing.message.content == newMsg.content &&
+                            existing.message.replyToId == newMsg.replyToId
+                    }
+                } else -1
+
+                val updated = if (pendingIdx >= 0) {
+                    _messages.value.toMutableList().also { it[pendingIdx] = item }
+                } else {
+                    _messages.value + item
+                }
                 _messages.value = updated
                 lastKnownMessageId = newMsg.id
                 // Скролл вниз управляется из ChatScreen: только если пользователь уже внизу
@@ -1083,8 +1099,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             val sent = messageRepo.sendTextMessage(chatId, currentUserId, trimmed, replyId, silent)
             if (sent) {
-                // Remove pending — realtime will deliver the confirmed message
-                _messages.value = _messages.value.filter { it.message.id != localId }
+                // Keep the pending item visible but remove the spinner — realtime will replace it
+                // with the real message. This avoids the flash (disappear → reappear).
+                _messages.value = _messages.value.map {
+                    if (it.message.id == localId) it.copy(isPending = false) else it
+                }
             } else {
                 // Mark as failed and save to persistent outbox for later retry
                 _messages.value = _messages.value.map {
