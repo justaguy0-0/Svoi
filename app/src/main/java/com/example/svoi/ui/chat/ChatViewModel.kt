@@ -649,11 +649,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         lastKnownMessageId = newLastId
         if (scrollAfter) _scrollToBottomEvent.value++
 
-        // Pre-fetch OG data during the invisible loading phase so cards are ready on reveal
-        prefetchOgForMessages(raw)
-
+        // Save immediately — don't wait for OG prefetch
         cache.saveMessages(chatId, raw)
         cache.saveProfiles(profileCache.values)
+
+        // Pre-fetch OG data in background — must NOT block loadMessages() return,
+        // otherwise the 2.5s fallback fires and revealFromCache() resets _firstUnreadIndex=-1
+        // before serverJob completes, breaking the unread scroll logic.
+        viewModelScope.launch { prefetchOgForMessages(raw) }
     }
 
     private suspend fun enrichMessages(raw: List<Message>): List<MessageUiItem> {
