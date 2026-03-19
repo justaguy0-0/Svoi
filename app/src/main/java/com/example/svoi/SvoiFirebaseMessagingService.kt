@@ -9,8 +9,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
-import android.media.AudioAttributes
-import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -22,9 +20,7 @@ import kotlinx.coroutines.launch
 class SvoiFirebaseMessagingService : FirebaseMessagingService() {
 
     companion object {
-        // v2: new channel ID forces recreation with custom notification sound.
-        // Android does not allow changing the sound of an already-created channel.
-        const val CHANNEL_ID = "svoi_messages_v2"
+        const val CHANNEL_ID = "svoi_messages"
         const val GROUP_KEY = "com.example.svoi.MESSAGES"
         const val SUMMARY_ID = 0
         private const val PRIMARY_COLOR = 0xFF1E88E5.toInt()
@@ -76,19 +72,11 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
         val notificationManager = getSystemService(NotificationManager::class.java)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val soundUri = Uri.parse(
-                "android.resource://${packageName}/${R.raw.notification_sound}"
-            )
-            val audioAttrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
             val channel = NotificationChannel(
                 CHANNEL_ID, "Сообщения", NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Уведомления о новых сообщениях"
                 enableVibration(true)
-                setSound(soundUri, audioAttrs)
             }
             notificationManager.createNotificationChannel(channel)
         }
