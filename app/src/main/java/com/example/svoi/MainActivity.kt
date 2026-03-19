@@ -82,11 +82,15 @@ class MainActivity : ComponentActivity() {
                 val chatId by pendingChatId
                 val currentBackStackEntry by navController.currentBackStackEntryAsState()
                 LaunchedEffect(currentBackStackEntry?.destination?.route, chatId) {
-                    val currentRoute = currentBackStackEntry?.destination?.route
-                    if (currentRoute == Routes.CHAT_LIST && chatId != null) {
-                        navController.navigate(Routes.chat(chatId!!))
-                        pendingChatId.value = null
+                    val currentRoute = currentBackStackEntry?.destination?.route ?: return@LaunchedEffect
+                    val targetChatId = chatId ?: return@LaunchedEffect
+                    // Already in the exact target chat — no navigation needed (Realtime handles updates)
+                    val currentChatId = currentBackStackEntry?.arguments?.getString("chatId")
+                    val alreadyThere = currentRoute == Routes.CHAT && currentChatId == targetChatId
+                    if (!alreadyThere) {
+                        navController.navigate(Routes.chat(targetChatId))
                     }
+                    pendingChatId.value = null
                 }
 
                 startDestination?.let { start ->

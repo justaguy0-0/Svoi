@@ -802,6 +802,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     replyToSenderProfile = replyMsg?.senderId?.let { profileCache[it] },
                     forwardedFromProfile = forwardedFromProfile
                 )
+                // Dedup: skip if already loaded (can happen during the brief window
+                // between loadMessages() completing and the Realtime subscription activating)
+                if (_messages.value.any { it.message.id == newMsg.id }) return@collect
                 val updated = _messages.value + item
                 _messages.value = updated
                 lastKnownMessageId = newMsg.id
