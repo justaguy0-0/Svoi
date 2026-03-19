@@ -471,6 +471,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     // loadMessages() already updated _messages via smart merge
                     val idx = _firstUnreadIndex.value
                     _lastSeenMsgCount.value = if (idx >= 0) idx else _messages.value.size
+                    // Scroll to show unread messages that arrived from server after cache was shown
+                    if (idx >= 0) _scrollToBottomEvent.value++
                 }
             }
 
