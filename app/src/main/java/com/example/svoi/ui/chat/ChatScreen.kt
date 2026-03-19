@@ -754,7 +754,7 @@ fun ChatScreen(
                             displayEntries,
                             key = { entry ->
                                 when (entry) {
-                                    is ChatEntry.Msg -> entry.item.message.id
+                                    is ChatEntry.Msg -> entry.item.stableKey
                                     is ChatEntry.DateDivider -> "date_${entry.triggerMsgId}"
                                     ChatEntry.UnreadDivider -> "unread_divider"
                                 }

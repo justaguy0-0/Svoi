@@ -80,6 +80,12 @@ data class MessageUiItem(
     val senderProfile: Profile?,
     val isOwn: Boolean,
     val isRead: Boolean,
+    /**
+     * Stable key for LazyColumn. Normally equals [message.id], but for pending messages that are
+     * later replaced by a confirmed message the key stays the same (the original localId).
+     * This prevents LazyColumn from treating the replacement as remove+insert and re-animating.
+     */
+    val stableKey: String = message.id,
     /** For own voice messages: true when the recipient has listened.
      *  For received voice messages: true when the current user has listened. */
     val isListened: Boolean = false,

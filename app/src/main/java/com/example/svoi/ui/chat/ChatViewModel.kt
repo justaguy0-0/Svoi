@@ -851,7 +851,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 } else -1
 
                 val updated = if (pendingIdx >= 0) {
-                    _messages.value.toMutableList().also { it[pendingIdx] = item }
+                    // Preserve the pending item's stableKey so LazyColumn sees the same key
+                    // and just recomposes in place — no remove+insert animation.
+                    val pendingKey = _messages.value[pendingIdx].stableKey
+                    _messages.value.toMutableList().also { it[pendingIdx] = item.copy(stableKey = pendingKey) }
                 } else {
                     _messages.value + item
                 }
@@ -859,12 +862,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 lastKnownMessageId = newMsg.id
                 // Скролл вниз управляется из ChatScreen: только если пользователь уже внизу
 
-                // Trigger entrance animation; clean up after it finishes
-                val msgId = newMsg.id
-                _animatingMessageIds.value = _animatingMessageIds.value + msgId
-                viewModelScope.launch {
-                    delay(900L)
-                    _animatingMessageIds.value = _animatingMessageIds.value - msgId
+                // Trigger entrance animation only for truly new messages.
+                // If we replaced a pending placeholder, the item was already visible — skip animation.
+                if (pendingIdx < 0) {
+                    val msgId = newMsg.id
+                    _animatingMessageIds.value = _animatingMessageIds.value + msgId
+                    viewModelScope.launch {
+                        delay(900L)
+                        _animatingMessageIds.value = _animatingMessageIds.value - msgId
+                    }
                 }
 
                 // Не помечаем прочитанным здесь — это делает ChatScreen когда пользователь внизу
