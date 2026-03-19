@@ -86,8 +86,10 @@ data class MessageUiItem(
     val replyToMessage: Message? = null,
     val replyToSenderProfile: Profile? = null,
     val forwardedFromProfile: Profile? = null,
-    /** True while images are still uploading (local-only placeholder) */
+    /** True while the message is being sent (network request in flight) */
     val isPending: Boolean = false,
+    /** True when the send attempt failed — message is saved in OutboxManager for retry */
+    val isFailed: Boolean = false,
     /** Content-URI strings of locally-staged images (used while isPending=true) */
     val pendingLocalUris: List<String> = emptyList(),
     /** Aggregated emoji reactions on this message */

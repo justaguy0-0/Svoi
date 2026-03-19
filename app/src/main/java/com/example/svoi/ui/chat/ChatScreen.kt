@@ -90,6 +90,8 @@ import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.DropdownMenu
@@ -1401,116 +1403,130 @@ fun ChatScreen(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Quick reactions row
-                val quickEmojis = listOf("👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👎")
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    val myReactions = selected.reactions
-                        .filter { it.hasMyReaction }
-                        .map { it.emoji }
-                        .toSet()
-                    quickEmojis.forEach { emoji ->
-                        val isActive = emoji in myReactions
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                    else Color.Transparent
-                                )
-                                .clickable {
-                                    viewModel.toggleReaction(selected.message.id, emoji)
-                                    selectedMessage = null
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(emoji, fontSize = 22.sp)
+                if (selected.isFailed) {
+                    // ── Failed message: only retry / cancel options ────────────
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    BottomSheetAction(Icons.Default.Refresh, "Повторить отправку") {
+                        viewModel.retryFailedMessage(selected.message.id)
+                        selectedMessage = null
+                    }
+                    BottomSheetAction(
+                        Icons.Default.Close, "Отменить отправку",
+                        color = MaterialTheme.colorScheme.error
+                    ) {
+                        viewModel.cancelFailedMessage(selected.message.id)
+                        selectedMessage = null
+                    }
+                } else {
+                    // ── Normal message: reactions + full action set ────────────
+                    val quickEmojis = listOf("👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👎")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        val myReactions = selected.reactions
+                            .filter { it.hasMyReaction }
+                            .map { it.emoji }
+                            .toSet()
+                        quickEmojis.forEach { emoji ->
+                            val isActive = emoji in myReactions
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                        else Color.Transparent
+                                    )
+                                    .clickable {
+                                        viewModel.toggleReaction(selected.message.id, emoji)
+                                        selectedMessage = null
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(emoji, fontSize = 22.sp)
+                            }
                         }
                     }
-                }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-                // Reply
-                BottomSheetAction(Icons.Default.Reply, "Ответить") {
-                    viewModel.setReplyTo(selected.message)
-                    selectedMessage = null
-                }
-
-                // Forward
-                BottomSheetAction(Icons.Default.Share, "Переслать") {
-                    pendingForwardMessageId = selected.message.id
-                    viewModel.loadChatsForForward()
-                    // Ждём полного закрытия шита перед показом диалога,
-                    // иначе touch-up от нажатия сразу закроет диалог.
-                    scope.launch {
-                        sheetState.hide()
-                        selectedMessage = null
-                        showForwardPicker = true
-                    }
-                }
-
-                // Select (enter selection mode)
-                BottomSheetAction(Icons.Default.Check, "Выделить") {
-                    viewModel.toggleSelection(selected.message.id)
-                    selectedMessage = null
-                }
-
-                // Pin / Unpin
-                val isPinned = pinnedMessage?.messageId == selected.message.id
-                BottomSheetAction(
-                    icon = if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                    text = if (isPinned) "Открепить" else "Закрепить"
-                ) {
-                    if (isPinned) viewModel.unpinMessage() else viewModel.pinMessage(selected.message.id)
-                    selectedMessage = null
-                }
-
-                // Copy (text only)
-                if (selected.message.type == "text" && !selected.message.content.isNullOrBlank()) {
-                    BottomSheetAction(Icons.Default.ContentCopy, "Копировать") {
-                        clipboardManager.setText(AnnotatedString(selected.message.content!!))
+                    // Reply
+                    BottomSheetAction(Icons.Default.Reply, "Ответить") {
+                        viewModel.setReplyTo(selected.message)
                         selectedMessage = null
                     }
-                }
 
-                // Edit (own, text, < 24h)
-                if (selected.isOwn && selected.message.type == "text") {
-                    val canEdit = runCatching {
-                        val msgTime = java.time.Instant.parse(selected.message.createdAt ?: "")
-                        java.time.Instant.now().epochSecond - msgTime.epochSecond < 86400
-                    }.getOrDefault(false)
-                    if (canEdit) {
-                        BottomSheetAction(Icons.Default.Edit, "Редактировать") {
-                            viewModel.setEditing(selected.message)
+                    // Forward
+                    BottomSheetAction(Icons.Default.Share, "Переслать") {
+                        pendingForwardMessageId = selected.message.id
+                        viewModel.loadChatsForForward()
+                        scope.launch {
+                            sheetState.hide()
+                            selectedMessage = null
+                            showForwardPicker = true
+                        }
+                    }
+
+                    // Select (enter selection mode)
+                    BottomSheetAction(Icons.Default.Check, "Выделить") {
+                        viewModel.toggleSelection(selected.message.id)
+                        selectedMessage = null
+                    }
+
+                    // Pin / Unpin
+                    val isPinned = pinnedMessage?.messageId == selected.message.id
+                    BottomSheetAction(
+                        icon = if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                        text = if (isPinned) "Открепить" else "Закрепить"
+                    ) {
+                        if (isPinned) viewModel.unpinMessage() else viewModel.pinMessage(selected.message.id)
+                        selectedMessage = null
+                    }
+
+                    // Copy (text only)
+                    if (selected.message.type == "text" && !selected.message.content.isNullOrBlank()) {
+                        BottomSheetAction(Icons.Default.ContentCopy, "Копировать") {
+                            clipboardManager.setText(AnnotatedString(selected.message.content!!))
                             selectedMessage = null
                         }
                     }
-                }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    // Edit (own, text, < 24h)
+                    if (selected.isOwn && selected.message.type == "text") {
+                        val canEdit = runCatching {
+                            val msgTime = java.time.Instant.parse(selected.message.createdAt ?: "")
+                            java.time.Instant.now().epochSecond - msgTime.epochSecond < 86400
+                        }.getOrDefault(false)
+                        if (canEdit) {
+                            BottomSheetAction(Icons.Default.Edit, "Редактировать") {
+                                viewModel.setEditing(selected.message)
+                                selectedMessage = null
+                            }
+                        }
+                    }
 
-                // Delete
-                if (selected.isOwn) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    // Delete
+                    if (selected.isOwn) {
+                        BottomSheetAction(
+                            Icons.Default.Delete, "Удалить для всех",
+                            color = MaterialTheme.colorScheme.error
+                        ) {
+                            viewModel.deleteMessage(selected.message.id, true)
+                            selectedMessage = null
+                        }
+                    }
                     BottomSheetAction(
-                        Icons.Default.Delete, "Удалить для всех",
+                        Icons.Default.Delete, "Удалить у себя",
                         color = MaterialTheme.colorScheme.error
                     ) {
-                        viewModel.deleteMessage(selected.message.id, true)
+                        viewModel.deleteMessage(selected.message.id, false)
                         selectedMessage = null
                     }
-                }
-                BottomSheetAction(
-                    Icons.Default.Delete, "Удалить у себя",
-                    color = MaterialTheme.colorScheme.error
-                ) {
-                    viewModel.deleteMessage(selected.message.id, false)
-                    selectedMessage = null
                 }
             }
         }
@@ -2565,12 +2581,22 @@ private fun MessageItem(
                                 color = textColor.copy(0.7f),
                                 fontSize = 10.sp
                             )
-                            if (item.isPending) {
+                            if (item.isPending && !item.isFailed) {
+                                // Sending — spinner
                                 Spacer(Modifier.width(3.dp))
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(12.dp),
                                     strokeWidth = 1.5.dp,
                                     color = textColor.copy(0.7f)
+                                )
+                            } else if (item.isFailed) {
+                                // Failed — red error icon; tap message to retry/cancel
+                                Spacer(Modifier.width(3.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Error,
+                                    contentDescription = "Не отправлено",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(14.dp)
                                 )
                             } else if (item.isOwn) {
                                 Spacer(Modifier.width(3.dp))

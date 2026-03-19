@@ -142,16 +142,17 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { null }
     }
 
-    suspend fun sendTextMessage(chatId: String, content: String, replyToId: String? = null, silent: Boolean = false) {
+    suspend fun sendTextMessage(chatId: String, content: String, replyToId: String? = null, silent: Boolean = false): Boolean {
         val userId = currentUserId()
-        try {
+        return try {
             supabase.from("messages").insert(
                 TextMessageInsert(
                     chatId = chatId, senderId = userId, content = content,
                     type = "text", replyToId = replyToId, silent = silent
                 )
             )
-        } catch (_: Exception) {}
+            true
+        } catch (_: Exception) { false }
     }
 
     suspend fun sendPhotoMessage(chatId: String, fileUrl: String, replyToId: String? = null, content: String? = null, silent: Boolean = false) {

@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.svoi.SvoiApp
 import com.example.svoi.data.local.CacheManager.CachedChatInfo
+import com.example.svoi.data.local.OutboxMessage
 import com.example.svoi.data.model.Chat
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
@@ -491,6 +492,33 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             observeReactions()
             startTypingPolling()
             startChatDeletionWatch()
+
+            // Restore failed messages from persistent outbox (survive app restarts)
+            val failedOutbox = app.outboxManager.getForChat(chatId)
+            if (failedOutbox.isNotEmpty()) {
+                val failedItems = failedOutbox.map { outbox ->
+                    MessageUiItem(
+                        message = Message(
+                            id = outbox.localId, chatId = chatId, senderId = outbox.senderId,
+                            content = outbox.content, type = "text", replyToId = outbox.replyToId,
+                            createdAt = outbox.createdAt, silent = outbox.silent
+                        ),
+                        senderProfile = profileCache[currentUserId],
+                        isOwn = true, isRead = false, isPending = false, isFailed = true
+                    )
+                }
+                _messages.value = _messages.value + failedItems
+            }
+
+            // Flush outbox immediately if online, then watch for network recovery
+            if (isOnline.value) flushOutbox()
+            launch {
+                var wasOnline = isOnline.value
+                isOnline.collect { online ->
+                    if (online && !wasOnline) flushOutbox()
+                    wasOnline = online
+                }
+            }
         }
     }
 
@@ -1021,21 +1049,111 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val replyId = _replyTo.value?.id
         val editing = _editingMessage.value
 
+        // Edit flow: no pending UI, just send
+        if (editing != null) {
+            viewModelScope.launch {
+                messageRepo.clearTyping(chatId, currentUserId)
+                typingJob?.cancel()
+                messageRepo.editMessage(editing.id, content.trim())
+                _editingMessage.value = null
+            }
+            return
+        }
+
+        // New message: add optimistic pending item immediately so the user sees it right away
+        val localId = "pending_${java.util.UUID.randomUUID()}"
+        val now = java.time.Instant.now().toString()
+        val trimmed = content.trim()
+
+        _messages.value = _messages.value + MessageUiItem(
+            message = Message(
+                id = localId, chatId = chatId, senderId = currentUserId,
+                content = trimmed, type = "text", replyToId = replyId,
+                createdAt = now, silent = silent
+            ),
+            senderProfile = profileCache[currentUserId],
+            isOwn = true, isRead = false, isPending = true
+        )
+        _scrollToOwnMessageEvent.value++
+        _replyTo.value = null
+
         viewModelScope.launch {
-            _isSending.value = true
-            // Clear typing indicator immediately on send
             messageRepo.clearTyping(chatId, currentUserId)
             typingJob?.cancel()
 
-            if (editing != null) {
-                messageRepo.editMessage(editing.id, content.trim())
-                _editingMessage.value = null
+            val sent = messageRepo.sendTextMessage(chatId, trimmed, replyId, silent)
+            if (sent) {
+                // Remove pending — realtime will deliver the confirmed message
+                _messages.value = _messages.value.filter { it.message.id != localId }
             } else {
-                _scrollToOwnMessageEvent.value++
-                messageRepo.sendTextMessage(chatId, content.trim(), replyId, silent)
-                _replyTo.value = null
+                // Mark as failed and save to persistent outbox for later retry
+                _messages.value = _messages.value.map {
+                    if (it.message.id == localId) it.copy(isPending = false, isFailed = true) else it
+                }
+                app.outboxManager.add(
+                    OutboxMessage(
+                        localId = localId, chatId = chatId, content = trimmed,
+                        replyToId = replyId, silent = silent, createdAt = now,
+                        senderId = currentUserId
+                    )
+                )
             }
-            _isSending.value = false
+        }
+    }
+
+    /** Retry sending a message that previously failed. */
+    fun retryFailedMessage(localId: String) {
+        val outbox = app.outboxManager.getForChat(chatId).find { it.localId == localId } ?: return
+        // Restore to "sending" state
+        _messages.value = _messages.value.map {
+            if (it.message.id == localId) it.copy(isPending = true, isFailed = false) else it
+        }
+        viewModelScope.launch {
+            val sent = messageRepo.sendTextMessage(chatId, outbox.content, outbox.replyToId, outbox.silent)
+            if (sent) {
+                app.outboxManager.remove(localId)
+                _messages.value = _messages.value.filter { it.message.id != localId }
+            } else {
+                _messages.value = _messages.value.map {
+                    if (it.message.id == localId) it.copy(isPending = false, isFailed = true) else it
+                }
+            }
+        }
+    }
+
+    /** Cancel a failed message — removes it from the outbox and the UI. */
+    fun cancelFailedMessage(localId: String) {
+        app.outboxManager.remove(localId)
+        _messages.value = _messages.value.filter { it.message.id != localId }
+    }
+
+    /**
+     * Try to send all queued messages for this chat, in order.
+     * Called automatically when network is restored.
+     */
+    private fun flushOutbox() {
+        val pending = app.outboxManager.getForChat(chatId)
+        if (pending.isEmpty()) return
+        viewModelScope.launch {
+            for (outbox in pending) {
+                // Show "sending" state in UI
+                _messages.value = _messages.value.map {
+                    if (it.message.id == outbox.localId) it.copy(isPending = true, isFailed = false) else it
+                }
+                val sent = messageRepo.sendTextMessage(
+                    chatId, outbox.content, outbox.replyToId, outbox.silent
+                )
+                if (sent) {
+                    app.outboxManager.remove(outbox.localId)
+                    _messages.value = _messages.value.filter { it.message.id != outbox.localId }
+                } else {
+                    // Still no network — restore failed state and stop trying
+                    _messages.value = _messages.value.map {
+                        if (it.message.id == outbox.localId) it.copy(isPending = false, isFailed = true) else it
+                    }
+                    break
+                }
+            }
         }
     }
 
