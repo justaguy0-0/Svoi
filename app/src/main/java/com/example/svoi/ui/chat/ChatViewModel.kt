@@ -1495,6 +1495,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _hasMoreMessages.value = false
             } else {
                 if (older.size < 30) _hasMoreMessages.value = false
+                // Добавляем ID старых входящих сообщений в "прочитанные" —
+                // при скролле к истории они уже были просмотрены раньше,
+                // поэтому не должны влиять на счётчик непрочитанных на FAB.
+                val olderIncomingIds = older
+                    .filter { it.senderId != currentUserId }
+                    .map { it.id }
+                    .toSet()
+                if (olderIncomingIds.isNotEmpty()) {
+                    _myReadMessageIds.value = _myReadMessageIds.value + olderIncomingIds
+                }
+                // Смещаем firstUnreadIndex: мы prepend'им older.size элементов,
+                // поэтому все существующие индексы сдвигаются вниз.
+                if (_firstUnreadIndex.value >= 0) {
+                    _firstUnreadIndex.value += older.size
+                }
                 _messages.value = enrichMessages(older) + current
             }
             _isLoadingMore.value = false

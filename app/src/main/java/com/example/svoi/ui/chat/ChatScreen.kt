@@ -425,6 +425,10 @@ fun ChatScreen(
     var loadMoreCountBefore by remember { mutableIntStateOf(0) }
     var pendingScrollRestore by remember { mutableStateOf(false) }
 
+    // ID сообщения, к которому нужно доскроллиться после подгрузки истории
+    // (используется когда закреплённое сообщение ещё не загружено)
+    var pendingScrollToId by remember { mutableStateOf<String?>(null) }
+
     // Помечаем прочитанными только когда пользователь САМ оказался у низа
     // (после завершения начального авто-скролла)
     val shouldMarkRead by remember {
@@ -446,9 +450,9 @@ fun ChatScreen(
     }
 
     // Восстанавливаем позицию скролла после того как старые сообщения prepend'нуты вверх.
-    // Срабатывает только если loadMore запущен и size вырос.
+    // Не восстанавливаем если идёт поиск закреплённого сообщения — там свой скролл.
     LaunchedEffect(messages.size) {
-        if (pendingScrollRestore && messages.size > loadMoreCountBefore) {
+        if (pendingScrollRestore && messages.size > loadMoreCountBefore && pendingScrollToId == null) {
             val prepended = messages.size - loadMoreCountBefore
             listState.scrollToItem(
                 index = (loadMoreSavedIndex + prepended).coerceAtLeast(0),
@@ -545,14 +549,50 @@ fun ChatScreen(
         if (last >= 0) listState.animateScrollToItem(last)
     }
 
-    // Scroll to specific message (from pinned banner or system message click)
+    // Scroll to specific message (from pinned banner or system message click).
+    // Если сообщение ещё не загружено — запускаем подгрузку истории.
     LaunchedEffect(scrollToMessageEvent) {
         val targetId = scrollToMessageEvent ?: return@LaunchedEffect
-        val idx = displayEntries.indexOfFirst { it is ChatEntry.Msg && it.item.message.id == targetId }
+        val idx = currentDisplayEntries.indexOfFirst { it is ChatEntry.Msg && it.item.message.id == targetId }
         if (idx >= 0) {
             listState.smoothScrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
+            viewModel.clearScrollToMessageEvent()
+        } else if (hasMoreMessages) {
+            // Сообщение ещё не загружено — ищем через подгрузку истории
+            pendingScrollToId = targetId
+            viewModel.clearScrollToMessageEvent()
+            // Сохраняем позицию и запускаем первую порцию загрузки
+            loadMoreSavedIndex = listState.firstVisibleItemIndex
+            loadMoreSavedOffset = listState.firstVisibleItemScrollOffset
+            loadMoreCountBefore = messages.size
+            pendingScrollRestore = true
+            viewModel.loadMoreMessages()
+        } else {
+            viewModel.clearScrollToMessageEvent()
         }
-        viewModel.clearScrollToMessageEvent()
+    }
+
+    // Продолжаем подгрузку истории пока не найдём нужное сообщение.
+    LaunchedEffect(messages.size, pendingScrollToId) {
+        val targetId = pendingScrollToId ?: return@LaunchedEffect
+        val idx = currentDisplayEntries.indexOfFirst { it is ChatEntry.Msg && it.item.message.id == targetId }
+        if (idx >= 0) {
+            // Нашли — отменяем restore (не нужен) и скроллим к сообщению
+            pendingScrollRestore = false
+            pendingScrollToId = null
+            listState.smoothScrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
+        } else if (!hasMoreMessages) {
+            // История закончилась, сообщение не найдено
+            pendingScrollRestore = false
+            pendingScrollToId = null
+        } else if (!isLoadingMore) {
+            // Ещё не нашли, продолжаем подгружать
+            loadMoreSavedIndex = listState.firstVisibleItemIndex
+            loadMoreSavedOffset = listState.firstVisibleItemScrollOffset
+            loadMoreCountBefore = messages.size
+            pendingScrollRestore = true
+            viewModel.loadMoreMessages()
+        }
     }
 
     LaunchedEffect(editingMessage) {
