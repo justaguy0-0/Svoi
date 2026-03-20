@@ -566,15 +566,18 @@ fun ChatScreen(
     // Финальный скролл к разделителю непрочитанных (или к низу) после загрузки с сервера
     LaunchedEffect(scrollToBottomEvent) {
         if (scrollToBottomEvent == 0) return@LaunchedEffect
-        // Wait until the LazyColumn has actually laid out items
-        snapshotFlow { listState.layoutInfo.totalItemsCount }
-            .first { it > 0 }
-        val entries = currentDisplayEntries
-        val unreadEntryIdx = entries.indexOfFirst { it is ChatEntry.UnreadDivider }
-        val target = if (unreadEntryIdx >= 0) unreadEntryIdx else entries.size - 1
-        if (target >= 0) {
-            val offset = if (unreadEntryIdx >= 0) -(screenHeightPx / 2) else 0
-            listState.scrollToItem(target, scrollOffset = offset)
+        // Empty chat — no items to wait for or scroll to, reveal immediately
+        if (currentDisplayEntries.isNotEmpty()) {
+            // Wait until the LazyColumn has actually laid out items
+            snapshotFlow { listState.layoutInfo.totalItemsCount }
+                .first { it > 0 }
+            val entries = currentDisplayEntries
+            val unreadEntryIdx = entries.indexOfFirst { it is ChatEntry.UnreadDivider }
+            val target = if (unreadEntryIdx >= 0) unreadEntryIdx else entries.size - 1
+            if (target >= 0) {
+                val offset = if (unreadEntryIdx >= 0) -(screenHeightPx / 2) else 0
+                listState.scrollToItem(target, scrollOffset = offset)
+            }
         }
         // Reveal chat after positioning — user sees final state immediately
         chatReady = true
@@ -840,6 +843,14 @@ fun ChatScreen(
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (isLoading || !chatReady) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+                if (!isLoading && chatReady && messages.isEmpty()) {
+                    Text(
+                        text = "Начните общение сегодня",
+                        modifier = Modifier.align(Alignment.Center),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 if (!isLoading) {
                     LazyColumn(
