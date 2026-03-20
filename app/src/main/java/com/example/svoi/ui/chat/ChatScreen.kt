@@ -1093,7 +1093,6 @@ fun ChatScreen(
                         pendingForwardMessageId = null
                         showForwardPicker = true
                     },
-                    onDeleteLocally = { viewModel.deleteSelectedMessages(forEveryone = false) },
                     onDeleteForAll = { viewModel.deleteSelectedMessages(forEveryone = true) },
                     hasOwnMessages = messages.any { it.message.id in selectedMessageIds && it.isOwn }
                 )
@@ -1691,13 +1690,6 @@ fun ChatScreen(
                             selectedMessage = null
                         }
                     }
-                    BottomSheetAction(
-                        Icons.Default.Delete, "Удалить у себя",
-                        color = MaterialTheme.colorScheme.error
-                    ) {
-                        viewModel.deleteMessage(selected.message.id, false)
-                        selectedMessage = null
-                    }
                 }
             }
         }
@@ -1799,7 +1791,6 @@ private fun BottomSheetAction(
 private fun SelectionActionBar(
     selectedCount: Int,
     onForward: () -> Unit,
-    onDeleteLocally: () -> Unit,
     onDeleteForAll: () -> Unit,
     hasOwnMessages: Boolean
 ) {
@@ -1831,23 +1822,6 @@ private fun SelectionActionBar(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text("Переслать", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-            }
-
-            // Delete locally
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .clickable(onClick = onDeleteLocally)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Удалить у себя",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(26.dp)
-                )
-                Spacer(Modifier.height(4.dp))
-                Text("Удалить", style = MaterialTheme.typography.labelSmall)
             }
 
             // Delete for all (only if own messages selected)
