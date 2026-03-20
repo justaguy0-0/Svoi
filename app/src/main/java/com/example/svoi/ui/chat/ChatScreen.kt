@@ -122,6 +122,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -258,6 +259,8 @@ fun ChatScreen(
     val isOnline by viewModel.isOnline.collectAsState()
     val memberCount by viewModel.memberCount.collectAsState()
     val error by viewModel.error.collectAsState()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val hasMoreMessages by viewModel.hasMoreMessages.collectAsState()
     val snapToBottomEvent by viewModel.snapToBottomEvent.collectAsState()
     val scrollToBottomEvent by viewModel.scrollToBottomEvent.collectAsState()
     val scrollToOwnMessageEvent by viewModel.scrollToOwnMessageEvent.collectAsState()
@@ -399,6 +402,10 @@ fun ChatScreen(
         }
     }
 
+    val isNearTop by remember {
+        derivedStateOf { listState.firstVisibleItemIndex <= 2 }
+    }
+
     LaunchedEffect(messages.size) {
         if (messages.isEmpty()) return@LaunchedEffect
         if (isNearBottom) {
@@ -411,6 +418,12 @@ fun ChatScreen(
     // markAsRead() нельзя вызывать до этого момента — иначе авто-скролл к разделителю
     // непрочитанных может оказаться «у дна» и сразу сбросить счётчик.
     var initialScrollDone by remember { mutableStateOf(false) }
+
+    // Переменные для восстановления позиции скролла после prepend старых сообщений
+    var loadMoreSavedIndex by remember { mutableIntStateOf(0) }
+    var loadMoreSavedOffset by remember { mutableIntStateOf(0) }
+    var loadMoreCountBefore by remember { mutableIntStateOf(0) }
+    var pendingScrollRestore by remember { mutableStateOf(false) }
 
     // Помечаем прочитанными только когда пользователь САМ оказался у низа
     // (после завершения начального авто-скролла)
@@ -430,6 +443,31 @@ fun ChatScreen(
         delay(150) // ждём пока LazyColumn пересчитает layout после появления карточки
         val last = currentDisplayEntries.size - 1
         if (last >= 0) listState.animateScrollToItem(last)
+    }
+
+    // Восстанавливаем позицию скролла после того как старые сообщения prepend'нуты вверх.
+    // Срабатывает только если loadMore запущен и size вырос.
+    LaunchedEffect(messages.size) {
+        if (pendingScrollRestore && messages.size > loadMoreCountBefore) {
+            val prepended = messages.size - loadMoreCountBefore
+            listState.scrollToItem(
+                index = (loadMoreSavedIndex + prepended).coerceAtLeast(0),
+                scrollOffset = loadMoreSavedOffset
+            )
+            pendingScrollRestore = false
+        }
+    }
+
+    // Триггер бесконечного скролла вверх: когда пользователь у верха списка,
+    // загружаем следующую порцию старых сообщений.
+    LaunchedEffect(isNearTop) {
+        if (!isNearTop || !initialScrollDone) return@LaunchedEffect
+        if (!hasMoreMessages || isLoadingMore) return@LaunchedEffect
+        loadMoreSavedIndex = listState.firstVisibleItemIndex
+        loadMoreSavedOffset = listState.firstVisibleItemScrollOffset
+        loadMoreCountBefore = messages.size
+        pendingScrollRestore = true
+        viewModel.loadMoreMessages()
     }
 
     // When keyboard opens — scroll to bottom so latest messages are visible.
@@ -764,6 +802,37 @@ fun ChatScreen(
                             .graphicsLayer { alpha = chatAlpha },
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
+                        // Спиннер загрузки истории (вверху списка)
+                        if (isLoadingMore) {
+                            item(key = "loading_more") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .align(Alignment.Center),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                            }
+                        }
+                        // Метка «Начало переписки» когда вся история загружена
+                        if (!hasMoreMessages && !isLoadingMore && messages.isNotEmpty()) {
+                            item(key = "start_of_chat") {
+                                Text(
+                                    text = "Начало переписки",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                         items(
                             displayEntries,
                             key = { entry ->

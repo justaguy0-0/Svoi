@@ -212,6 +212,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // ── Open Graph preview cache ───────────────────────────────────────────────
     val ogCache = mutableStateMapOf<String, OgData>()
     private val ogAttempted = mutableSetOf<String>()
+
+    // ── Pagination state ───────────────────────────────────────────────────────
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore
+
+    private val _hasMoreMessages = MutableStateFlow(true)
+    val hasMoreMessages: StateFlow<Boolean> = _hasMoreMessages
     // Same pattern as URL_REGEX in ChatScreen — used to pre-fetch OG during loading
     private val urlRegex = Regex(
         "(https?://[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+|www\\.[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+)"
@@ -642,6 +649,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun loadMessages(scrollAfter: Boolean = true) {
+        _hasMoreMessages.value = true
         val raw = messageRepo.getMessages(chatId, limit = 50, historyFrom = historyFrom)
         if (raw.isEmpty()) return  // offline — keep cached messages shown
 
@@ -1476,12 +1484,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadMoreMessages() {
+        if (_isLoadingMore.value || !_hasMoreMessages.value) return
         viewModelScope.launch {
+            _isLoadingMore.value = true
             val current = _messages.value
-            val older = messageRepo.getMessages(chatId, limit = 30, offset = current.size, historyFrom = historyFrom)
-            if (older.isNotEmpty()) {
+            val older = messageRepo.getMessages(
+                chatId, limit = 30, offset = current.size, historyFrom = historyFrom
+            )
+            if (older.isEmpty()) {
+                _hasMoreMessages.value = false
+            } else {
+                if (older.size < 30) _hasMoreMessages.value = false
                 _messages.value = enrichMessages(older) + current
             }
+            _isLoadingMore.value = false
         }
     }
 
