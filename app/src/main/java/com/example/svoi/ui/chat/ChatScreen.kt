@@ -421,6 +421,17 @@ fun ChatScreen(
         if (shouldMarkRead) viewModel.markAsRead()
     }
 
+    // Когда загружается OG-превью ссылки, карточка расширяет сообщение «вниз».
+    // Если пользователь был у низа — скроллим вниз вслед за расширением.
+    val ogCacheSize = viewModel.ogCache.size
+    LaunchedEffect(ogCacheSize) {
+        if (ogCacheSize == 0 || !initialScrollDone) return@LaunchedEffect
+        if (!isNearBottom) return@LaunchedEffect
+        delay(150) // ждём пока LazyColumn пересчитает layout после появления карточки
+        val last = currentDisplayEntries.size - 1
+        if (last >= 0) listState.animateScrollToItem(last)
+    }
+
     // When keyboard opens — scroll to bottom so latest messages are visible.
     // rememberUpdatedState wraps IME height in a snapshot-observable State so snapshotFlow
     // can reliably detect every keyboard open event, no matter how many times.
