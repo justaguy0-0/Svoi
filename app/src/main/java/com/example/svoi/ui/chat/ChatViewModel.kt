@@ -393,12 +393,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 Log.d("ChatVM", "init: currentUserId after retry = '$currentUserId'")
             }
-            // Fallback: if Supabase is blocked, session import may have timed out leaving
-            // currentUserId empty. In that case read the stable UUID from the cached profile.
-            // Profile.id never changes — safe to use as a fallback for isOwn comparisons.
+            // Fallback 1: decode userId from the stored JWT token — works fully offline,
+            // no Supabase SDK needed. Handles VPN-blocked session restore where
+            // currentUserOrNull() stays null even though tokens are valid.
+            if (currentUserId.isEmpty()) {
+                currentUserId = app.prefs.getUserIdFromStoredToken() ?: ""
+                if (currentUserId.isNotEmpty())
+                    Log.d("ChatVM", "init: currentUserId from JWT token = '$currentUserId'")
+            }
+            // Fallback 2: cached own profile (only present if user opened profile settings before)
             if (currentUserId.isEmpty()) {
                 currentUserId = cache.loadOwnProfile()?.id ?: ""
-                Log.w("ChatVM", "init: currentUserId fallback from cache = '$currentUserId'")
+                Log.w("ChatVM", "init: currentUserId fallback from profile cache = '$currentUserId'")
             }
             val cachedInfo     = cache.loadChatInfo(chatId)
             val cachedMessages = cache.loadMessages(chatId)

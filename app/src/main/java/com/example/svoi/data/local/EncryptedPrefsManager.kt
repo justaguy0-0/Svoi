@@ -40,6 +40,27 @@ class EncryptedPrefsManager(context: Context) {
 
     fun hasSession(): Boolean = getAccessToken() != null
 
+    /**
+     * Extracts the user UUID from the stored JWT access token without any network call.
+     * JWT payload is base64url-encoded and contains "sub" = user UUID.
+     * Works fully offline — useful as a fallback when the Supabase SDK hasn't loaded
+     * the session into memory yet (e.g. when a VPN blocks the refresh endpoint).
+     */
+    fun getUserIdFromStoredToken(): String? {
+        val token = getAccessToken() ?: return null
+        return try {
+            val parts = token.split(".")
+            if (parts.size < 2) return null
+            var payload = parts[1]
+            payload += "=".repeat((4 - payload.length % 4) % 4)
+            val decoded = android.util.Base64.decode(payload, android.util.Base64.URL_SAFE)
+            val json = String(decoded, Charsets.UTF_8)
+            Regex(""""sub"\s*:\s*"([^"]+)"""").find(json)?.groupValues?.get(1)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     companion object {
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_REFRESH_TOKEN = "refresh_token"
