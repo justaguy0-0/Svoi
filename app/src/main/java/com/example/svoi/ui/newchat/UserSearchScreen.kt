@@ -104,7 +104,7 @@ fun UserSearchScreen(
                 )
             }
 
-            Box(modifier = Modifier.weight(1f)) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     isLoading || isSearching -> {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))

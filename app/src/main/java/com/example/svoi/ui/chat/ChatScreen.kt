@@ -289,6 +289,9 @@ fun ChatScreen(
     var showEmojiPicker by remember { mutableStateOf(false) }
     var isTextFieldFocused by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
+    // Закрываем эмодзи-панель как только система показывает свою клавиатуру
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    LaunchedEffect(imeVisible) { if (imeVisible) showEmojiPicker = false }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
