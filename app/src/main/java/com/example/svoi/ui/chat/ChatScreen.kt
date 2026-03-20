@@ -58,8 +58,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -99,8 +97,6 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -257,7 +253,6 @@ fun ChatScreen(
     val presence by viewModel.otherUserPresence.collectAsState()
     val pinnedMessage by viewModel.pinnedMessage.collectAsState()
     val pinnedContent by viewModel.pinnedMessageContent.collectAsState()
-    val pinnedSenderProfile by viewModel.pinnedSenderProfile.collectAsState()
     val replyTo by viewModel.replyTo.collectAsState()
     val editingMessage by viewModel.editingMessage.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -431,8 +426,9 @@ fun ChatScreen(
     var loadMoreCountBefore by remember { mutableIntStateOf(0) }
     var pendingScrollRestore by remember { mutableStateOf(false) }
 
-    // Overlay для просмотра закреплённого сообщения вне загруженной истории
-    var showPinnedOverlay by remember { mutableStateOf(false) }
+    // Поиск закреплённого сообщения через подгрузку истории
+    var pendingScrollToId by remember { mutableStateOf<String?>(null) }
+    var searchTrigger by remember { mutableIntStateOf(0) }
 
     // Помечаем прочитанными только когда пользователь САМ оказался у низа
     // (после завершения начального авто-скролла)
@@ -455,14 +451,54 @@ fun ChatScreen(
     }
 
     // Восстанавливаем позицию скролла после того как старые сообщения prepend'нуты вверх.
+    // Восстанавливаем позицию только при обычной подгрузке (не при поиске закреплённого).
     LaunchedEffect(messages.size) {
-        if (pendingScrollRestore && messages.size > loadMoreCountBefore) {
+        if (pendingScrollRestore && messages.size > loadMoreCountBefore && pendingScrollToId == null) {
             val prepended = messages.size - loadMoreCountBefore
             listState.scrollToItem(
                 index = (loadMoreSavedIndex + prepended).coerceAtLeast(0),
                 scrollOffset = loadMoreSavedOffset
             )
             pendingScrollRestore = false
+        }
+    }
+
+    // Поиск закреплённого сообщения: грузим историю батчами пока не найдём нужный ID.
+    // Ключ — searchTrigger, а не pendingScrollToId, иначе обнуление pendingScrollToId
+    // отменит coroutine до выполнения smoothScrollToItem.
+    LaunchedEffect(searchTrigger) {
+        val targetId = pendingScrollToId ?: return@LaunchedEffect
+        while (pendingScrollToId == targetId) {
+            val idx = currentDisplayEntries
+                .indexOfFirst { it is ChatEntry.Msg && it.item.message.id == targetId }
+            when {
+                idx >= 0 -> {
+                    // Нашли — сначала сбрасываем состояние, потом скроллим
+                    pendingScrollRestore = false
+                    pendingScrollToId = null
+                    listState.smoothScrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
+                    return@LaunchedEffect
+                }
+                !hasMoreMessages -> {
+                    pendingScrollToId = null
+                    return@LaunchedEffect
+                }
+                !isLoadingMore -> {
+                    // Сохраняем позицию и грузим следующую порцию
+                    loadMoreSavedIndex = listState.firstVisibleItemIndex
+                    loadMoreSavedOffset = listState.firstVisibleItemScrollOffset
+                    loadMoreCountBefore = messages.size
+                    pendingScrollRestore = true
+                    viewModel.loadMoreMessages()
+                    // Ждём пока эта порция загрузится
+                    snapshotFlow { messages.size }.first { it > loadMoreCountBefore }
+                    delay(50) // даём layout пересчитать индексы
+                }
+                else -> {
+                    // Загрузка уже идёт — ждём завершения
+                    snapshotFlow { isLoadingMore }.first { !it }
+                }
+            }
         }
     }
 
@@ -553,15 +589,18 @@ fun ChatScreen(
         if (last >= 0) listState.animateScrollToItem(last)
     }
 
-    // Scroll to specific message (from system message click or reply jump).
-    // Для закреплённого сообщения — логика в clickable баннера.
+    // Scroll to specific message (pinned banner, system message click, reply jump).
+    // Если не загружено — запускает цикл подгрузки истории через searchTrigger.
     LaunchedEffect(scrollToMessageEvent) {
         val targetId = scrollToMessageEvent ?: return@LaunchedEffect
         val idx = currentDisplayEntries.indexOfFirst { it is ChatEntry.Msg && it.item.message.id == targetId }
+        viewModel.clearScrollToMessageEvent()
         if (idx >= 0) {
             listState.smoothScrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
+        } else if (hasMoreMessages) {
+            pendingScrollToId = targetId
+            searchTrigger++
         }
-        viewModel.clearScrollToMessageEvent()
     }
 
     LaunchedEffect(editingMessage) {
@@ -732,16 +771,7 @@ fun ChatScreen(
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    val idx = displayEntries.indexOfFirst {
-                                        it is ChatEntry.Msg && it.item.message.id == pinned.messageId
-                                    }
-                                    if (idx >= 0) {
-                                        viewModel.scrollToMessage(pinned.messageId)
-                                    } else {
-                                        showPinnedOverlay = true
-                                    }
-                                },
+                                .clickable { viewModel.scrollToMessage(pinned.messageId) },
                             color = MaterialTheme.colorScheme.surfaceVariant
                         ) {
                             Row(
@@ -1723,19 +1753,6 @@ fun ChatScreen(
         )
     }
 
-    // Overlay закреплённого сообщения — показывается когда сообщение не загружено в историю
-    if (showPinnedOverlay && pinnedContent != null) {
-        Dialog(
-            onDismissRequest = { showPinnedOverlay = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            PinnedMessageOverlay(
-                message = pinnedContent!!,
-                senderProfile = pinnedSenderProfile,
-                onDismiss = { showPinnedOverlay = false }
-            )
-        }
-    }
 }
 
 // ── Bottom sheet action row ──────────────────────────────────────────────────
@@ -1760,249 +1777,6 @@ private fun BottomSheetAction(
     }
 }
 
-// ── Overlay закреплённого сообщения ───────────────────────────────────────────
-
-@Composable
-private fun PinnedMessageOverlay(
-    message: Message,
-    senderProfile: Profile?,
-    onDismiss: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.55f))
-            .clickable(
-                indication = null,
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-            ) { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth(0.88f)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                ) { /* поглощаем клики чтобы не закрыть при тапе по карточке */ },
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-        ) {
-            Column {
-                // ── Заголовок ─────────────────────────────────────────────────
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.PushPin,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Закреплённое сообщение",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Закрыть",
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                // ── Отправитель ────────────────────────────────────────────────
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (senderProfile != null) {
-                        Avatar(
-                            emoji = senderProfile.emoji,
-                            bgColor = senderProfile.bgColor,
-                            size = 38.dp,
-                            fontSize = 18.sp
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = senderProfile.displayName,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            if (!message.createdAt.isNullOrBlank()) {
-                                Text(
-                                    text = message.createdAt!!.toMessageTime(),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                // ── Содержимое сообщения ───────────────────────────────────────
-                Box(modifier = Modifier.padding(16.dp)) {
-                    when (message.type) {
-                        "photo" -> {
-                            val url = message.photoUrls?.firstOrNull() ?: message.fileUrl
-                            if (url != null) {
-                                SubcomposeAsyncImage(
-                                    model = url,
-                                    contentDescription = "Фото",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(max = 280.dp)
-                                        .clip(RoundedCornerShape(12.dp)),
-                                    contentScale = ContentScale.Fit
-                                ) {
-                                    when (painter.state) {
-                                        is AsyncImagePainter.State.Loading -> Box(
-                                            Modifier.fillMaxWidth().height(180.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) { CircularProgressIndicator(modifier = Modifier.size(32.dp)) }
-                                        is AsyncImagePainter.State.Error -> Box(
-                                            Modifier.fillMaxWidth().height(100.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) { Icon(Icons.Default.BrokenImage, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                                        else -> SubcomposeAsyncImageContent()
-                                    }
-                                }
-                            }
-                        }
-                        "album" -> {
-                            val urls = message.photoUrls.orEmpty()
-                            if (urls.isNotEmpty()) {
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    SubcomposeAsyncImage(
-                                        model = urls.first(),
-                                        contentDescription = "Фото",
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(max = 240.dp)
-                                            .clip(RoundedCornerShape(12.dp)),
-                                        contentScale = ContentScale.Fit
-                                    ) {
-                                        when (painter.state) {
-                                            is AsyncImagePainter.State.Loading -> Box(
-                                                Modifier.fillMaxWidth().height(160.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) { CircularProgressIndicator(modifier = Modifier.size(32.dp)) }
-                                            else -> SubcomposeAsyncImageContent()
-                                        }
-                                    }
-                                    if (urls.size > 1) {
-                                        Text(
-                                            text = "и ещё ${urls.size - 1} фото",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        "voice" -> {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.Hearing,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                val dur = message.duration ?: 0
-                                val mins = dur / 60
-                                val secs = dur % 60
-                                Text(
-                                    text = "Голосовое · %d:%02d".format(mins, secs),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                        }
-                        "video" -> {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Text(
-                                    text = message.fileName ?: "Видео",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                        "file" -> {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.AttachFile,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = message.fileName ?: "Файл",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if ((message.fileSize ?: 0L) > 0L) {
-                                        Text(
-                                            text = message.fileSize!!.toReadableSize(),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        else -> {
-                            // text / system
-                            val text = message.content ?: ""
-                            if (text.isNotBlank()) {
-                                Text(
-                                    text = text,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .verticalScroll(rememberScrollState())
-                                        .heightIn(max = 300.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(4.dp))
-            }
-        }
-    }
-}
 
 // ── Selection action bar ──────────────────────────────────────────────────────
 
