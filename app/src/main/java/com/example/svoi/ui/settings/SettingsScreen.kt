@@ -225,6 +225,17 @@ fun SettingsScreen(
                 onClick = { showClearCacheDialog = true }
             )
 
+            // ── Версия приложения ─────────────────────────────────────────────
+            Text(
+                text = "Свои ${BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 4.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
             Spacer(Modifier.height(16.dp))
         }
     }
