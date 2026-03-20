@@ -228,6 +228,7 @@ import androidx.media3.exoplayer.ExoPlayer
 @Composable
 fun ChatScreen(
     chatId: String,
+    draftUserId: String? = null,
     autoPlayVideos: Boolean = true,
     onBack: () -> Unit,
     onForwardTo: (String) -> Unit,
@@ -235,7 +236,10 @@ fun ChatScreen(
     onGroupInfoClick: (String) -> Unit = {},
     viewModel: ChatViewModel = viewModel()
 ) {
-    LaunchedEffect(chatId) { viewModel.init(chatId) }
+    LaunchedEffect(chatId, draftUserId) {
+        if (draftUserId != null) viewModel.initDraft(draftUserId)
+        else viewModel.init(chatId)
+    }
 
     DisposableEffect(chatId) {
         ActiveChatTracker.activeChatId = chatId

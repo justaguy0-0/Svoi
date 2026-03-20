@@ -44,6 +44,7 @@ import com.example.svoi.ui.components.Avatar
 @Composable
 fun UserSearchScreen(
     onChatOpened: (String) -> Unit,
+    onDraftChat: (String) -> Unit,
     onCreateGroup: () -> Unit,
     onBack: () -> Unit,
     viewModel: NewChatViewModel = viewModel()
@@ -143,7 +144,11 @@ fun UserSearchScreen(
                                 UserItem(
                                     profile = profile,
                                     onClick = {
-                                        viewModel.openPersonalChat(profile.id, onChatOpened)
+                                        viewModel.openPersonalChat(
+                                            userId = profile.id,
+                                            onExisting = { chatId -> onChatOpened(chatId) },
+                                            onDraft = { onDraftChat(profile.id) }
+                                        )
                                     }
                                 )
                                 Divider(

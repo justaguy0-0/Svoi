@@ -195,6 +195,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val animatingMessageIds: StateFlow<Set<String>> = _animatingMessageIds
 
     private var chatId: String = ""
+    private var draftTargetUserId: String? = null
+    private val draftMutex = Mutex()
     private val profileCache = mutableMapOf<String, Profile>()
     private var otherUserIdVal: String? = null
     private val _otherUserId = MutableStateFlow<String?>(null)
@@ -536,6 +538,51 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    }
+
+    /** Called when navigating to a contact who has no chat yet. Loads their profile and shows
+     *  the empty chat UI without creating a DB record. The chat is created on first send. */
+    fun initDraft(targetUserId: String) {
+        if (draftTargetUserId == targetUserId) return
+        draftTargetUserId = targetUserId
+        if (currentUserId.isEmpty()) {
+            currentUserId = authRepo.currentUserId()
+                ?: app.prefs.getUserIdFromStoredToken()
+                ?: ""
+        }
+        viewModelScope.launch {
+            val profile = userRepo.getProfile(targetUserId)
+            if (profile != null) {
+                _chatName.value = profile.displayName
+                profileCache[targetUserId] = profile
+            }
+            _isGroup.value = false
+            _hasMoreMessages.value = false
+            _isLoading.value = false
+            _scrollToBottomEvent.value++
+        }
+    }
+
+    /** Creates the personal chat on the first send. Mutex-protected so concurrent sends
+     *  (e.g. album uploads) only create the chat once; the rest wait and return true. */
+    private suspend fun ensureChatCreated(): Boolean {
+        if (draftTargetUserId == null) return true
+        draftMutex.withLock {
+            if (draftTargetUserId == null) return true // already created by a concurrent send
+            val uid = draftTargetUserId!!
+            val newChatId = chatRepo.createPersonalChat(uid) ?: return false
+            chatId = newChatId
+            draftTargetUserId = null
+            loadChatInfo()
+            observeNewMessages()
+            observeUpdatedMessages()
+            observeReadReceipts()
+            observeVoiceListens()
+            observeReactions()
+            startTypingPolling()
+            startChatDeletionWatch()
+        }
+        return true
     }
 
     /** Poll every 8s to detect group deletion or partner leaving a personal chat */
@@ -1125,6 +1172,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _replyTo.value = null
 
         viewModelScope.launch {
+            if (draftTargetUserId != null && !ensureChatCreated()) {
+                _messages.value = _messages.value.map {
+                    if (it.message.id == localId) it.copy(isPending = false, isFailed = true) else it
+                }
+                return@launch
+            }
             messageRepo.clearTyping(chatId, currentUserId)
             typingJob?.cancel()
 
@@ -1282,6 +1335,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch(Dispatchers.IO) {
                 _isSending.value = true
                 try {
+                    if (draftTargetUserId != null && !ensureChatCreated()) {
+                        _messages.value = _messages.value.filter { it.message.id != pendingId }
+                        _uploadProgresses.value = emptyList()
+                        _error.value = "Не удалось создать чат"
+                        return@launch
+                    }
                     val uploadedUrls = mutableListOf<String>()
                     photos.forEachIndexed { idx, staged ->
                         val bytes = compressImage(staged.uri, context)
@@ -1357,6 +1416,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                if (draftTargetUserId != null && !ensureChatCreated()) {
+                    _messages.value = _messages.value.filter { it.message.id != pendingId }
+                    _error.value = "Не удалось создать чат"
+                    return@launch
+                }
                 val bytes = context.contentResolver.openInputStream(staged.uri)?.readBytes()
                 if (bytes == null) {
                     _messages.value = _messages.value.filter { it.message.id != pendingId }
@@ -1585,6 +1649,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _scrollToOwnMessageEvent.value++
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                if (draftTargetUserId != null && !ensureChatCreated()) {
+                    _messages.value = _messages.value.filter { it.message.id != pendingId }
+                    _error.value = "Не удалось создать чат"
+                    return@launch
+                }
                 val bytes = file.readBytes(); file.delete()
                 val url = messageRepo.uploadFile(chatId, "voice_${System.currentTimeMillis()}.m4a", bytes)
                 if (url != null) {

@@ -70,14 +70,12 @@ class NewChatViewModel(application: Application) : AndroidViewModel(application)
 
     fun isSelected(profileId: String) = _selectedUsers.value.any { it.id == profileId }
 
-    /** Open or create a personal chat with the given user */
-    fun openPersonalChat(userId: String, onOpened: (String) -> Unit) {
+    /** Opens an existing personal chat, or signals that a draft should be opened (no DB write). */
+    fun openPersonalChat(userId: String, onExisting: (String) -> Unit, onDraft: () -> Unit) {
         viewModelScope.launch {
             _isLoading.value = true
             val existing = chatRepo.findPersonalChat(userId)
-            val chatId = existing ?: chatRepo.createPersonalChat(userId)
-            if (chatId != null) onOpened(chatId)
-            else _error.value = "Не удалось открыть чат"
+            if (existing != null) onExisting(existing) else onDraft()
             _isLoading.value = false
         }
     }

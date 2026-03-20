@@ -45,6 +45,7 @@ object Routes {
     const val SETUP_STEP_3 = "setup_step3"
     const val CHAT_LIST = "chat_list"
     const val CHAT = "chat/{chatId}"
+    const val CHAT_NEW = "chat_new/{userId}"
     const val USER_SEARCH = "user_search"
     const val CREATE_GROUP = "create_group"
     const val PROFILE = "profile"
@@ -54,6 +55,7 @@ object Routes {
 
     fun setupStep1(inviteKey: String) = "setup_step1/$inviteKey"
     fun chat(chatId: String) = "chat/$chatId"
+    fun chatNew(userId: String) = "chat_new/$userId"
     fun userProfile(userId: String) = "user_profile/$userId"
     fun groupInfo(chatId: String) = "group_info/$chatId"
 }
@@ -256,10 +258,37 @@ fun NavGraph(
                             popUpTo(Routes.USER_SEARCH) { inclusive = true }
                         }
                     },
+                    onDraftChat = { userId ->
+                        if (canNav()) navController.navigate(Routes.chatNew(userId)) {
+                            popUpTo(Routes.USER_SEARCH) { inclusive = true }
+                        }
+                    },
                     onCreateGroup = {
                         if (canNav()) navController.navigate(Routes.CREATE_GROUP)
                     },
                     onBack = { if (canNav()) navController.navigateUp() }
+                )
+            }
+
+            composable(
+                route = Routes.CHAT_NEW,
+                arguments = listOf(navArgument("userId") { type = NavType.StringType })
+            ) { backStack ->
+                val userId = backStack.arguments?.getString("userId") ?: ""
+                ChatScreen(
+                    chatId = "",
+                    draftUserId = userId,
+                    autoPlayVideos = autoPlayVideos,
+                    onBack = { if (canNav()) navController.navigateUp() },
+                    onForwardTo = { targetChatId ->
+                        if (canNav()) navController.navigate(Routes.chat(targetChatId))
+                    },
+                    onUserClick = { uid ->
+                        if (canNav()) navController.navigate(Routes.userProfile(uid))
+                    },
+                    onGroupInfoClick = { groupChatId ->
+                        if (canNav()) navController.navigate(Routes.groupInfo(groupChatId))
+                    }
                 )
             }
 
