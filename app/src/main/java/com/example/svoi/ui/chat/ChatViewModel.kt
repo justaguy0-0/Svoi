@@ -1496,6 +1496,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadMoreMessages() {
         if (_isLoadingMore.value || !_hasMoreMessages.value) return
+        if (!isOnline.value) return
         viewModelScope.launch {
             _isLoadingMore.value = true
             val current = _messages.value
