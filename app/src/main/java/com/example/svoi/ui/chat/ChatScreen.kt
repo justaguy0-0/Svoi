@@ -219,6 +219,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -572,15 +573,19 @@ fun ChatScreen(
         if (scrollToBottomEvent == 0) return@LaunchedEffect
         // Empty chat — no items to wait for or scroll to, reveal immediately
         if (currentDisplayEntries.isNotEmpty()) {
-            // Wait until the LazyColumn has actually laid out items
-            snapshotFlow { listState.layoutInfo.totalItemsCount }
-                .first { it > 0 }
+            // Wait until the LazyColumn has actually laid out items (max 2s fallback)
+            withTimeoutOrNull(2_000L) {
+                snapshotFlow { listState.layoutInfo.totalItemsCount }
+                    .first { it > 0 }
+            }
             val entries = currentDisplayEntries
             val unreadEntryIdx = entries.indexOfFirst { it is ChatEntry.UnreadDivider }
             val target = if (unreadEntryIdx >= 0) unreadEntryIdx else entries.size - 1
             if (target >= 0) {
                 val offset = if (unreadEntryIdx >= 0) -(screenHeightPx / 2) else 0
-                listState.scrollToItem(target, scrollOffset = offset)
+                try {
+                    listState.scrollToItem(target, scrollOffset = offset)
+                } catch (_: Exception) { /* best-effort scroll — chat must be revealed regardless */ }
             }
         }
         // Reveal chat after positioning — user sees final state immediately

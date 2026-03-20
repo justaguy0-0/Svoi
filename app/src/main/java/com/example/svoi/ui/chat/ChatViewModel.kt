@@ -455,9 +455,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             // Server load (background coroutine)
             val serverJob = launch {
-                loadChatInfo()
-                loadPinnedMessage()
-                loadMessages(scrollAfter = false)
+                try {
+                    loadChatInfo()
+                    loadPinnedMessage()
+                    loadMessages(scrollAfter = false)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("ChatVM", "init: server load failed", e)
+                }
             }
 
             // Fallback timer: show cache after 2.5s if server hasn't responded
