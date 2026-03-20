@@ -573,6 +573,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val newChatId = chatRepo.createPersonalChat(uid) ?: return false
             chatId = newChatId
             draftTargetUserId = null
+            // Update tracker so push notifications are suppressed while user is in this chat
+            com.example.svoi.ActiveChatTracker.activeChatId = newChatId
             loadChatInfo()
             observeNewMessages()
             observeUpdatedMessages()
