@@ -96,6 +96,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _pinnedMessageContent = MutableStateFlow<Message?>(null)
     val pinnedMessageContent: StateFlow<Message?> = _pinnedMessageContent
 
+    private val _pinnedSenderProfile = MutableStateFlow<Profile?>(null)
+    val pinnedSenderProfile: StateFlow<Profile?> = _pinnedSenderProfile
+
     private val _highlightedMessageId = MutableStateFlow<String?>(null)
     val highlightedMessageId: StateFlow<String?> = _highlightedMessageId
 
@@ -776,6 +779,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _pinnedMessage.value = pinned
         _pinnedMessageContent.value = content
         cache.savePinnedContent(chatId, pinned, content)
+        // Загружаем профиль отправителя для overlay
+        val senderId = content?.senderId
+        if (senderId != null) {
+            _pinnedSenderProfile.value = profileCache[senderId]
+                ?: userRepo.getProfile(senderId)
+        } else {
+            _pinnedSenderProfile.value = null
+        }
     }
 
     fun pinMessage(messageId: String) {
