@@ -295,9 +295,7 @@ fun FullscreenVideoPlayer(
                         )
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.Center)
+                modifier = Modifier.fillMaxSize()
             )
 
             // Close button

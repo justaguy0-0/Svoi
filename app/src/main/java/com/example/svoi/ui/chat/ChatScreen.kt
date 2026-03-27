@@ -44,6 +44,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
@@ -3101,7 +3103,9 @@ private fun ImageLightbox(
             // Swipeable pager
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.systemBars)
             ) { page ->
                 val url = state.urls[page]
                 val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
@@ -3113,7 +3117,9 @@ private fun ImageLightbox(
                     contentScale = ContentScale.Fit,
                     loading = {
                         CircularProgressIndicator(
-                            modifier = Modifier.align(Alignment.Center),
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(48.dp),
                             color = Color.White,
                             strokeWidth = 2.dp
                         )
