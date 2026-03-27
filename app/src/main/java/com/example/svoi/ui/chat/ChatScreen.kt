@@ -994,7 +994,21 @@ fun ChatScreen(
                                                     },
                                                     onVideoMuteToggle = { isVideoMuted = !isVideoMuted },
                                                     onVideoSizeDetected = { url, ratio ->
+                                                        val prevRatio = videoAspectRatios[url] ?: (16f / 9f)
                                                         videoAspectRatios[url] = ratio
+                                                        // Когда вертикальное видео начинает воспроизводиться,
+                                                        // пузырёк вырастает в высоту. Если пользователь находится
+                                                        // внизу чата — скроллим вниз вместе с ростом.
+                                                        if (ratio < 1f && prevRatio >= 1f) {
+                                                            val total = currentDisplayEntries.size
+                                                            val lastVisible = listState.layoutInfo
+                                                                .visibleItemsInfo.lastOrNull()?.index ?: -1
+                                                            if (total > 0 && lastVisible >= total - 4) {
+                                                                scope.launch {
+                                                                    listState.animateScrollToItem(total - 1)
+                                                                }
+                                                            }
+                                                        }
                                                     },
                                                     voicePlayState = voicePlayState,
                                                     onVoicePlay = { msgId, url, dur -> viewModel.playVoice(msgId, url, dur) },
