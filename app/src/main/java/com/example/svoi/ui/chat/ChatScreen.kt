@@ -311,6 +311,34 @@ fun ChatScreen(
     val app = context.applicationContext as SvoiApp
     val globalVoiceState by app.globalVoicePlayer.state.collectAsState()
 
+    // Draft: load saved draft when opening chat
+    LaunchedEffect(chatId) {
+        val saved = app.draftManager.getDraft(chatId)
+        if (saved.isNotBlank()) {
+            inputValue = TextFieldValue(saved, selection = TextRange(saved.length))
+        }
+    }
+
+    // Draft: auto-save after 1.5s of inactivity while typing
+    LaunchedEffect(Unit) {
+        snapshotFlow { inputValue.text }
+            .distinctUntilChanged()
+            .collect { text ->
+                delay(1_500L)
+                if (text.isBlank()) app.draftManager.clearDraft(chatId)
+                else app.draftManager.saveDraft(chatId, text)
+            }
+    }
+
+    // Draft: save immediately when leaving the chat
+    val latestInputText by rememberUpdatedState(inputValue.text)
+    DisposableEffect(chatId) {
+        onDispose {
+            if (latestInputText.isBlank()) app.draftManager.clearDraft(chatId)
+            else app.draftManager.saveDraft(chatId, latestInputText)
+        }
+    }
+
     // Chat reveal: invisible until scrolled to position, then fade-in
     var chatReady by remember { mutableStateOf(false) }
     val chatAlpha by animateFloatAsState(
@@ -1447,6 +1475,7 @@ fun ChatScreen(
                                     val media = stagedMedia
                                     inputValue = TextFieldValue("")
                                     viewModel.onInputTextChanged("")
+                                    app.draftManager.clearDraft(chatId)
                                     if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
                                     else viewModel.sendText(text)
                                 }

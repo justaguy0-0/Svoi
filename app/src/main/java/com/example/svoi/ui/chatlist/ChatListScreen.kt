@@ -65,7 +65,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.svoi.SvoiApp
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.MainBottomBar
@@ -90,9 +95,11 @@ fun ChatListScreen(
     val chatTyping by viewModel.chatTyping.collectAsState()
     val currentProfile by viewModel.currentProfile.collectAsState()
     val scope = rememberCoroutineScope()
+    val app = LocalContext.current.applicationContext as SvoiApp
 
     var selectedChat by remember { mutableStateOf<ChatListItem?>(null) }
     var showBottomSheet by remember { mutableStateOf(false) }
+    var drafts by remember { mutableStateOf(app.draftManager.getAllDrafts()) }
 
     // Refresh unread counts when user returns to this screen (e.g. after reading a chat)
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -101,6 +108,7 @@ fun ChatListScreen(
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.silentRefresh()
                 viewModel.refreshCurrentProfile()
+                drafts = app.draftManager.getAllDrafts()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -203,6 +211,7 @@ fun ChatListScreen(
                             ChatListItem(
                                 item = chat,
                                 typingText = chatTyping[chat.chatId],
+                                draftText = drafts[chat.chatId],
                                 onClick = { onChatClick(chat.chatId) },
                                 onLongClick = {
                                     selectedChat = chat
@@ -321,6 +330,7 @@ fun ChatListScreen(
 private fun ChatListItem(
     item: ChatListItem,
     typingText: String?,
+    draftText: String? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -393,15 +403,33 @@ private fun ChatListItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = typingText ?: item.lastMessageText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (typingText != null) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                val hasDraft = typingText == null && !draftText.isNullOrBlank()
+                if (hasDraft) {
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(color = Color(0xFFCC3333))) {
+                                append("Черновик: ")
+                            }
+                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                                append(draftText!!)
+                            }
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    Text(
+                        text = typingText ?: item.lastMessageText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (typingText != null) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
                 if (item.unreadCount > 0) {
                     Spacer(Modifier.width(8.dp))
                     Box(

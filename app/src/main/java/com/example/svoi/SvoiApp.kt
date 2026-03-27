@@ -8,6 +8,7 @@ import com.example.svoi.data.NetworkMonitor
 import com.example.svoi.data.SupabaseReachabilityChecker
 import com.example.svoi.data.local.CacheManager
 import com.example.svoi.data.local.EncryptedPrefsManager
+import com.example.svoi.data.local.DraftManager
 import com.example.svoi.data.local.OutboxManager
 import com.example.svoi.data.local.ThemeManager
 import com.example.svoi.data.model.AppVersion
@@ -103,6 +104,7 @@ class SvoiApp : Application() {
     }
     val themeManager by lazy { ThemeManager(this) }
     val outboxManager by lazy { OutboxManager(this) }
+    val draftManager by lazy { DraftManager(this) }
 
     val authRepository by lazy { AuthRepository(supabase, prefs) }
     val userRepository by lazy { UserRepository(supabase) }
