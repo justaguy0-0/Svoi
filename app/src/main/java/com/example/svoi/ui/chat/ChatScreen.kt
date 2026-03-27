@@ -997,14 +997,16 @@ fun ChatScreen(
                                                         val prevRatio = videoAspectRatios[url] ?: (16f / 9f)
                                                         videoAspectRatios[url] = ratio
                                                         // Когда вертикальное видео начинает воспроизводиться,
-                                                        // пузырёк вырастает в высоту. Если пользователь находится
-                                                        // внизу чата — скроллим вниз вместе с ростом.
+                                                        // пузырёк анимируется из 16:9 в портрет (tween 300ms).
+                                                        // Скроллим ПОСЛЕ анимации, иначе скролл уходит на
+                                                        // "старое" дно до того, как пузырёк успел вырасти.
                                                         if (ratio < 1f && prevRatio >= 1f) {
-                                                            val total = currentDisplayEntries.size
-                                                            val lastVisible = listState.layoutInfo
-                                                                .visibleItemsInfo.lastOrNull()?.index ?: -1
-                                                            if (total > 0 && lastVisible >= total - 4) {
-                                                                scope.launch {
+                                                            scope.launch {
+                                                                delay(350L) // ждём окончания анимации роста
+                                                                val total = currentDisplayEntries.size
+                                                                val lastVisible = listState.layoutInfo
+                                                                    .visibleItemsInfo.lastOrNull()?.index ?: -1
+                                                                if (total > 0 && lastVisible >= total - 4) {
                                                                     listState.animateScrollToItem(total - 1)
                                                                 }
                                                             }
