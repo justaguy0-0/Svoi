@@ -151,7 +151,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -2531,6 +2535,15 @@ private fun MessageItem(
                             }
                         }
 
+                        // Inline timestamp: own plain-text messages (no URLs, no media)
+                        // → phantom spacer reserves space on last line, timestamp overlaid at BottomEnd
+                        val isTextMsg = msg.type != "photo" && msg.type != "album" &&
+                            msg.type != "video" && msg.type != "file" && msg.type != "voice"
+                        val msgHasUrl = remember(msg.content) {
+                            !msg.content.isNullOrEmpty() && URL_REGEX.containsMatchIn(msg.content ?: "")
+                        }
+                        val useInlineTimestamp = item.isOwn && isTextMsg && !msgHasUrl
+
                         // Message content
                         when (msg.type) {
                             "photo", "album" -> {
@@ -2689,14 +2702,6 @@ private fun MessageItem(
                                 }
                             }
                             else -> {
-                                LinkText(
-                                    text = msg.content ?: "",
-                                    color = textColor,
-                                    isOwn = item.isOwn,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    onOtherTap = onTap
-                                )
-                                // OG link preview
                                 val firstUrl = remember(msg.content) {
                                     msg.content?.let { URL_REGEX.find(it)?.value }
                                 }
@@ -2704,72 +2709,55 @@ private fun MessageItem(
                                     firstUrl?.let { onFetchOg(it) }
                                 }
                                 val ogData = firstUrl?.let { ogCache[it] }
-                                if (ogData != null) {
-                                    OgPreviewCard(
-                                        ogData = ogData,
+
+                                if (useInlineTimestamp) {
+                                    // Inline timestamp: phantom spacer at end of text + timestamp overlaid
+                                    val spaceDp = if (msg.editedAt != null) 74 else 58
+                                    Box {
+                                        LinkText(
+                                            text = msg.content ?: "",
+                                            color = textColor,
+                                            isOwn = item.isOwn,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            trailingSpaceDp = spaceDp,
+                                            onOtherTap = onTap
+                                        )
+                                        MessageTimestampRow(
+                                            msg = msg,
+                                            item = item,
+                                            textColor = textColor,
+                                            modifier = Modifier.align(Alignment.BottomEnd)
+                                        )
+                                    }
+                                } else {
+                                    LinkText(
+                                        text = msg.content ?: "",
+                                        color = textColor,
                                         isOwn = item.isOwn,
-                                        modifier = Modifier.padding(top = 6.dp)
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        onOtherTap = onTap
                                     )
+                                    if (ogData != null) {
+                                        OgPreviewCard(
+                                            ogData = ogData,
+                                            isOwn = item.isOwn,
+                                            modifier = Modifier.padding(top = 6.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
 
-                        // Time + read status
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.End)
-                                .padding(top = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (msg.editedAt != null) {
-                                Text(
-                                    "изм. ",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = textColor.copy(0.7f),
-                                    fontSize = 10.sp
-                                )
-                            }
-                            Text(
-                                text = msg.createdAt?.toMessageTime() ?: "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = textColor.copy(0.7f),
-                                fontSize = 10.sp
+                        // Time + read status (hidden for inline-timestamp text messages)
+                        if (!useInlineTimestamp) {
+                            MessageTimestampRow(
+                                msg = msg,
+                                item = item,
+                                textColor = textColor,
+                                modifier = Modifier
+                                    .align(Alignment.End)
+                                    .padding(top = 2.dp)
                             )
-                            if (item.isPending && !item.isFailed) {
-                                // Sending — spinner
-                                Spacer(Modifier.width(3.dp))
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(12.dp),
-                                    strokeWidth = 1.5.dp,
-                                    color = textColor.copy(0.7f)
-                                )
-                            } else if (item.isFailed) {
-                                // Failed — red error icon; tap message to retry/cancel
-                                Spacer(Modifier.width(3.dp))
-                                Icon(
-                                    imageVector = Icons.Default.Error,
-                                    contentDescription = "Не отправлено",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            } else if (item.isOwn) {
-                                Spacer(Modifier.width(3.dp))
-                                val isVoice = msg.type == "voice"
-                                Icon(
-                                    imageVector = when {
-                                        isVoice && item.isListened -> Icons.Default.Hearing
-                                        item.isRead -> Icons.Default.DoneAll
-                                        else -> Icons.Default.Check
-                                    },
-                                    contentDescription = null,
-                                    tint = when {
-                                        isVoice && item.isListened -> Color.White
-                                        item.isRead -> Color.White
-                                        else -> textColor.copy(0.7f)
-                                    },
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
                         }
                     }
                 }
@@ -2808,16 +2796,42 @@ private fun LinkText(
     isOwn: Boolean,
     style: TextStyle,
     modifier: Modifier = Modifier,
+    trailingSpaceDp: Int = 0,   // phantom spacer at end of last line for inline timestamp
     onOtherTap: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val primary = MaterialTheme.colorScheme.primary
     val linkColor = if (isOwn) Color.White else primary
+    val density = LocalDensity.current
+    val spaceWidthSp = with(density) { trailingSpaceDp.dp.toSp() }
 
     val matches = remember(text) { URL_REGEX.findAll(text).toList() }
+    // AnnotatedString with trailing placeholder that reserves space for the inline timestamp.
+    // Computed unconditionally (remember can't be called inside an if-branch).
+    val annotatedWithSpace: AnnotatedString? = remember(text, trailingSpaceDp) {
+        if (trailingSpaceDp > 0) buildAnnotatedString {
+            append(text)
+            appendInlineContent("ts_space", " ")
+        } else null
+    }
 
     if (matches.isEmpty()) {
-        Text(text = text, color = color, style = style, modifier = modifier)
+        if (annotatedWithSpace != null) {
+            val lineH = if (style.lineHeight.isSp) style.lineHeight else 14.sp
+            Text(
+                text = annotatedWithSpace,
+                color = color,
+                style = style,
+                modifier = modifier,
+                inlineContent = mapOf(
+                    "ts_space" to InlineTextContent(
+                        Placeholder(spaceWidthSp, lineH, PlaceholderVerticalAlign.Bottom)
+                    ) {}
+                )
+            )
+        } else {
+            Text(text = text, color = color, style = style, modifier = modifier)
+        }
         return
     }
 
@@ -3074,6 +3088,66 @@ private sealed class ChatEntry {
     data class Msg(val item: MessageUiItem) : ChatEntry()
     data class DateDivider(val date: String, val triggerMsgId: String) : ChatEntry()
     object UnreadDivider : ChatEntry()
+}
+
+// ── Timestamp row (reused for both inline and regular positioning) ─────────────
+
+@Composable
+private fun MessageTimestampRow(
+    msg: Message,
+    item: MessageUiItem,
+    textColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (msg.editedAt != null) {
+            Text(
+                "изм. ",
+                style = MaterialTheme.typography.bodySmall,
+                color = textColor.copy(0.7f),
+                fontSize = 10.sp
+            )
+        }
+        Text(
+            text = msg.createdAt?.toMessageTime() ?: "",
+            style = MaterialTheme.typography.bodySmall,
+            color = textColor.copy(0.7f),
+            fontSize = 10.sp
+        )
+        if (item.isPending && !item.isFailed) {
+            Spacer(Modifier.width(3.dp))
+            CircularProgressIndicator(
+                modifier = Modifier.size(12.dp),
+                strokeWidth = 1.5.dp,
+                color = textColor.copy(0.7f)
+            )
+        } else if (item.isFailed) {
+            Spacer(Modifier.width(3.dp))
+            Icon(
+                imageVector = Icons.Default.Error,
+                contentDescription = "Не отправлено",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(14.dp)
+            )
+        } else if (item.isOwn) {
+            Spacer(Modifier.width(3.dp))
+            val isVoice = msg.type == "voice"
+            Icon(
+                imageVector = when {
+                    isVoice && item.isListened -> Icons.Default.Hearing
+                    item.isRead -> Icons.Default.DoneAll
+                    else -> Icons.Default.Check
+                },
+                contentDescription = null,
+                tint = when {
+                    isVoice && item.isListened -> Color.White
+                    item.isRead -> Color.White
+                    else -> textColor.copy(0.7f)
+                },
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    }
 }
 
 data class LightboxState(val urls: List<String>, val startIndex: Int = 0)
