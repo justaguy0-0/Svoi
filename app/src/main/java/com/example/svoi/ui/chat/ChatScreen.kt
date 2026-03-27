@@ -2813,14 +2813,11 @@ private fun LinkText(
     val context = LocalContext.current
     val primary = MaterialTheme.colorScheme.primary
     val linkColor = if (isOwn) Color.White else primary
-    // Own messages: right-align so the right edge is always clean and any irregular
-    // wrapping shows as whitespace on the left rather than the right.
-    val effectiveStyle = if (isOwn) style.copy(textAlign = TextAlign.End) else style
 
     val matches = remember(text) { URL_REGEX.findAll(text).toList() }
 
     if (matches.isEmpty()) {
-        Text(text = text, color = color, style = effectiveStyle, modifier = modifier)
+        Text(text = text, color = color, style = style, modifier = modifier)
         return
     }
 
@@ -2842,7 +2839,7 @@ private fun LinkText(
 
     ClickableText(
         text = annotated,
-        style = effectiveStyle.copy(color = color),
+        style = style.copy(color = color),
         modifier = modifier,
         onClick = { offset ->
             val urlAnnotation = annotated
