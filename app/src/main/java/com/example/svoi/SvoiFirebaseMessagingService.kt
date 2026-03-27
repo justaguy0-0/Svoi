@@ -11,6 +11,8 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
+import androidx.core.graphics.drawable.IconCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +26,7 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
         const val GROUP_KEY = "com.example.svoi.MESSAGES"
         const val SUMMARY_ID = 0
         private const val PRIMARY_COLOR = 0xFF1E88E5.toInt()
+        private const val MAX_MESSAGES = 3  // messages shown per chat notification
 
         /** Stable notification ID for a given chatId — same chat always uses the same ID */
         fun notificationIdForChat(chatId: String): Int = chatId.hashCode().let {
@@ -58,18 +61,30 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
         if (chatId != null && app.themeManager.isChatMuted(chatId)) return
 
         val isGroup = data["is_group"] == "true"
+        // sender_name is always the actual sender; title is group name (group) or sender name (personal)
+        val senderName = data["sender_name"] ?: title
         val avatarEmoji = data["avatar_emoji"] ?: "😊"
         val avatarColor = data["avatar_color"] ?: "#5C6BC0"
-        val avatarLetter = data["avatar_letter"] ?: ""
 
-        val avatarText = if (isGroup) avatarLetter else avatarEmoji
-        val avatarBitmap = createAvatarBitmap(avatarColor, avatarText, isEmoji = !isGroup)
+        val avatarBitmap = createAvatarBitmap(avatarColor, avatarEmoji)
 
-        showNotification(title = title, body = body, chatId = chatId, avatarBitmap = avatarBitmap)
+        showNotification(
+            conversationTitle = if (isGroup) title else null,
+            senderName = senderName,
+            body = body,
+            chatId = chatId,
+            avatarBitmap = avatarBitmap
+        )
     }
 
-    private fun showNotification(title: String, body: String, chatId: String?, avatarBitmap: Bitmap) {
-        val notificationManager = getSystemService(NotificationManager::class.java)
+    private fun showNotification(
+        conversationTitle: String?,
+        senderName: String,
+        body: String,
+        chatId: String?,
+        avatarBitmap: Bitmap
+    ) {
+        val notifManager = getSystemService(NotificationManager::class.java)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -78,35 +93,57 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
                 description = "Уведомления о новых сообщениях"
                 enableVibration(true)
             }
-            notificationManager.createNotificationChannel(channel)
+            notifManager.createNotificationChannel(channel)
         }
 
+        val notifId = if (chatId != null) notificationIdForChat(chatId) else System.currentTimeMillis().toInt()
+
+        // ── Build sender Person with avatar ──────────────────────────────────────────
+        val person = Person.Builder()
+            .setName(senderName)
+            .setIcon(IconCompat.createWithBitmap(avatarBitmap))
+            .build()
+
+        // ── Restore existing messages from active notification (stacking) ────────────
+        val existingMessages = notifManager.activeNotifications
+            .firstOrNull { it.id == notifId }
+            ?.let { NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(it.notification) }
+            ?.messages
+            ?.takeLast(MAX_MESSAGES - 1)   // keep room for the new message
+            ?: emptyList()
+
+        // ── Assemble MessagingStyle with accumulated messages ─────────────────────────
+        val style = NotificationCompat.MessagingStyle(person)
+        conversationTitle?.let { style.conversationTitle = it }
+        existingMessages.forEach { style.addMessage(it) }
+        style.addMessage(body, System.currentTimeMillis(), person)
+
+        // ── Open chat on tap ─────────────────────────────────────────────────────────
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             chatId?.let { putExtra("chat_id", it) }
         }
         val pendingIntent = PendingIntent.getActivity(
-            this, System.currentTimeMillis().toInt(), intent,
+            this, notifId, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // ── Post the notification ────────────────────────────────────────────────────
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setLargeIcon(avatarBitmap)
             .setColor(PRIMARY_COLOR)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setStyle(style)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setGroup(GROUP_KEY)
+            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .build()
 
-        val notifId = if (chatId != null) notificationIdForChat(chatId) else System.currentTimeMillis().toInt()
-        notificationManager.notify(notifId, notification)
+        notifManager.notify(notifId, notification)
 
-        // Group summary — fixes black square when notifications are stacked
+        // Group summary — required for notification stacking on Android
         val summary = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(PRIMARY_COLOR)
@@ -114,11 +151,11 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
             .setGroupSummary(true)
             .setAutoCancel(true)
             .build()
-
-        notificationManager.notify(SUMMARY_ID, summary)
+        notifManager.notify(SUMMARY_ID, summary)
     }
 
-    private fun createAvatarBitmap(bgColorHex: String, text: String, isEmoji: Boolean): Bitmap {
+    /** Draws a 128×128 circular avatar bitmap with the sender's emoji on a colored background. */
+    private fun createAvatarBitmap(bgColorHex: String, emoji: String): Bitmap {
         val size = 128
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -129,21 +166,19 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
             Color.parseColor("#5C6BC0")
         }
 
-        val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = bgColor
-        }
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f, circlePaint)
+        canvas.drawCircle(
+            size / 2f, size / 2f, size / 2f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bgColor }
+        )
 
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = if (isEmoji) size * 0.52f else size * 0.46f
+            textSize = size * 0.52f
             textAlign = Paint.Align.CENTER
         }
-
         val bounds = Rect()
-        textPaint.getTextBounds(text, 0, text.length, bounds)
-        val y = size / 2f - bounds.exactCenterY()
-        canvas.drawText(text, size / 2f, y, textPaint)
+        textPaint.getTextBounds(emoji, 0, emoji.length, bounds)
+        canvas.drawText(emoji, size / 2f, size / 2f - bounds.exactCenterY(), textPaint)
 
         return bitmap
     }

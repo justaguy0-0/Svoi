@@ -122,14 +122,13 @@ Deno.serve(async (req) => {
       messagePreview = content ?? ''
     }
 
-    const notificationBody = (isGroup && type !== 'system')
-      ? `${senderName}: ${messagePreview}`
-      : messagePreview
+    // MessagingStyle on the client side shows sender name inline — no manual prefix needed
+    const notificationBody = messagePreview
 
-    // Avatar: for group — first letter of chat name on dark circle; for personal — sender emoji + color
+    // Always use the sender's personal avatar (emoji + bg_color)
+    // The group name is conveyed via conversationTitle in MessagingStyle, not the avatar
     const avatarEmoji = sender?.emoji ?? '😊'
-    const avatarColor = isGroup ? '#455A64' : (sender?.bg_color ?? '#5C6BC0')
-    const avatarLetter = chatName.slice(0, 1).toUpperCase()
+    const avatarColor = sender?.bg_color ?? '#5C6BC0'
 
     const accessToken = await getFcmAccessToken()
     const fcmUrl = `https://fcm.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/messages:send`
@@ -150,9 +149,9 @@ Deno.serve(async (req) => {
               sender_id,
               title: notificationTitle,
               body: notificationBody,
+              sender_name: senderName,
               avatar_emoji: avatarEmoji,
               avatar_color: avatarColor,
-              avatar_letter: avatarLetter,
               is_group: isGroup ? 'true' : 'false',
             },
             android: {
