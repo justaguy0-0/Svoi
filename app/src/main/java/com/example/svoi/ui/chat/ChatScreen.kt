@@ -3116,13 +3116,16 @@ private fun ImageLightbox(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
                     loading = {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(48.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(48.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        }
                     },
                     error = {
                         Icon(

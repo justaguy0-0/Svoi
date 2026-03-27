@@ -25,7 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
@@ -41,7 +40,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
@@ -144,8 +142,7 @@ fun SettingsScreen(
             if (updateAvailable != null) {
                 UpdateBanner(
                     version = updateAvailable!!,
-                    onClick = { showUpdateSheet = true },
-                    onDismiss = { app.setUpdateAvailable(null) }
+                    onClick = { showUpdateSheet = true }
                 )
                 Spacer(Modifier.height(4.dp))
             }
@@ -387,7 +384,7 @@ private fun ToggleRow(
 // ── Баннер обновления в настройках ───────────────────────────────────────────
 
 @Composable
-private fun UpdateBanner(version: AppVersion, onClick: () -> Unit, onDismiss: () -> Unit) {
+private fun UpdateBanner(version: AppVersion, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -399,7 +396,7 @@ private fun UpdateBanner(version: AppVersion, onClick: () -> Unit, onDismiss: ()
         tonalElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 14.dp, end = 4.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -430,14 +427,12 @@ private fun UpdateBanner(version: AppVersion, onClick: () -> Unit, onDismiss: ()
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
                 )
             }
-            IconButton(onClick = onDismiss) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Закрыть",
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f),
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
