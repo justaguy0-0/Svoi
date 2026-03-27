@@ -236,7 +236,8 @@ class ChatRepository(private val supabase: SupabaseClient) {
                 myRole = membership?.role ?: "member",
                 isOtherOnline = isOtherOnline,
                 lastMessageIsOwn = lastMsg?.senderId == userId,
-                lastMessageIsRead = lastMsg?.id?.let { it in readOwnMessageIds } ?: false
+                lastMessageIsRead = lastMsg?.id?.let { it in readOwnMessageIds } ?: false,
+                isMuted = membership?.muted == true
             )
         }.sortedByDescending { it.lastMessageTime }
     }

@@ -685,11 +685,22 @@ fun ChatScreen(
                                     else otherUserId?.let { onUserClick(it) }
                                 }
                             ) {
-                                Text(
-                                    text = chatName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = chatName,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    if (isMuted) {
+                                        Spacer(Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.NotificationsOff,
+                                            contentDescription = "Уведомления отключены",
+                                            modifier = Modifier.size(16.dp),
+                                            tint = TextSecondary
+                                        )
+                                    }
+                                }
                                 val typingText = remember(typingUsers, isGroup) { typingIndicatorText(typingUsers, isGroup) }
                                 val subtitleText: String? = when {
                                     typingText != null -> typingText
