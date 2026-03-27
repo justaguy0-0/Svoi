@@ -2384,6 +2384,13 @@ private fun MessageItem(
         RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 4.dp, bottomEnd = 18.dp)
     }
 
+    // Big-emoji mode: 1–3 emoji with no text, no reply, no forward → no bubble
+    val isEmojiOnlyMsg = msg.type == "text" &&
+        !msg.content.isNullOrBlank() &&
+        item.replyToMessage == null &&
+        item.forwardedFromProfile == null &&
+        isEmojiOnly(msg.content)
+
     // Highlight animation
     val highlightColor by animateColorAsState(
         targetValue = if (isHighlighted)
@@ -2487,6 +2494,79 @@ private fun MessageItem(
                         )
                     } ?: Spacer(Modifier.width(32.dp))
                 }
+                if (isEmojiOnlyMsg) {
+                    // ── Emoji-only: no bubble, just big emoji + timestamp ──────────────
+                    Column(
+                        horizontalAlignment = if (item.isOwn) Alignment.End else Alignment.Start,
+                        modifier = Modifier
+                            .combinedClickable(onClick = onTap, onLongClick = onLongClick)
+                            .padding(horizontal = 4.dp)
+                    ) {
+                        if (!item.isOwn && isGroup) {
+                            Text(
+                                text = item.senderProfile?.displayName ?: "Пользователь",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.combinedClickable(
+                                    onClick = { if (!isSelectionMode) item.senderProfile?.let { onUserClick(it.id) } },
+                                    onLongClick = onLongClick
+                                )
+                            )
+                            Spacer(Modifier.height(2.dp))
+                        }
+                        Text(
+                            text = msg.content ?: "",
+                            fontSize = 48.sp,
+                            lineHeight = 52.sp
+                        )
+                        Row(
+                            modifier = Modifier.padding(top = 1.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (msg.editedAt != null) {
+                                Text(
+                                    "изм. ",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 10.sp
+                                )
+                            }
+                            Text(
+                                text = msg.createdAt?.toMessageTime() ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 10.sp
+                            )
+                            if (item.isPending && !item.isFailed) {
+                                Spacer(Modifier.width(3.dp))
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    strokeWidth = 1.5.dp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else if (item.isFailed) {
+                                Spacer(Modifier.width(3.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Error,
+                                    contentDescription = "Не отправлено",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            } else if (item.isOwn) {
+                                Spacer(Modifier.width(3.dp))
+                                Icon(
+                                    imageVector = if (item.isRead) Icons.Default.DoneAll else Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = if (item.isRead) MaterialTheme.colorScheme.primary
+                                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                // ── Normal bubble ────────────────────────────────────────────────────
                 Surface(
                     shape = bubbleShape,
                     color = bubbleColor,
@@ -2829,6 +2909,7 @@ private fun MessageItem(
                         }
                     }
                 }
+                } // end else (normal bubble)
                 } // close Row (Avatar + Surface)
                 // Reactions row — below the bubble, outside the Row so avatar stays at bubble bottom
                 if (item.reactions.isNotEmpty()) {
@@ -2856,6 +2937,75 @@ private fun memberCountText(count: Int) = when {
 private val URL_REGEX = Regex(
     "(https?://[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+|www\\.[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+)"
 )
+
+/**
+ * Returns true when [text] consists of 1–3 emoji and nothing else.
+ * Handles surrogate pairs, ZWJ sequences, skin-tone modifiers, and flag pairs.
+ */
+private fun isEmojiOnly(text: String): Boolean {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return false
+
+    var emojiCount = 0
+    var i = 0
+    while (i < trimmed.length) {
+        val cp = Character.codePointAt(trimmed, i)
+        val charCount = Character.charCount(cp)
+        when {
+            // Non-visible modifiers — skip without counting
+            cp == 0x200D ||                   // Zero Width Joiner
+            cp == 0xFE0F ||                   // Variation Selector-16
+            cp == 0x20E3 ||                   // Combining Enclosing Keycap
+            cp in 0x1F3FB..0x1F3FF -> { /* skin-tone modifiers */ }
+
+            // Flags: two consecutive regional indicators = one flag
+            cp in 0x1F1E6..0x1F1FF -> {
+                val ni = i + charCount
+                if (ni < trimmed.length) {
+                    val next = Character.codePointAt(trimmed, ni)
+                    if (next in 0x1F1E6..0x1F1FF) {
+                        emojiCount++
+                        i = ni + Character.charCount(next)
+                        continue
+                    }
+                }
+                return false // lone regional indicator
+            }
+
+            // Keycap sequences: 0-9 / # / * + FE0F + 20E3
+            cp in 0x30..0x39 || cp == 0x23 || cp == 0x2A -> {
+                val ni = i + charCount
+                if (ni < trimmed.length &&
+                    Character.codePointAt(trimmed, ni) == 0xFE0F) {
+                    val ni2 = ni + 1
+                    if (ni2 < trimmed.length &&
+                        Character.codePointAt(trimmed, ni2) == 0x20E3) {
+                        emojiCount++
+                        i = ni2 + 1
+                        continue
+                    }
+                }
+                return false // bare digit / symbol
+            }
+
+            // All supplementary-plane emoji (U+1F000..U+1FFFF)
+            cp in 0x1F000..0x1FFFF -> emojiCount++
+
+            // Common BMP symbol/emoji blocks
+            cp in 0x2300..0x23FF ||   // Misc Technical (⌚⌛⏰…)
+            cp in 0x2600..0x26FF ||   // Misc Symbols (☀☁❤…)
+            cp in 0x2700..0x27BF ||   // Dingbats (✂✈✨…)
+            cp in 0x2B00..0x2BFF ||   // Misc Symbols and Arrows
+            cp == 0x00A9 ||           // ©
+            cp == 0x00AE ||           // ®
+            cp == 0x2122 -> emojiCount++ // ™
+
+            else -> return false // regular text character
+        }
+        i += charCount
+    }
+    return emojiCount in 1..3
+}
 
 @Composable
 private fun LinkText(
