@@ -47,6 +47,7 @@ private data class TextMessageInsert(
     val type: String,
     @SerialName("reply_to_id") val replyToId: String? = null,
     val silent: Boolean = false,
+    @SerialName("mentioned_user_ids") val mentionedUserIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -152,13 +153,15 @@ class MessageRepository(private val supabase: SupabaseClient) {
         senderId: String,
         content: String,
         replyToId: String? = null,
-        silent: Boolean = false
+        silent: Boolean = false,
+        mentionedUserIds: List<String> = emptyList()
     ): Boolean {
         return try {
             supabase.from("messages").insert(
                 TextMessageInsert(
                     chatId = chatId, senderId = senderId, content = content,
-                    type = "text", replyToId = replyToId, silent = silent
+                    type = "text", replyToId = replyToId, silent = silent,
+                    mentionedUserIds = mentionedUserIds
                 )
             )
             true

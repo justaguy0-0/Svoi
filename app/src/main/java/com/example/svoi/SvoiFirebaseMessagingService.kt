@@ -59,14 +59,19 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
             return
         }
 
+        val isMention = data["is_mention"] == "true"
         val app = applicationContext as SvoiApp
-        if (app.themeManager.isNotificationsMuted()) {
-            Log.d(TAG, "suppressed: global mute")
-            return
-        }
-        if (chatId != null && app.themeManager.isChatMuted(chatId)) {
-            Log.d(TAG, "suppressed: chat muted chatId=$chatId")
-            return
+
+        // Mentions bypass mute settings — always notify when someone calls you out
+        if (!isMention) {
+            if (app.themeManager.isNotificationsMuted()) {
+                Log.d(TAG, "suppressed: global mute")
+                return
+            }
+            if (chatId != null && app.themeManager.isChatMuted(chatId)) {
+                Log.d(TAG, "suppressed: chat muted chatId=$chatId")
+                return
+            }
         }
 
         val isGroup = data["is_group"] == "true"

@@ -197,6 +197,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _animatingMessageIds = MutableStateFlow<Set<String>>(emptySet())
     val animatingMessageIds: StateFlow<Set<String>> = _animatingMessageIds
 
+    /** Non-self group members available for @-mention suggestions */
+    private val _groupMemberProfiles = MutableStateFlow<List<Profile>>(emptyList())
+    val groupMemberProfiles: StateFlow<List<Profile>> = _groupMemberProfiles
+
+    /** Currently shown mention suggestions (subset of groupMemberProfiles filtered by query) */
+    private val _mentionSuggestions = MutableStateFlow<List<Profile>>(emptyList())
+    val mentionSuggestions: StateFlow<List<Profile>> = _mentionSuggestions
+
     private var chatId: String = ""
     private var draftTargetUserId: String? = null
     private val draftMutex = Mutex()
@@ -646,6 +654,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         profiles.forEach { profileCache[it.id] = it }
 
         val myId = currentUserId
+        // Store non-self member profiles for @mention suggestions (group chats only)
+        if (chat.type == "group") {
+            _groupMemberProfiles.value = profiles.filter { it.id != myId }
+        }
+
         // Fetch historyFrom for the current user (only once — historyFrom never changes after join)
         if (historyFrom == null) {
             historyFrom = members.firstOrNull { it.userId == myId }?.historyFrom
@@ -1130,6 +1143,50 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Called whenever input text or cursor position changes.
+     * Detects an active @mention query and updates [mentionSuggestions].
+     * [cursorPos] is the current cursor position in [text].
+     */
+    fun onMentionQueryChanged(text: String, cursorPos: Int) {
+        if (!_isGroup.value) {
+            _mentionSuggestions.value = emptyList()
+            return
+        }
+        val query = getActiveMentionQuery(text, cursorPos)
+        _mentionSuggestions.value = if (query != null) {
+            _groupMemberProfiles.value.filter { profile ->
+                query.isEmpty() || profile.displayName?.contains(query, ignoreCase = true) == true
+            }
+        } else {
+            emptyList()
+        }
+    }
+
+    /** Returns the mention query string (text after the last '@' up to cursor), or null if not in mention mode. */
+    private fun getActiveMentionQuery(text: String, cursorPos: Int): String? {
+        if (cursorPos <= 0) return null
+        val beforeCursor = text.substring(0, cursorPos)
+        val lastAtIdx = beforeCursor.lastIndexOf('@')
+        if (lastAtIdx < 0) return null
+        val afterAt = beforeCursor.substring(lastAtIdx + 1)
+        // If there's a newline after @, no active mention
+        if ('\n' in afterAt) return null
+        return afterAt
+    }
+
+    /**
+     * Resolves @mentions in [text] to user IDs from the known group member list.
+     * Used before sending to populate [mentionedUserIds] in the message.
+     */
+    fun resolveMentionedUserIds(text: String): List<String> {
+        if (!_isGroup.value) return emptyList()
+        return _groupMemberProfiles.value.filter { profile ->
+            val name = profile.displayName ?: return@filter false
+            text.contains("@$name", ignoreCase = true)
+        }.map { it.id }
+    }
+
     fun clearUnreadSeparator() {
         _firstUnreadIndex.value = -1
     }
@@ -1153,22 +1210,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (content.isBlank()) return
         val replyId = _replyTo.value?.id
         val editing = _editingMessage.value
+        val trimmed = content.trim()
 
         // Edit flow: no pending UI, just send
         if (editing != null) {
             viewModelScope.launch {
                 messageRepo.clearTyping(chatId, currentUserId)
                 typingJob?.cancel()
-                messageRepo.editMessage(editing.id, content.trim())
+                messageRepo.editMessage(editing.id, trimmed)
                 _editingMessage.value = null
             }
             return
         }
 
+        // Resolve @mentions before clearing suggestions
+        val mentionedIds = resolveMentionedUserIds(trimmed)
+        _mentionSuggestions.value = emptyList()
+
         // New message: add optimistic pending item immediately so the user sees it right away
         val localId = "pending_${java.util.UUID.randomUUID()}"
         val now = java.time.Instant.now().toString()
-        val trimmed = content.trim()
 
         _messages.value = _messages.value + MessageUiItem(
             message = Message(
@@ -1192,7 +1253,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             messageRepo.clearTyping(chatId, currentUserId)
             typingJob?.cancel()
 
-            val sent = messageRepo.sendTextMessage(chatId, currentUserId, trimmed, replyId, silent)
+            val sent = messageRepo.sendTextMessage(chatId, currentUserId, trimmed, replyId, silent, mentionedIds)
             if (sent) {
                 // Keep the pending item visible but remove the spinner — realtime will replace it
                 // with the real message. This avoids the flash (disappear → reappear).

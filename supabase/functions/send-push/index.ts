@@ -66,12 +66,15 @@ Deno.serve(async (req) => {
     const record = body.record
     if (!record) return new Response('No record', { status: 400 })
 
-    const { chat_id, sender_id, content, type, silent } = record
+    const { chat_id, sender_id, content, type, silent, mentioned_user_ids } = record
     if (silent) return new Response('Silent message — skip push', { status: 200 })
     const SUPPORTED_TYPES = ['text', 'photo', 'album', 'video', 'voice', 'file', 'system']
     if (!SUPPORTED_TYPES.includes(type)) {
       return new Response('Skip unsupported message type', { status: 200 })
     }
+
+    // mentioned_user_ids may be null (old rows) or an array
+    const mentionedIds: string[] = Array.isArray(mentioned_user_ids) ? mentioned_user_ids : []
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -86,10 +89,10 @@ Deno.serve(async (req) => {
 
     const recipientIds = members.map((m: any) => m.user_id)
 
-    // Get FCM tokens for all recipients
+    // Get FCM tokens for all recipients — include user_id so we can detect mentions per device
     const { data: tokenRows } = await supabase
       .from('push_tokens')
-      .select('token')
+      .select('token, user_id')
       .in('user_id', recipientIds)
 
     if (!tokenRows?.length) return new Response('No tokens', { status: 200 })
@@ -133,8 +136,9 @@ Deno.serve(async (req) => {
     const accessToken = await getFcmAccessToken()
     const fcmUrl = `https://fcm.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/messages:send`
 
-    await Promise.all(tokenRows.map(({ token }: { token: string }) =>
-      fetch(fcmUrl, {
+    await Promise.all(tokenRows.map(({ token, user_id }: { token: string; user_id: string }) => {
+      const isMention = mentionedIds.includes(user_id)
+      return fetch(fcmUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -153,6 +157,8 @@ Deno.serve(async (req) => {
               avatar_emoji: avatarEmoji,
               avatar_color: avatarColor,
               is_group: isGroup ? 'true' : 'false',
+              // Flag for Android: bypass mute if the user was @-mentioned
+              is_mention: isMention ? 'true' : 'false',
             },
             android: {
               priority: 'HIGH',
@@ -161,7 +167,7 @@ Deno.serve(async (req) => {
           },
         }),
       })
-    ))
+    }))
 
     return new Response('OK', { status: 200 })
   } catch (err) {

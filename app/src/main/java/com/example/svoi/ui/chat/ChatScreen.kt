@@ -292,6 +292,7 @@ fun ChatScreen(
     val isMuted by viewModel.isMuted.collectAsState()
     val isPartnerLeft by viewModel.isPartnerLeft.collectAsState()
     val myReadMessageIds by viewModel.myReadMessageIds.collectAsState()
+    val mentionSuggestions by viewModel.mentionSuggestions.collectAsState()
 
     // If the group chat was deleted by the admin, kick this user back to chat list
     LaunchedEffect(isChatDeleted) {
@@ -1205,6 +1206,29 @@ fun ChatScreen(
                         )
                     }
 
+                    // @Mention suggestions panel
+                    if (isGroup && mentionSuggestions.isNotEmpty()) {
+                        MentionSuggestionsPanel(
+                            suggestions = mentionSuggestions,
+                            onSelect = { profile ->
+                                // Find the active @query start position and replace it
+                                val text = inputValue.text
+                                val cursor = inputValue.selection.start
+                                val beforeCursor = text.substring(0, cursor)
+                                val lastAtIdx = beforeCursor.lastIndexOf('@')
+                                if (lastAtIdx >= 0) {
+                                    val name = profile.displayName ?: return@MentionSuggestionsPanel
+                                    val afterCursor = text.substring(cursor)
+                                    val newText = text.substring(0, lastAtIdx) + "@$name " + afterCursor
+                                    val newCursor = lastAtIdx + name.length + 2 // +2 for @ and space
+                                    inputValue = TextFieldValue(newText, TextRange(newCursor))
+                                    viewModel.onInputTextChanged(newText)
+                                    viewModel.onMentionQueryChanged(newText, newCursor)
+                                }
+                            }
+                        )
+                    }
+
                     // Reply / Edit preview
                     val previewMessage = replyTo ?: editingMessage
                     AnimatedVisibility(
@@ -1345,7 +1369,11 @@ fun ChatScreen(
                                     // Text field with emoji button inside as leading icon
                                     TextField(
                                         value = inputValue,
-                                        onValueChange = { inputValue = it; viewModel.onInputTextChanged(it.text) },
+                                        onValueChange = {
+                                            inputValue = it
+                                            viewModel.onInputTextChanged(it.text)
+                                            viewModel.onMentionQueryChanged(it.text, it.selection.start)
+                                        },
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(24.dp))
@@ -3548,6 +3576,56 @@ private fun MiniPlayerOverlay(state: GlobalVoiceState?, player: GlobalVoicePlaye
                 onPlayPause = { if (vs.isPlaying) player.pause() else player.resume() },
                 onClose = { player.stop() }
             )
+        }
+    }
+}
+
+/** Mention suggestions panel shown above the input bar when user types @. */
+@Composable
+private fun MentionSuggestionsPanel(
+    suggestions: List<Profile>,
+    onSelect: (Profile) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 200.dp)
+        ) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            suggestions.forEach { profile ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(profile) }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Avatar(
+                        emoji = profile.emoji ?: "😊",
+                        bgColor = profile.bgColor ?: "#5C6BC0",
+                        size = 36.dp,
+                        fontSize = 16.sp
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = "@${profile.displayName ?: "Пользователь"}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                if (suggestions.last() != profile) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 64.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                }
+            }
         }
     }
 }
