@@ -36,9 +36,6 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     val isOnline: StateFlow<Boolean> = app.networkMonitor.isOnline
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
-    val isReachable: StateFlow<Boolean> = app.supabaseChecker.isReachable
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
-
     init {
         loadProfile()
     }

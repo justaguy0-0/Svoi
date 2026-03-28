@@ -56,6 +56,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalContext
+import com.example.svoi.SvoiApp
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.EmojiPicker
 import com.example.svoi.ui.components.MainBottomBar
@@ -76,8 +78,13 @@ fun ProfileScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isSaving by viewModel.isSaving.collectAsState()
     val isOnline by viewModel.isOnline.collectAsState()
-    val isReachable by viewModel.isReachable.collectAsState()
     val error by viewModel.error.collectAsState()
+
+    // Use app-scoped StateFlows for the banner — their values are already accurate
+    // before this screen is first composed (no initial=true race condition).
+    val app = LocalContext.current.applicationContext as SvoiApp
+    val bannerOnline by app.isOnline.collectAsState()
+    val bannerReachable by app.supabaseChecker.isReachable.collectAsState()
     val successMessage by viewModel.successMessage.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -132,7 +139,7 @@ fun ProfileScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = false)
+            OfflineBanner(isOnline = bannerOnline, isReachable = bannerReachable, isUpdating = false)
 
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

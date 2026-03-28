@@ -113,7 +113,7 @@ fun SettingsScreen(
     val updateAvailable by app.updateAvailable.collectAsState()
     var showUpdateSheet by remember { mutableStateOf(false) }
 
-    val isOnline by app.networkMonitor.isOnline.collectAsState(initial = true)
+    val isOnline by app.isOnline.collectAsState()
     val isReachable by app.supabaseChecker.isReachable.collectAsState()
 
     Scaffold(

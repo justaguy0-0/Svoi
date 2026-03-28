@@ -66,6 +66,7 @@ class SvoiApp : Application() {
         heartbeatScope.launch {
             var isCurrentlyOnline = false
             networkMonitor.isOnline.collect { online ->
+                _isOnline.value = online
                 if (!online) {
                     isCurrentlyOnline = false
                     supabaseChecker.markOffline()
@@ -117,6 +118,12 @@ class SvoiApp : Application() {
     // Результат проверки обновления — null пока не проверено / нет обновления
     private val _updateAvailable = MutableStateFlow<AppVersion?>(null)
     val updateAvailable: StateFlow<AppVersion?> = _updateAvailable
+
+    // App-scoped network state — updated from heartbeatScope so the value is already
+    // correct before any screen is composed. Use this (instead of a per-ViewModel stateIn)
+    // wherever the initial value must be accurate on first composition.
+    private val _isOnline = MutableStateFlow(true)
+    val isOnline: StateFlow<Boolean> = _isOnline
 
     fun setUpdateAvailable(version: AppVersion?) {
         _updateAvailable.value = version
