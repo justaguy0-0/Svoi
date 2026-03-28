@@ -11,6 +11,7 @@ import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.UserPresence
 import com.example.svoi.data.model.isTrulyOnline
+import com.example.svoi.ui.theme.groupAvatarColor
 import android.util.Log
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
@@ -191,7 +192,7 @@ class ChatRepository(private val supabase: SupabaseClient) {
             }
 
             val bgColor = if (chat.type == "group") {
-                "#455A64"
+                groupAvatarColor(chat.id)
             } else {
                 otherProfile?.bgColor ?: "#5C6BC0"
             }

@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.ui.components.Avatar
+import com.example.svoi.ui.theme.GroupAvatarColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,7 +108,7 @@ fun CreateGroupScreen(
                     if (groupName.isNotBlank()) {
                         Avatar(
                             emoji = "",
-                            bgColor = "#455A64",
+                            bgColor = GroupAvatarColors[Math.abs(groupName.hashCode()) % GroupAvatarColors.size],
                             isGroup = true,
                             letter = groupName,
                             size = 32.dp,

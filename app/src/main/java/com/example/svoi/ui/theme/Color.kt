@@ -99,9 +99,29 @@ val DarkTextSecondary = Color(0xFF9B9B9B)
 val Online = Color(0xFF4CAF50)
 val Error = Color(0xFFE53935)
 
-// Avatar palette — for user picks
+// Avatar palette — for user picks (Material 300–600, bright)
 val AvatarColors = listOf(
     "#EF5350", "#EC407A", "#AB47BC", "#7E57C2", "#5C6BC0", "#1E88E5",
     "#26C6DA", "#26A69A", "#66BB6A", "#FFA726", "#FF7043", "#8D6E63",
     "#4CAF50", "#CDDC39", "#FFC107", "#FF5722", "#795548", "#607D8B"
 )
+
+// Group avatar palette — darker Material 700–900 shades, visually distinct from user avatars
+val GroupAvatarColors = listOf(
+    "#1565C0", // Blue 800
+    "#283593", // Indigo 800
+    "#6A1B9A", // Purple 800
+    "#AD1457", // Pink 800
+    "#C62828", // Red 800
+    "#D84315", // Deep Orange 800
+    "#2E7D32", // Green 800
+    "#00695C", // Teal 800
+    "#00838F", // Cyan 800
+    "#4E342E", // Brown 800
+    "#37474F", // Blue Grey 800
+    "#4527A0", // Deep Purple 800
+)
+
+/** Deterministic group avatar color derived from chatId hash. */
+fun groupAvatarColor(chatId: String): String =
+    GroupAvatarColors[Math.abs(chatId.hashCode()) % GroupAvatarColors.size]

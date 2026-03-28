@@ -23,6 +23,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.theme.Online
+import com.example.svoi.ui.theme.TextSecondary
+import com.example.svoi.ui.theme.groupAvatarColor
+import com.example.svoi.util.toLastSeen
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,7 +90,7 @@ fun GroupInfoScreen(
                     ) {
                         Avatar(
                             emoji = (chat?.name ?: "Г").take(1),
-                            bgColor = "#455A64",
+                            bgColor = groupAvatarColor(chatId),
                             isGroup = true,
                             letter = chat?.name ?: "Г",
                             size = 96.dp,
@@ -292,24 +295,39 @@ private fun MemberRow(
         Spacer(Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = buildString {
-                        append(item.profile?.displayName ?: "Пользователь")
-                        if (isSelf) append(" (вы)")
-                    },
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Text(
+                text = buildString {
+                    append(item.profile?.displayName ?: "Пользователь")
+                    if (isSelf) append(" (вы)")
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             if (item.member.role == "admin") {
                 Text(
                     text = "Администратор",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary
                 )
+            }
+            if (!isSelf) {
+                val presenceText = remember(item.presence) {
+                    when {
+                        item.presence?.isTrulyOnline() == true -> "в сети"
+                        !item.presence?.lastSeen.isNullOrBlank() ->
+                            item.presence!!.lastSeen!!.toLastSeen()
+                        else -> null
+                    }
+                }
+                if (presenceText != null) {
+                    Text(
+                        text = presenceText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isOnline) Online else TextSecondary
+                    )
+                }
             }
         }
 
