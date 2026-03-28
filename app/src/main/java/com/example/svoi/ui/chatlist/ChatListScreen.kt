@@ -1,6 +1,10 @@
 package com.example.svoi.ui.chatlist
 
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
@@ -21,7 +25,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -32,7 +38,7 @@ import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -59,6 +65,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,6 +81,9 @@ import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.components.OfflineBanner
+import com.example.svoi.ui.theme.DraftRed
+import com.example.svoi.ui.theme.OnlineGreen
+import com.example.svoi.ui.theme.SvoiDimens
 import com.example.svoi.util.toChatListTime
 import kotlinx.coroutines.launch
 
@@ -181,17 +191,28 @@ fun ChatListScreen(
                     modifier = Modifier.align(Alignment.Center),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("💬", fontSize = 48.sp)
-                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("💬", fontSize = 36.sp)
+                    }
+                    Spacer(Modifier.height(16.dp))
                     Text(
                         "Нет чатов",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         "Нажмите + чтобы начать",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                 }
             } else {
@@ -217,10 +238,10 @@ fun ChatListScreen(
                                     showBottomSheet = true
                                 }
                             )
-                            Divider(
+                            HorizontalDivider(
                                 modifier = Modifier.padding(start = 78.dp),
-                                thickness = 0.5.dp,
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                                thickness = 0.4.dp,
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                             )
                         }
                     }
@@ -244,7 +265,7 @@ fun ChatListScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Divider()
+                    HorizontalDivider()
                     TextButton(
                         onClick = {
                             showBottomSheet = false
@@ -334,11 +355,23 @@ private fun ChatListItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    // Online dot pulse animation
+    val infiniteTransition = rememberInfiniteTransition(label = "online_pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = SvoiDimens.ItemVerticalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Avatar with optional online dot
@@ -348,15 +381,16 @@ private fun ChatListItem(
                 bgColor = item.bgColor,
                 isGroup = item.isGroup,
                 letter = item.displayName,
-                size = 52.dp,
+                size = SvoiDimens.AvatarMedium,
                 fontSize = 24.sp
             )
             if (!item.isGroup && item.isOtherOnline) {
                 Box(
                     modifier = Modifier
                         .size(14.dp)
+                        .scale(pulseScale)
                         .align(Alignment.BottomEnd)
-                        .background(Color(0xFF43A047), CircleShape)
+                        .background(OnlineGreen, CircleShape)
                         .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
                 )
             }
@@ -421,7 +455,7 @@ private fun ChatListItem(
                 if (hasDraft) {
                     Text(
                         text = buildAnnotatedString {
-                            withStyle(SpanStyle(color = Color(0xFFCC3333))) {
+                            withStyle(SpanStyle(color = DraftRed)) {
                                 append("Черновик: ")
                             }
                             withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
@@ -446,17 +480,23 @@ private fun ChatListItem(
                 }
                 if (item.unreadCount > 0) {
                     Spacer(Modifier.width(8.dp))
+                    val badgeText = if (item.unreadCount > 99) "99+" else item.unreadCount.toString()
                     Box(
                         modifier = Modifier
-                            .size(20.dp)
-                            .background(MaterialTheme.colorScheme.primary, CircleShape),
+                            .height(22.dp)
+                            .defaultMinSize(minWidth = 22.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primary,
+                                RoundedCornerShape(11.dp)
+                            )
+                            .padding(horizontal = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (item.unreadCount > 99) "99+" else item.unreadCount.toString(),
+                            text = badgeText,
                             color = Color.White,
-                            fontSize = 10.sp,
-                            lineHeight = 10.sp,
+                            fontSize = 11.sp,
+                            lineHeight = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
