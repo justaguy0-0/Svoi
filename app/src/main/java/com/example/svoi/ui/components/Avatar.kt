@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -19,9 +20,9 @@ import androidx.compose.ui.unit.sp
 
 /**
  * Avatar for personal chats — shows an emoji on a colored circle.
- * Avatar for group chats — shows the first letter of the group name on a colored circle.
+ * Avatar for group chats — shows the first letter of the group name on a rounded square.
  *
- * [isGroup] — if true, shows [letter]; if false, shows [emoji]
+ * [isGroup] — if true, shows [letter] on rounded square; if false, shows [emoji] on circle
  * [bgColor] — hex color string like "#5C6BC0"
  */
 @Composable
@@ -40,10 +41,12 @@ fun Avatar(
         }.getOrDefault(Color(0xFF5C6BC0))
     }
 
+    val shape = if (isGroup) RoundedCornerShape(size * 0.22f) else CircleShape
+
     Box(
         modifier = modifier
             .size(size)
-            .clip(CircleShape)
+            .clip(shape)
             .background(color),
         contentAlignment = Alignment.Center
     ) {

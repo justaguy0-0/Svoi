@@ -1271,11 +1271,31 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // ── Staged media & files ──────────────────────────────────────────────────
 
     fun addStagedMedia(uris: List<Uri>, context: Context) {
-        val newItems = uris.map { uri ->
+        val maxFileSize = 50L * 1024 * 1024
+        val oversized = mutableListOf<Long>() // sizes in MB
+        val validItems = mutableListOf<StagedMedia>()
+
+        for (uri in uris) {
             val mimeType = context.contentResolver.getType(uri) ?: ""
-            StagedMedia(uri, isVideo = mimeType.startsWith("video/"))
+            val fileSize = getUriFileSize(uri, context)
+            if (fileSize > maxFileSize) {
+                oversized.add(fileSize / (1024 * 1024))
+            } else {
+                validItems.add(StagedMedia(uri, isVideo = mimeType.startsWith("video/")))
+            }
         }
-        _stagedMedia.value = (_stagedMedia.value + newItems).take(10)
+
+        if (oversized.isNotEmpty()) {
+            _error.value = if (oversized.size == 1) {
+                "Файл слишком большой (${oversized[0]} МБ). Supabase не поддерживает файлы больше 50 МБ — загрузка отменена."
+            } else {
+                "${oversized.size} файла(ов) не загружены: размер превышает 50 МБ. Supabase не поддерживает файлы больше 50 МБ."
+            }
+        }
+
+        if (validItems.isNotEmpty()) {
+            _stagedMedia.value = (_stagedMedia.value + validItems).take(10)
+        }
     }
 
     fun removeStagedMedia(index: Int) {
