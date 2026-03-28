@@ -59,6 +59,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.EmojiPicker
 import com.example.svoi.ui.components.MainBottomBar
+import com.example.svoi.ui.components.OfflineBanner
 import com.example.svoi.ui.theme.AvatarColors
 import com.example.svoi.util.toRegistrationDate
 import kotlinx.coroutines.launch
@@ -75,6 +76,7 @@ fun ProfileScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isSaving by viewModel.isSaving.collectAsState()
     val isOnline by viewModel.isOnline.collectAsState()
+    val isReachable by viewModel.isReachable.collectAsState()
     val error by viewModel.error.collectAsState()
     val successMessage by viewModel.successMessage.collectAsState()
 
@@ -125,17 +127,21 @@ fun ProfileScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
-        if (isLoading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-            return@Scaffold
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+        ) {
+            OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = false)
+
+        if (isLoading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
                 .padding(horizontal = 24.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -229,6 +235,8 @@ fun ProfileScreen(
 
             Spacer(Modifier.height(8.dp))
         }
+        } // else
+        } // outer Column
     }
 
     // ── Avatar bottom sheet ──────────────────────────────────────────────────

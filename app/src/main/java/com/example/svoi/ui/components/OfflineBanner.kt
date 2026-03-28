@@ -16,17 +16,15 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-private val BannerBackground = Color(0xFF546E7A) // Blue Grey 600
 
 @Composable
 fun OfflineBanner(
@@ -41,9 +39,12 @@ fun OfflineBanner(
         enter = slideInVertically { -it } + fadeIn(),
         exit = slideOutVertically { -it } + fadeOut()
     ) {
+        val bannerColor = MaterialTheme.colorScheme.primary
+        val contentColor = MaterialTheme.colorScheme.onPrimary
+
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = BannerBackground
+            color = bannerColor
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -53,13 +54,13 @@ fun OfflineBanner(
                     isUpdating -> {
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
-                            color = Color.White,
+                            color = contentColor,
                             strokeWidth = 2.dp
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Обновление...",
-                            color = Color.White,
+                            color = contentColor,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -69,12 +70,12 @@ fun OfflineBanner(
                             imageVector = Icons.Default.WifiOff,
                             contentDescription = null,
                             modifier = Modifier.size(15.dp),
-                            tint = Color.White
+                            tint = contentColor
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Нет интернета · кешированные данные",
-                            color = Color.White,
+                            color = contentColor,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -84,12 +85,12 @@ fun OfflineBanner(
                             imageVector = Icons.Default.CloudOff,
                             contentDescription = null,
                             modifier = Modifier.size(15.dp),
-                            tint = Color.White
+                            tint = contentColor
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Нет доступа к серверам · кешированные данные",
-                            color = Color.White,
+                            color = contentColor,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
                         )

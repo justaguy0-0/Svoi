@@ -78,6 +78,7 @@ import com.example.svoi.data.local.SvoiAccent
 import com.example.svoi.data.local.ThemeMode
 import com.example.svoi.data.model.AppVersion
 import com.example.svoi.ui.components.MainBottomBar
+import com.example.svoi.ui.components.OfflineBanner
 import com.example.svoi.ui.profile.ProfileViewModel
 import com.example.svoi.ui.theme.accentPalette
 import kotlinx.coroutines.Dispatchers
@@ -112,6 +113,9 @@ fun SettingsScreen(
     val updateAvailable by app.updateAvailable.collectAsState()
     var showUpdateSheet by remember { mutableStateOf(false) }
 
+    val isOnline by app.networkMonitor.isOnline.collectAsState(initial = true)
+    val isReachable by app.supabaseChecker.isReachable.collectAsState()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -136,8 +140,14 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
         ) {
+            OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = false)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            ) {
             // ── Баннер обновления ─────────────────────────────────────────────
             if (updateAvailable != null) {
                 UpdateBanner(
@@ -237,7 +247,8 @@ fun SettingsScreen(
             )
 
             Spacer(Modifier.height(16.dp))
-        }
+            } // inner scrollable Column
+        } // outer Column
     }
 
     // ── Bottom sheet обновления ───────────────────────────────────────────────
