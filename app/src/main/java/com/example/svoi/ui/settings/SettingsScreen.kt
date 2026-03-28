@@ -3,6 +3,7 @@ package com.example.svoi.ui.settings
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -63,6 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -80,6 +82,8 @@ import com.example.svoi.data.model.AppVersion
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.components.OfflineBanner
 import com.example.svoi.ui.profile.ProfileViewModel
+import com.example.svoi.ui.theme.SvoiDimens
+import com.example.svoi.ui.theme.SvoiShapes
 import com.example.svoi.ui.theme.accentPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -158,82 +162,117 @@ fun SettingsScreen(
             }
 
             // ── Тема ─────────────────────────────────────────────────────────
-            SectionHeader("Тема оформления")
+            Surface(
+                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
+                shape = SvoiShapes.Card,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
+            ) {
+                Column {
+                    SectionHeader("Тема оформления")
 
-            ThemeOption(
-                icon = Icons.Default.Settings,
-                title = "Системная",
-                subtitle = "Как в настройках устройства",
-                selected = currentThemeMode == ThemeMode.SYSTEM,
-                onClick = { onThemeChanged(ThemeMode.SYSTEM) }
-            )
-            ThemeOption(
-                icon = Icons.Default.LightMode,
-                title = "Светлая",
-                subtitle = "Всегда светлая тема",
-                selected = currentThemeMode == ThemeMode.LIGHT,
-                onClick = { onThemeChanged(ThemeMode.LIGHT) }
-            )
-            ThemeOption(
-                icon = Icons.Default.DarkMode,
-                title = "Тёмная",
-                subtitle = "Всегда тёмная тема",
-                selected = currentThemeMode == ThemeMode.DARK,
-                onClick = { onThemeChanged(ThemeMode.DARK) }
-            )
+                    ThemeOption(
+                        icon = Icons.Default.Settings,
+                        title = "Системная",
+                        subtitle = "Как в настройках устройства",
+                        selected = currentThemeMode == ThemeMode.SYSTEM,
+                        onClick = { onThemeChanged(ThemeMode.SYSTEM) }
+                    )
+                    ThemeOption(
+                        icon = Icons.Default.LightMode,
+                        title = "Светлая",
+                        subtitle = "Всегда светлая тема",
+                        selected = currentThemeMode == ThemeMode.LIGHT,
+                        onClick = { onThemeChanged(ThemeMode.LIGHT) }
+                    )
+                    ThemeOption(
+                        icon = Icons.Default.DarkMode,
+                        title = "Тёмная",
+                        subtitle = "Всегда тёмная тема",
+                        selected = currentThemeMode == ThemeMode.DARK,
+                        onClick = { onThemeChanged(ThemeMode.DARK) }
+                    )
 
-            AccentColorPicker(
-                currentAccent = currentAccent,
-                onAccentChanged = onAccentChanged
-            )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.4.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                    )
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    AccentColorPicker(
+                        currentAccent = currentAccent,
+                        onAccentChanged = onAccentChanged
+                    )
+                }
+            }
 
             // ── Медиа ─────────────────────────────────────────────────────────
-            SectionHeader("Медиа")
+            Surface(
+                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
+                shape = SvoiShapes.Card,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
+            ) {
+                Column {
+                    SectionHeader("Медиа")
 
-            ToggleRow(
-                icon = Icons.Default.PlayCircle,
-                title = "Автовоспроизведение видео",
-                subtitle = "Запускать видео автоматически при прокрутке",
-                checked = autoPlayVideos,
-                onCheckedChange = onAutoPlayChanged
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    ToggleRow(
+                        icon = Icons.Default.PlayCircle,
+                        title = "Автовоспроизведение видео",
+                        subtitle = "Запускать видео автоматически при прокрутке",
+                        checked = autoPlayVideos,
+                        onCheckedChange = onAutoPlayChanged
+                    )
+                }
+            }
 
             // ── Уведомления ───────────────────────────────────────────────────
-            SectionHeader("Уведомления")
+            Surface(
+                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
+                shape = SvoiShapes.Card,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
+            ) {
+                Column {
+                    SectionHeader("Уведомления")
 
-            ToggleRow(
-                icon = Icons.Default.NotificationsOff,
-                title = "Отключить все уведомления",
-                subtitle = if (globalNotifMuted) "Уведомления отключены во всём приложении"
-                           else "Получать уведомления о новых сообщениях",
-                checked = globalNotifMuted,
-                onCheckedChange = { newValue ->
-                    if (newValue) {
-                        // Показываем предупреждение только при включении мута
-                        showMuteConfirmDialog = true
-                    } else {
-                        globalNotifMuted = false
-                        app.themeManager.setNotificationsMuted(false)
-                    }
+                    ToggleRow(
+                        icon = Icons.Default.NotificationsOff,
+                        title = "Отключить все уведомления",
+                        subtitle = if (globalNotifMuted) "Уведомления отключены во всём приложении"
+                                   else "Получать уведомления о новых сообщениях",
+                        checked = globalNotifMuted,
+                        onCheckedChange = { newValue ->
+                            if (newValue) {
+                                showMuteConfirmDialog = true
+                            } else {
+                                globalNotifMuted = false
+                                app.themeManager.setNotificationsMuted(false)
+                            }
+                        }
+                    )
                 }
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            }
 
             // ── Данные ────────────────────────────────────────────────────────
-            SectionHeader("Данные")
+            Surface(
+                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
+                shape = SvoiShapes.Card,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
+            ) {
+                Column {
+                    SectionHeader("Данные")
 
-            ActionRow(
-                icon = if (isClearingCache) null else Icons.Default.DeleteSweep,
-                isLoading = isClearingCache,
-                title = "Очистить кэш",
-                subtitle = "Удалить сохранённые сообщения, профили, превью изображений",
-                onClick = { showClearCacheDialog = true }
-            )
+                    ActionRow(
+                        icon = if (isClearingCache) null else Icons.Default.DeleteSweep,
+                        isLoading = isClearingCache,
+                        title = "Очистить кэш",
+                        subtitle = "Удалить сохранённые сообщения, профили, превью",
+                        onClick = { showClearCacheDialog = true }
+                    )
+                }
+            }
 
             // ── Версия приложения ─────────────────────────────────────────────
             Text(
@@ -242,8 +281,8 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 4.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    .padding(top = 12.dp, bottom = 4.dp),
+                textAlign = TextAlign.Center
             )
 
             Spacer(Modifier.height(16.dp))
@@ -399,10 +438,10 @@ private fun UpdateBanner(version: AppVersion, onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp)
+            .clip(SvoiShapes.Card)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
+        shape = SvoiShapes.Card,
         color = MaterialTheme.colorScheme.primaryContainer,
         tonalElevation = 0.dp
     ) {
@@ -460,7 +499,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        shape = SvoiShapes.Dialog
     ) {
         Column(
             modifier = Modifier
@@ -530,7 +569,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = SvoiShapes.Card,
                     color = MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -561,8 +600,8 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(14.dp),
+                    .height(SvoiDimens.ButtonHeight),
+                shape = SvoiShapes.Button,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
                 )
@@ -595,7 +634,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
 @Composable
 private fun VersionChip(label: String, version: String, isNew: Boolean) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = SvoiShapes.Chip,
         color = if (isNew) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.surfaceVariant
     ) {
@@ -660,14 +699,15 @@ private fun AccentColorPicker(
             SvoiAccent.entries.forEach { accent ->
                 val palette = accentPalette(accent)
                 val isSelected = accent == currentAccent
-                val scale by animateColorAsState(
-                    targetValue = if (isSelected) palette.primary else palette.primary,
+                val scale by animateFloatAsState(
+                    targetValue = if (isSelected) 1.15f else 1f,
                     animationSpec = tween(200),
-                    label = "accentAnim"
+                    label = "accentScale"
                 )
                 Box(
                     modifier = Modifier
                         .size(30.dp)
+                        .scale(scale)
                         .clip(CircleShape)
                         .background(palette.primary)
                         .then(
@@ -681,7 +721,7 @@ private fun AccentColorPicker(
                         Icon(
                             imageVector = Icons.Default.Check,
                             contentDescription = null,
-                            tint = androidx.compose.ui.graphics.Color.White,
+                            tint = Color.White,
                             modifier = Modifier.size(16.dp)
                         )
                     }
