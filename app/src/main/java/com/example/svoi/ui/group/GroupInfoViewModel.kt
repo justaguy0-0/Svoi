@@ -47,6 +47,12 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
     private val _chatDeleted = MutableStateFlow(false)
     val chatDeleted: StateFlow<Boolean> = _chatDeleted
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error
+
+    private val _successMessage = MutableStateFlow<String?>(null)
+    val successMessage: StateFlow<String?> = _successMessage
+
     private var chatId: String = ""
     private var ownProfile: Profile? = null
     private var pollJob: Job? = null
@@ -117,6 +123,11 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun clearMessages() {
+        _error.value = null
+        _successMessage.value = null
+    }
+
     fun removeMember(userId: String) {
         viewModelScope.launch {
             val removed = _members.value.firstOrNull { it.member.userId == userId }
@@ -125,6 +136,9 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
 
             if (chatRepo.removeMember(chatId, userId)) {
                 messageRepo.sendSystemMessage(chatId, "$myName исключил(а) $removedName")
+                _successMessage.value = "$removedName исключён из группы"
+            } else {
+                _error.value = "Не удалось исключить участника"
             }
             refreshData()
         }
@@ -137,6 +151,9 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
             val myName = ownProfile?.displayName ?: "Администратор"
             if (chatRepo.renameGroup(chatId, trimmed)) {
                 messageRepo.sendSystemMessage(chatId, "$myName изменил(а) название на «$trimmed»")
+                _successMessage.value = "Группа переименована"
+            } else {
+                _error.value = "Не удалось переименовать группу"
             }
             refreshData()
         }
@@ -177,6 +194,9 @@ class GroupInfoViewModel(application: Application) : AndroidViewModel(applicatio
                     val beforeTs = sysMsg?.createdAt ?: java.time.Instant.now().toString()
                     messageRepo.markHistoryRead(chatId, userId, beforeTs)
                 }
+                _successMessage.value = "$addedName добавлен в группу"
+            } else {
+                _error.value = "Не удалось добавить участника"
             }
             refreshData()
         }

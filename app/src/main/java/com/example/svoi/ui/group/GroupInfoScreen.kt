@@ -27,6 +27,8 @@ import com.example.svoi.ui.theme.TextSecondary
 import com.example.svoi.ui.theme.groupAvatarColor
 import com.example.svoi.util.toLastSeen
 import kotlinx.coroutines.launch
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,9 +48,20 @@ fun GroupInfoScreen(
     val currentUserId by viewModel.currentUserId.collectAsState()
     val chatDeleted by viewModel.chatDeleted.collectAsState()
 
+    val error by viewModel.error.collectAsState()
+    val successMessage by viewModel.successMessage.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
     // If chat was deleted externally, navigate back to chat list
     LaunchedEffect(chatDeleted) {
         if (chatDeleted) onChatDeleted()
+    }
+    LaunchedEffect(error) {
+        error?.let { snackbarHostState.showSnackbar(it); viewModel.clearMessages() }
+    }
+    LaunchedEffect(successMessage) {
+        successMessage?.let { snackbarHostState.showSnackbar(it); viewModel.clearMessages() }
     }
 
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -68,7 +81,8 @@ fun GroupInfoScreen(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         if (isLoading) {
             Box(
@@ -388,14 +402,21 @@ private fun AddMemberDialog(
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<com.example.svoi.data.model.Profile>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf(false) }
     var pendingUserId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(query) {
-        if (query.length < 2) { results = emptyList(); return@LaunchedEffect }
+        if (query.length < 2) { results = emptyList(); searchError = false; return@LaunchedEffect }
         isSearching = true
-        results = runCatching { userRepo.searchUsers(query) }.getOrDefault(emptyList())
-            .filter { it.id !in existingMemberIds }
+        searchError = false
+        val found = runCatching { userRepo.searchUsers(query) }
+        if (found.isSuccess) {
+            results = found.getOrDefault(emptyList()).filter { it.id !in existingMemberIds }
+        } else {
+            results = emptyList()
+            searchError = true
+        }
         isSearching = false
     }
 
@@ -441,6 +462,13 @@ private fun AddMemberDialog(
                             }
                         }
                     }
+                } else if (searchError) {
+                    Text(
+                        "Ошибка поиска. Проверьте соединение.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                 } else if (query.length >= 2 && !isSearching) {
                     Text(
                         "Пользователи не найдены",

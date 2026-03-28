@@ -200,7 +200,8 @@ class AuthRepository(
 
             null // success
         } catch (e: Exception) {
-            e.message ?: "Неизвестная ошибка"
+            Log.e("Auth", "signUp failed: ${e.message}", e)
+            translateAuthError(e.message)
         }
     }
 
@@ -221,7 +222,33 @@ class AuthRepository(
             null
         } catch (e: Exception) {
             Log.e("Auth", "signIn failed: ${e.message}", e)
-            e.message ?: "Неверный email или пароль"
+            translateAuthError(e.message)
+        }
+    }
+
+    private fun translateAuthError(msg: String?): String {
+        if (msg == null) return "Произошла ошибка. Попробуйте снова."
+        return when {
+            msg.contains("Invalid login credentials", ignoreCase = true) ->
+                "Неверный email или пароль"
+            msg.contains("Email not confirmed", ignoreCase = true) ->
+                "Email не подтверждён. Обратитесь к администратору"
+            msg.contains("Too many requests", ignoreCase = true) ||
+            msg.contains("rate limit", ignoreCase = true) ->
+                "Слишком много попыток. Подождите немного и попробуйте снова"
+            msg.contains("User already registered", ignoreCase = true) ->
+                "Этот email уже зарегистрирован. Попробуйте войти"
+            msg.contains("Password should be at least", ignoreCase = true) ->
+                "Пароль слишком короткий (минимум 6 символов)"
+            msg.contains("Unable to validate email", ignoreCase = true) ||
+            msg.contains("invalid email", ignoreCase = true) ->
+                "Некорректный email-адрес"
+            msg.contains("network", ignoreCase = true) ||
+            msg.contains("connect", ignoreCase = true) ||
+            msg.contains("timeout", ignoreCase = true) ||
+            msg.contains("UnknownHostException", ignoreCase = true) ->
+                "Нет соединения с сервером. Проверьте интернет"
+            else -> "Ошибка входа. Попробуйте снова"
         }
     }
 
@@ -238,7 +265,15 @@ class AuthRepository(
             supabase.auth.updateUser { password = newPassword }
             null
         } catch (e: Exception) {
-            e.message ?: "Ошибка смены пароля"
+            Log.e("Auth", "changePassword failed: ${e.message}", e)
+            when {
+                e.message?.contains("network", ignoreCase = true) == true ||
+                e.message?.contains("timeout", ignoreCase = true) == true ->
+                    "Нет соединения с сервером. Проверьте интернет"
+                e.message?.contains("Password should be at least", ignoreCase = true) == true ->
+                    "Пароль слишком короткий (минимум 6 символов)"
+                else -> "Не удалось изменить пароль. Попробуйте снова"
+            }
         }
     }
 

@@ -126,7 +126,7 @@ fun UserSearchScreen(
                             )
                         }
                     }
-                    results.isEmpty() -> {
+                    results.isEmpty() && error == null -> {
                         Text(
                             "Пользователи не найдены",
                             modifier = Modifier

@@ -45,10 +45,18 @@ class NewChatViewModel(application: Application) : AndroidViewModel(application)
                 .collect { query ->
                     if (query.isBlank()) {
                         _searchResults.value = emptyList()
+                        _error.value = null
                     } else {
                         _isSearching.value = true
-                        _searchResults.value = userRepo.searchUsers(query)
-                        _isSearching.value = false
+                        _error.value = null
+                        try {
+                            _searchResults.value = userRepo.searchUsers(query)
+                        } catch (_: Exception) {
+                            _searchResults.value = emptyList()
+                            _error.value = "Ошибка поиска. Проверьте соединение."
+                        } finally {
+                            _isSearching.value = false
+                        }
                     }
                 }
         }
@@ -74,16 +82,21 @@ class NewChatViewModel(application: Application) : AndroidViewModel(application)
     fun openPersonalChat(userId: String, onExisting: (String) -> Unit, onDraft: () -> Unit) {
         viewModelScope.launch {
             _isLoading.value = true
-            val existing = chatRepo.findPersonalChat(userId)
-            if (existing != null) onExisting(existing) else onDraft()
-            _isLoading.value = false
+            try {
+                val existing = chatRepo.findPersonalChat(userId)
+                if (existing != null) onExisting(existing) else onDraft()
+            } catch (_: Exception) {
+                _error.value = "Не удалось открыть чат. Проверьте соединение."
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
     fun createGroup(name: String, onCreated: (String) -> Unit) {
         val memberIds = _selectedUsers.value.map { it.id }
         if (memberIds.isEmpty()) {
-            _error.value = "Выберите участников"
+            _error.value = "Выберите хотя бы одного участника"
             return
         }
         if (name.isBlank()) {
@@ -93,10 +106,15 @@ class NewChatViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             _isLoading.value = true
-            val chatId = chatRepo.createGroupChat(name.trim(), memberIds)
-            if (chatId != null) onCreated(chatId)
-            else _error.value = "Не удалось создать группу"
-            _isLoading.value = false
+            try {
+                val chatId = chatRepo.createGroupChat(name.trim(), memberIds)
+                if (chatId != null) onCreated(chatId)
+                else _error.value = "Не удалось создать группу. Проверьте соединение."
+            } catch (_: Exception) {
+                _error.value = "Не удалось создать группу. Проверьте соединение."
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
