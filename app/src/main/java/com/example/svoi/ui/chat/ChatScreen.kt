@@ -869,25 +869,13 @@ fun ChatScreen(
             }
         }
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = padding.calculateTopPadding())
                 .imePadding()
         ) {
-            // Error banner
-            error?.let { msg ->
-                Text(
-                    text = msg,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.errorContainer)
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .clickable { viewModel.clearError() },
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+        Column(modifier = Modifier.fillMaxSize()) {
 
             // Messages
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -1576,6 +1564,20 @@ fun ChatScreen(
                     }
                 }
             }
+        }
+        // Error overlay — floats over content without shifting layout
+        error?.let { msg ->
+            Text(
+                text = msg,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .clickable { viewModel.clearError() },
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
         }
     }
 
