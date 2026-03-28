@@ -204,6 +204,7 @@ import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.ReactionGroup
 import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.components.Avatar
+import com.example.svoi.ui.components.OfflineBanner
 import com.example.svoi.ui.theme.BubbleOther
 import com.example.svoi.ui.theme.BubbleOtherText
 import com.example.svoi.ui.theme.BubbleOwnText
@@ -265,6 +266,7 @@ fun ChatScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isUpdating by viewModel.isUpdating.collectAsState()
     val isOnline by viewModel.isOnline.collectAsState()
+    val isReachable by viewModel.isReachable.collectAsState()
     val memberCount by viewModel.memberCount.collectAsState()
     val error by viewModel.error.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
@@ -704,13 +706,14 @@ fun ChatScreen(
                                 val typingText = remember(typingUsers, isGroup) { typingIndicatorText(typingUsers, isGroup) }
                                 val subtitleText: String? = when {
                                     typingText != null -> typingText
-                                    !isOnline -> "Подключение..."
+                                    !isOnline -> "Нет подключения"
+                                    !isReachable -> "Нет доступа к серверам"
                                     isUpdating && memberCount == 0 && presenceText.isBlank() -> "Обновление..."
                                     isGroup && memberCount > 0 -> memberCountText(memberCount)
                                     !isGroup && presenceText.isNotBlank() -> presenceText
                                     else -> null
                                 }
-                                val isStatusAnimated = !isOnline || (isUpdating && memberCount == 0 && presenceText.isBlank())
+                                val isStatusAnimated = !isOnline || !isReachable || (isUpdating && memberCount == 0 && presenceText.isBlank())
                                 val isTyping = typingText != null
                                 if (subtitleText != null) {
                                     if (isStatusAnimated && !isTyping) {
@@ -805,6 +808,8 @@ fun ChatScreen(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
                 )
+
+                OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = isUpdating)
 
                 // Pinned message banner — slides in/out smoothly
                 AnimatedVisibility(

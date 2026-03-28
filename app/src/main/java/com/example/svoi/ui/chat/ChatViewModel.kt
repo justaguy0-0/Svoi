@@ -164,6 +164,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val isOnline: StateFlow<Boolean> = app.networkMonitor.isOnline
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
+    val isReachable: StateFlow<Boolean> = app.supabaseChecker.isReachable
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
     // Cached at init() time so it stays stable even if SDK session expires while offline.
     // Never reset to "" during a session — once captured, it remains valid for the lifetime
     // of the ViewModel. This prevents messages from flip-flopping to "others'" side when

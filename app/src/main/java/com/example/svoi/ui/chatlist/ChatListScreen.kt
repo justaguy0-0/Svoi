@@ -1,10 +1,6 @@
 package com.example.svoi.ui.chatlist
 
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
@@ -29,8 +25,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -75,6 +73,7 @@ import com.example.svoi.SvoiApp
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.MainBottomBar
+import com.example.svoi.ui.components.OfflineBanner
 import com.example.svoi.util.toChatListTime
 import kotlinx.coroutines.launch
 
@@ -93,6 +92,9 @@ fun ChatListScreen(
 
     val chats by viewModel.chats.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isOnline by viewModel.isOnline.collectAsState()
+    val isReachable by viewModel.isReachable.collectAsState()
+    val isUpdating by viewModel.isUpdating.collectAsState()
     val chatTyping by viewModel.chatTyping.collectAsState()
     val currentProfile by viewModel.currentProfile.collectAsState()
     val scope = rememberCoroutineScope()
@@ -133,30 +135,21 @@ fun ChatListScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    val isUpdating by viewModel.isUpdating.collectAsState()
-                    val isOnline by viewModel.isOnline.collectAsState()
-
-                    if (!isOnline || isUpdating) {
-                        val infiniteTransition = rememberInfiniteTransition(label = "title_pulse")
-                        val alpha by infiniteTransition.animateFloat(
-                            initialValue = 1f,
-                            targetValue = 0.4f,
-                            animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
-                            label = "title_alpha"
-                        )
-                        Text(
-                            text = if (!isOnline) "Подключение..." else "Обновление...",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            modifier = Modifier.alpha(alpha)
-                        )
-                    } else {
-                        Text(
-                            "Свои",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    Text(
+                        "Свои",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
+                actions = {
+                    if (!isOnline || !isReachable) {
+                        Icon(
+                            imageVector = if (!isOnline) Icons.Default.WifiOff else Icons.Default.CloudOff,
+                            contentDescription = "Нет соединения",
+                            modifier = Modifier.padding(end = 12.dp).size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
-                actions = {},
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
@@ -171,10 +164,15 @@ fun ChatListScreen(
             }
         }
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+        ) {
+            OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = isUpdating)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
         ) {
             if (isLoading && chats.isEmpty()) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -229,6 +227,7 @@ fun ChatListScreen(
                 }
             }
         }
+        } // Column
     }
 
     // Long-press bottom sheet
