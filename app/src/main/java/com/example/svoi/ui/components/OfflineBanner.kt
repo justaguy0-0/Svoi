@@ -1,6 +1,7 @@
 package com.example.svoi.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -20,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -34,8 +36,14 @@ fun OfflineBanner(
 ) {
     val showBanner = !isOnline || !isReachable || isUpdating
 
+    // MutableTransitionState initialised with the current value so the banner
+    // appears instantly (no slide-in) when the screen is first composed while
+    // already offline. Subsequent changes (going offline/online) still animate.
+    val transitionState = remember { MutableTransitionState(showBanner) }
+    transitionState.targetState = showBanner
+
     AnimatedVisibility(
-        visible = showBanner,
+        visibleState = transitionState,
         enter = slideInVertically { -it } + fadeIn(),
         exit = slideOutVertically { -it } + fadeOut()
     ) {
