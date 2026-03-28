@@ -97,6 +97,8 @@ val DarkTextSecondary = Color(0xFF9B9B9B)
 // ── Shared ───────────────────────────────────────────────────────────────────
 
 val Online = Color(0xFF4CAF50)
+val OnlineGreen = Color(0xFF43A047)  // for online indicators (dots)
+val DraftRed = Color(0xFFCC3333)     // for draft text in chat list
 val Error = Color(0xFFE53935)
 
 // Avatar palette — for user picks (Material 300–600, bright)
