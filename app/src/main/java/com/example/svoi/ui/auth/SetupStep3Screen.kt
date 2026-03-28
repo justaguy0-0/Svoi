@@ -46,6 +46,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.EmojiPicker
 import com.example.svoi.ui.theme.AvatarColors
+import com.example.svoi.ui.theme.SvoiDimens
+import com.example.svoi.ui.theme.SvoiShapes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,7 +66,7 @@ fun SetupStep3Screen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Шаг 3 из 3") },
+                title = { Text("Регистрация") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
@@ -82,6 +84,10 @@ fun SetupStep3Screen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Spacer(Modifier.height(4.dp))
+
+            StepIndicator(currentStep = 3, totalSteps = 3)
+
             Spacer(Modifier.height(8.dp))
 
             Text(
@@ -94,7 +100,7 @@ fun SetupStep3Screen(
                 Avatar(
                     emoji = selectedEmoji,
                     bgColor = selectedColor,
-                    size = 96.dp,
+                    size = SvoiDimens.AvatarXLarge,
                     fontSize = 44.sp
                 )
             }
@@ -121,7 +127,7 @@ fun SetupStep3Screen(
                             }.getOrDefault(Color.Gray)
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(40.dp)
                                     .clip(CircleShape)
                                     .background(color)
                                     .then(
@@ -144,9 +150,9 @@ fun SetupStep3Screen(
                 onClick = { viewModel.finishSignUp(selectedEmoji, selectedColor, onSetupComplete) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(SvoiDimens.ButtonHeight),
                 enabled = !isLoading,
-                shape = MaterialTheme.shapes.medium
+                shape = SvoiShapes.Button
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(

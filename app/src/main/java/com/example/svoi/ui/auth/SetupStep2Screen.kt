@@ -36,6 +36,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.svoi.ui.theme.SvoiDimens
+import com.example.svoi.ui.theme.SvoiShapes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,7 +55,7 @@ fun SetupStep2Screen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Шаг 2 из 3") },
+                title = { Text("Регистрация") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
@@ -71,6 +73,10 @@ fun SetupStep2Screen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Spacer(Modifier.height(4.dp))
+
+            StepIndicator(currentStep = 2, totalSteps = 3)
+
             Spacer(Modifier.height(8.dp))
 
             Text(
@@ -95,7 +101,7 @@ fun SetupStep2Screen(
                     keyboardType = KeyboardType.Password,
                     imeAction = ImeAction.Next
                 ),
-                shape = MaterialTheme.shapes.medium
+                shape = SvoiShapes.TextField
             )
 
             OutlinedTextField(
@@ -109,7 +115,7 @@ fun SetupStep2Screen(
                     keyboardType = KeyboardType.Password,
                     imeAction = ImeAction.Done
                 ),
-                shape = MaterialTheme.shapes.medium
+                shape = SvoiShapes.TextField
             )
 
             error?.let {
@@ -120,8 +126,8 @@ fun SetupStep2Screen(
                 onClick = { viewModel.validateStep2(password, confirmPassword, onNext) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
-                shape = MaterialTheme.shapes.medium
+                    .height(SvoiDimens.ButtonHeight),
+                shape = SvoiShapes.Button
             ) {
                 Text("Далее", style = MaterialTheme.typography.titleMedium)
             }

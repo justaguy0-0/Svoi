@@ -1,6 +1,8 @@
 package com.example.svoi.ui.auth
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -39,6 +42,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.svoi.ui.theme.SvoiDimens
+import com.example.svoi.ui.theme.SvoiShapes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,7 +80,17 @@ fun InviteKeyScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(text = "🔑", fontSize = 56.sp)
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .background(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "🔑", fontSize = 40.sp)
+            }
             Spacer(Modifier.height(16.dp))
             Text(
                 text = "Пригласительный ключ",
@@ -104,7 +119,7 @@ fun InviteKeyScreen(
                         viewModel.validateInviteKey(key) { onKeyValidated(key.trim()) }
                     }
                 ),
-                shape = MaterialTheme.shapes.medium,
+                shape = SvoiShapes.TextField,
                 isError = error != null
             )
 
@@ -126,9 +141,9 @@ fun InviteKeyScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(SvoiDimens.ButtonHeight),
                 enabled = key.isNotBlank() && !isLoading,
-                shape = MaterialTheme.shapes.medium
+                shape = SvoiShapes.Button
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
