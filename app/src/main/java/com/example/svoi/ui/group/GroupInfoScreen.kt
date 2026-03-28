@@ -22,8 +22,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.components.Avatar
-import com.example.svoi.ui.theme.Online
-import com.example.svoi.ui.theme.TextSecondary
+import com.example.svoi.ui.theme.OnlineGreen
+import com.example.svoi.ui.theme.SvoiDimens
+import com.example.svoi.ui.theme.SvoiShapes
 import com.example.svoi.ui.theme.groupAvatarColor
 import com.example.svoi.util.toLastSeen
 import kotlinx.coroutines.launch
@@ -107,7 +108,7 @@ fun GroupInfoScreen(
                             bgColor = groupAvatarColor(chatId),
                             isGroup = true,
                             letter = chat?.name ?: "Г",
-                            size = 96.dp,
+                            size = SvoiDimens.AvatarXLarge,
                             fontSize = 44.sp
                         )
 
@@ -300,7 +301,7 @@ private fun MemberRow(
                 Box(
                     modifier = Modifier
                         .size(13.dp)
-                        .background(Online, CircleShape)
+                        .background(OnlineGreen, CircleShape)
                         .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
                 )
             }
@@ -339,7 +340,7 @@ private fun MemberRow(
                     Text(
                         text = presenceText,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isOnline) Online else TextSecondary
+                        color = if (isOnline) OnlineGreen else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -375,7 +376,8 @@ private fun RenameGroupDialog(
                 onValueChange = { name = it },
                 label = { Text("Название группы") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                shape = SvoiShapes.TextField
             )
         },
         confirmButton = {

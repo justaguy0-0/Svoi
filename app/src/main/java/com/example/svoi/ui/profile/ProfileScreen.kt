@@ -63,6 +63,8 @@ import com.example.svoi.ui.components.EmojiPicker
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.components.OfflineBanner
 import com.example.svoi.ui.theme.AvatarColors
+import com.example.svoi.ui.theme.SvoiDimens
+import com.example.svoi.ui.theme.SvoiShapes
 import com.example.svoi.util.toRegistrationDate
 import kotlinx.coroutines.launch
 
@@ -149,98 +151,128 @@ fun ProfileScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = SvoiDimens.ScreenHorizontalPadding)
                 .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
 
             // Avatar preview
             Avatar(
                 emoji = selectedEmoji,
                 bgColor = selectedColor,
-                size = 88.dp,
+                size = SvoiDimens.AvatarLarge,
                 fontSize = 42.sp
             )
 
-            // Name & about
-            OutlinedTextField(
-                value = displayName,
-                onValueChange = { displayName = it },
-                label = { Text("Имя") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                shape = MaterialTheme.shapes.medium
-            )
-
-            OutlinedTextField(
-                value = statusText,
-                onValueChange = { statusText = it },
-                label = { Text("О себе") },
-                placeholder = { Text("Напишите что-нибудь о себе") },
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 3,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                shape = MaterialTheme.shapes.medium
-            )
-
-            // Save profile button
-            Button(
-                onClick = {
-                    viewModel.saveNameAndAbout(displayName, statusText)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                enabled = !isSaving && isOnline,
-                shape = MaterialTheme.shapes.medium
-            ) {
-                if (isSaving) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
+            // Registration date chip
+            val regDate = profile?.createdAt?.toRegistrationDate()
+            if (!regDate.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.Surface(
+                    shape = SvoiShapes.Chip,
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        text = "В Свои с $regDate",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                } else {
-                    Text(if (isOnline) "Сохранить" else "Нет подключения")
                 }
             }
 
-            // Registration date
-            val regDate = profile?.createdAt?.toRegistrationDate()
-            if (!regDate.isNullOrBlank()) {
-                Text(
-                    text = "В Свои с $regDate",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Spacer(Modifier.height(20.dp))
 
-            // Avatar edit button
-            OutlinedButton(
-                onClick = { showAvatarSheet = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = MaterialTheme.shapes.medium
+            // Name & about card
+            androidx.compose.material3.Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = SvoiShapes.Card,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
             ) {
-                Text("Редактировать аватар")
+                Column(
+                    modifier = Modifier.padding(SvoiDimens.CardPadding),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = displayName,
+                        onValueChange = { displayName = it },
+                        label = { Text("Имя") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        shape = SvoiShapes.TextField
+                    )
+
+                    OutlinedTextField(
+                        value = statusText,
+                        onValueChange = { statusText = it },
+                        label = { Text("О себе") },
+                        placeholder = { Text("Напишите что-нибудь о себе") },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 3,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                        shape = SvoiShapes.TextField
+                    )
+
+                    Button(
+                        onClick = { viewModel.saveNameAndAbout(displayName, statusText) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(SvoiDimens.ButtonHeight),
+                        enabled = !isSaving && isOnline,
+                        shape = SvoiShapes.Button
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text(if (isOnline) "Сохранить" else "Нет подключения")
+                        }
+                    }
+                }
             }
 
-            // Change password button
-            OutlinedButton(
-                onClick = { showPasswordDialog = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = MaterialTheme.shapes.medium
+            Spacer(Modifier.height(12.dp))
+
+            // Actions card
+            androidx.compose.material3.Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = SvoiShapes.Card,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
             ) {
-                Text("Изменить пароль")
+                Column(
+                    modifier = Modifier.padding(SvoiDimens.CardPadding),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { showAvatarSheet = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(SvoiDimens.ButtonHeight),
+                        shape = SvoiShapes.Button
+                    ) {
+                        Text("Редактировать аватар")
+                    }
+
+                    OutlinedButton(
+                        onClick = { showPasswordDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(SvoiDimens.ButtonHeight),
+                        shape = SvoiShapes.Button
+                    ) {
+                        Text("Изменить пароль")
+                    }
+                }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
         }
         } // else
         } // outer Column
@@ -303,7 +335,7 @@ fun ProfileScreen(
                                 }.getOrDefault(Color.Gray)
                                 Box(
                                     modifier = Modifier
-                                        .size(36.dp)
+                                        .size(40.dp)
                                         .clip(CircleShape)
                                         .background(color)
                                         .then(
@@ -327,9 +359,9 @@ fun ProfileScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .height(SvoiDimens.ButtonHeight),
                     enabled = !isSaving,
-                    shape = MaterialTheme.shapes.medium
+                    shape = SvoiShapes.Button
                 ) {
                     if (isSaving) {
                         CircularProgressIndicator(
@@ -366,7 +398,7 @@ fun ProfileScreen(
                             keyboardType = KeyboardType.Password,
                             imeAction = ImeAction.Next
                         ),
-                        shape = MaterialTheme.shapes.medium
+                        shape = SvoiShapes.TextField
                     )
                     OutlinedTextField(
                         value = confirmPassword,
@@ -379,7 +411,7 @@ fun ProfileScreen(
                             keyboardType = KeyboardType.Password,
                             imeAction = ImeAction.Done
                         ),
-                        shape = MaterialTheme.shapes.medium
+                        shape = SvoiShapes.TextField
                     )
                 }
             },
