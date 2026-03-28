@@ -212,6 +212,7 @@ import com.example.svoi.ui.theme.DarkBackground
 import com.example.svoi.ui.theme.DarkBubbleOther
 import com.example.svoi.ui.theme.DarkBubbleOtherText
 import com.example.svoi.ui.theme.Online
+import com.example.svoi.ui.theme.SvoiShapes
 import com.example.svoi.ui.theme.TextSecondary
 import com.example.svoi.util.toDateSeparator
 import com.example.svoi.util.toLastSeen
@@ -1175,6 +1176,11 @@ fun ChatScreen(
                         .background(MaterialTheme.colorScheme.surface)
                         .navigationBarsPadding()
                 ) {
+                    // Thin separator above input bar
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                    )
                     // Staged media preview
                     AnimatedVisibility(
                         visible = stagedMedia.isNotEmpty(),
@@ -2316,8 +2322,9 @@ private fun DateSeparator(date: String) {
         contentAlignment = Alignment.Center
     ) {
         Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+            shape = SvoiShapes.Chip,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+            tonalElevation = 1.dp
         ) {
             Text(
                 text = date,
@@ -2413,11 +2420,7 @@ private fun MessageItem(
     val isDark = MaterialTheme.colorScheme.background == DarkBackground
     val bubbleColor = if (item.isOwn) MaterialTheme.colorScheme.primary else if (isDark) DarkBubbleOther else BubbleOther
     val textColor = if (item.isOwn) BubbleOwnText else if (isDark) DarkBubbleOtherText else BubbleOtherText
-    val bubbleShape = if (item.isOwn) {
-        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 4.dp)
-    } else {
-        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 4.dp, bottomEnd = 18.dp)
-    }
+    val bubbleShape = if (item.isOwn) SvoiShapes.BubbleOwn else SvoiShapes.BubbleOther
 
     // Big-emoji mode: 1–3 emoji with no text, no reply, no forward → no bubble
     val isEmojiOnlyMsg = msg.type == "text" &&
@@ -2605,7 +2608,7 @@ private fun MessageItem(
                 Surface(
                     shape = bubbleShape,
                     color = bubbleColor,
-                    shadowElevation = if (item.isOwn) 0.dp else 1.dp,
+                    tonalElevation = if (item.isOwn) 0.dp else 1.dp,
                     modifier = Modifier
                         .widthIn(max = 300.dp)
                         .combinedClickable(
