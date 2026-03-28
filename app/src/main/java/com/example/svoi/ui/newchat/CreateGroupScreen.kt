@@ -21,7 +21,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.theme.GroupAvatarColors
+import com.example.svoi.ui.theme.SvoiShapes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,7 +118,7 @@ fun CreateGroupScreen(
                     }
                 },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                shape = MaterialTheme.shapes.medium,
+                shape = SvoiShapes.TextField,
                 isError = error != null
             )
 
@@ -157,7 +158,7 @@ fun CreateGroupScreen(
                         )
                     }
                 }
-                Divider()
+                HorizontalDivider()
             }
 
             // User search
@@ -188,10 +189,10 @@ fun CreateGroupScreen(
                             )
                         }
                     )
-                    Divider(
+                    HorizontalDivider(
                         modifier = Modifier.padding(start = 72.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(0.4f)
+                        thickness = 0.4.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                     )
                 }
             }

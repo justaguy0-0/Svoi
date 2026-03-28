@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,8 +48,12 @@ fun OfflineBanner(
         enter = slideInVertically { -it } + fadeIn(),
         exit = slideOutVertically { -it } + fadeOut()
     ) {
-        val bannerColor = MaterialTheme.colorScheme.primary
-        val contentColor = MaterialTheme.colorScheme.onPrimary
+        val bannerColor = when {
+            isUpdating -> MaterialTheme.colorScheme.primary
+            !isOnline -> Color(0xFFE65100)   // deep orange for no internet
+            else -> Color(0xFFC62828)         // dark red for server unreachable
+        }
+        val contentColor = Color.White
 
         Surface(
             modifier = Modifier.fillMaxWidth(),

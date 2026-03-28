@@ -12,6 +12,8 @@ import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
@@ -42,6 +44,12 @@ fun MainBottomBar(
     if (voiceState != null) lastVoiceState = voiceState
 
     Column {
+        // Thin top divider
+        HorizontalDivider(
+            thickness = 0.4.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+        )
+
         // Mini-player sits above the tab bar when voice is playing outside a chat
         AnimatedVisibility(
             visible = voiceState != null,
