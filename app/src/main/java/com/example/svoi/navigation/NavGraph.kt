@@ -1,11 +1,8 @@
 package com.example.svoi.navigation
 
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -81,39 +78,14 @@ fun NavGraph(
         return if (now - lastNavMs > 400L) { lastNavMs = now; true } else false
     }
 
-    // Shared animation specs
-    val fadeSpec = tween<Float>(220, easing = FastOutSlowInEasing)
-
     Surface(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            // Forward navigation: new screen slides in from the right, current fades/shifts left
-            enterTransition = {
-                slideInHorizontally(
-                    animationSpec = tween(300, easing = FastOutSlowInEasing),
-                    initialOffsetX = { (it * 0.18f).toInt() }
-                ) + fadeIn(fadeSpec)
-            },
-            exitTransition = {
-                slideOutHorizontally(
-                    animationSpec = tween(300, easing = FastOutSlowInEasing),
-                    targetOffsetX = { -(it * 0.18f).toInt() }
-                ) + fadeOut(fadeSpec)
-            },
-            // Back navigation: current screen slides off to the right, previous fades back in
-            popEnterTransition = {
-                slideInHorizontally(
-                    animationSpec = tween(300, easing = FastOutSlowInEasing),
-                    initialOffsetX = { -(it * 0.18f).toInt() }
-                ) + fadeIn(fadeSpec)
-            },
-            popExitTransition = {
-                slideOutHorizontally(
-                    animationSpec = tween(300, easing = FastOutSlowInEasing),
-                    targetOffsetX = { (it * 0.18f).toInt() }
-                ) + fadeOut(fadeSpec)
-            }
+            enterTransition    = { fadeIn(tween(200)) },
+            exitTransition     = { fadeOut(tween(180)) },
+            popEnterTransition = { fadeIn(tween(200)) },
+            popExitTransition  = { fadeOut(tween(180)) }
         ) {
             composable(Routes.LOGIN) {
                 LoginScreen(
@@ -171,13 +143,7 @@ fun NavGraph(
                 )
             }
 
-            composable(
-                Routes.CHAT_LIST,
-                enterTransition = { fadeIn(tween(220)) },
-                exitTransition = { fadeOut(tween(180)) },
-                popEnterTransition = { fadeIn(tween(220)) },
-                popExitTransition = { fadeOut(tween(180)) }
-            ) {
+            composable(Routes.CHAT_LIST) {
                 ChatListScreen(
                     onChatClick = { chatId ->
                         if (canNav()) navController.navigate(Routes.chat(chatId))
@@ -303,13 +269,7 @@ fun NavGraph(
                 )
             }
 
-            composable(
-                Routes.PROFILE,
-                enterTransition = { fadeIn(tween(220)) },
-                exitTransition = { fadeOut(tween(180)) },
-                popEnterTransition = { fadeIn(tween(220)) },
-                popExitTransition = { fadeOut(tween(180)) }
-            ) {
+            composable(Routes.PROFILE) {
                 ProfileScreen(
                     onNavigateToChats = {
                         if (canNav()) navController.popBackStack(Routes.CHAT_LIST, inclusive = false)
@@ -328,13 +288,7 @@ fun NavGraph(
                 )
             }
 
-            composable(
-                Routes.SETTINGS,
-                enterTransition = { fadeIn(tween(220)) },
-                exitTransition = { fadeOut(tween(180)) },
-                popEnterTransition = { fadeIn(tween(220)) },
-                popExitTransition = { fadeOut(tween(180)) }
-            ) {
+            composable(Routes.SETTINGS) {
                 SettingsScreen(
                     currentThemeMode = currentThemeMode,
                     onThemeChanged = onThemeChanged,
