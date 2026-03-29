@@ -138,8 +138,7 @@ fun ChatListScreen(
                 selectedTab = 0,
                 onChatsClick = {},
                 onProfileClick = onProfileClick,
-                onSettingsClick = onSettingsClick,
-                currentProfile = currentProfile
+                onSettingsClick = onSettingsClick
             )
         },
         topBar = {
@@ -161,7 +160,7 @@ fun ChatListScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
                 )
             )
         },

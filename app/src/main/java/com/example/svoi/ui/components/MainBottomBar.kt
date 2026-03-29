@@ -38,9 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.svoi.SvoiApp
-import com.example.svoi.data.model.Profile
 import com.example.svoi.ui.voice.GlobalVoiceMiniPlayer
 
 @Composable
@@ -48,8 +46,7 @@ fun MainBottomBar(
     selectedTab: Int,  // 0=Чаты, 1=Профиль, 2=Настройки
     onChatsClick: () -> Unit,
     onProfileClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-    currentProfile: Profile? = null
+    onSettingsClick: () -> Unit
 ) {
     val app = LocalContext.current.applicationContext as SvoiApp
     val voiceState by app.globalVoicePlayer.state.collectAsState()
@@ -104,18 +101,7 @@ fun MainBottomBar(
                 onClick = onProfileClick,
                 icon = {
                     NavItemDot(selected = selectedTab == 1) {
-                        val p = currentProfile
-                        if (p != null) {
-                            Avatar(
-                                emoji = p.emoji,
-                                bgColor = p.bgColor,
-                                letter = p.displayName,
-                                size = 28.dp,
-                                fontSize = 13.sp
-                            )
-                        } else {
-                            Icon(Icons.Default.Person, contentDescription = "Профиль")
-                        }
+                        Icon(Icons.Default.Person, contentDescription = "Профиль")
                     }
                 },
                 label = null,

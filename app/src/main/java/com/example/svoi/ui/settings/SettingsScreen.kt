@@ -125,7 +125,7 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Настройки", fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
                 )
             )
         },
@@ -134,8 +134,7 @@ fun SettingsScreen(
                 selectedTab = 2,
                 onChatsClick = onNavigateToChats,
                 onProfileClick = onNavigateToProfile,
-                onSettingsClick = {},
-                currentProfile = currentProfile
+                onSettingsClick = {}
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }

@@ -37,6 +37,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -122,7 +123,10 @@ fun ProfileScreen(
                             tint = MaterialTheme.colorScheme.error
                         )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
             )
         },
         bottomBar = {
@@ -130,8 +134,7 @@ fun ProfileScreen(
                 selectedTab = 1,
                 onChatsClick = onNavigateToChats,
                 onProfileClick = {},
-                onSettingsClick = onNavigateToSettings,
-                currentProfile = profile
+                onSettingsClick = onNavigateToSettings
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
