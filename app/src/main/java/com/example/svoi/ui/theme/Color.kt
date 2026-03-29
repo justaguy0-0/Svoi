@@ -8,47 +8,61 @@ import com.example.svoi.data.local.SvoiAccent
 
 data class AccentPalette(
     val primary: Color,
-    val primaryDark: Color,    // slightly lighter for dark mode readability
-    val container: Color,      // very light tint
-    val onContainer: Color     // dark text on container
+    val primaryDark: Color,       // slightly lighter for dark mode readability
+    val container: Color,         // very light tint
+    val onContainer: Color,       // dark text on container
+    val barSurface: Color,        // top/bottom bar background (light mode)
+    val barSurfaceDark: Color     // top/bottom bar background (dark mode)
 )
 
 val AccentPalettes: Map<SvoiAccent, AccentPalette> = mapOf(
     SvoiAccent.BLUE to AccentPalette(
-        primary       = Color(0xFF1565C0),   // Material Blue 800 — тёмно-синий
-        primaryDark   = Color(0xFF5C9CE5),
-        container     = Color(0xFFBBDEFB),
-        onContainer   = Color(0xFF0D47A1)
+        primary          = Color(0xFF1565C0),
+        primaryDark      = Color(0xFF5C9CE5),
+        container        = Color(0xFFBBDEFB),
+        onContainer      = Color(0xFF0D47A1),
+        barSurface       = Color(0xFFE3F2FD),   // Blue 50
+        barSurfaceDark   = Color(0xFF1A2533)
     ),
     SvoiAccent.ORANGE to AccentPalette(
-        primary       = Color(0xFFBF5517),   // тёмный жжёный оранжевый
-        primaryDark   = Color(0xFFFF9A5C),
-        container     = Color(0xFFFFE0CC),
-        onContainer   = Color(0xFF7A2E00)
+        primary          = Color(0xFFBF5517),
+        primaryDark      = Color(0xFFFF9A5C),
+        container        = Color(0xFFFFE0CC),
+        onContainer      = Color(0xFF7A2E00),
+        barSurface       = Color(0xFFFFF3E0),   // Orange 50
+        barSurfaceDark   = Color(0xFF251B10)
     ),
     SvoiAccent.RED to AccentPalette(
-        primary       = Color(0xFFA52828),   // тёмный кирпичный красный
-        primaryDark   = Color(0xFFE57373),
-        container     = Color(0xFFFFCDD2),
-        onContainer   = Color(0xFF6A0F0F)
+        primary          = Color(0xFFA52828),
+        primaryDark      = Color(0xFFE57373),
+        container        = Color(0xFFFFCDD2),
+        onContainer      = Color(0xFF6A0F0F),
+        barSurface       = Color(0xFFFFEBEE),   // Red 50
+        barSurfaceDark   = Color(0xFF251515)
     ),
     SvoiAccent.GREEN to AccentPalette(
-        primary       = Color(0xFF276B3A),   // тёмный лесной зелёный
-        primaryDark   = Color(0xFF66BB6A),
-        container     = Color(0xFFC8E6C9),
-        onContainer   = Color(0xFF14381D)
+        primary          = Color(0xFF276B3A),
+        primaryDark      = Color(0xFF66BB6A),
+        container        = Color(0xFFC8E6C9),
+        onContainer      = Color(0xFF14381D),
+        barSurface       = Color(0xFFE8F5E9),   // Green 50
+        barSurfaceDark   = Color(0xFF142214)
     ),
     SvoiAccent.PINK to AccentPalette(
-        primary       = Color(0xFF9C3060),   // тёмный малиново-розовый
-        primaryDark   = Color(0xFFE879A0),
-        container     = Color(0xFFFCE4EC),
-        onContainer   = Color(0xFF65103C)
+        primary          = Color(0xFF9C3060),
+        primaryDark      = Color(0xFFE879A0),
+        container        = Color(0xFFFCE4EC),
+        onContainer      = Color(0xFF65103C),
+        barSurface       = Color(0xFFFCE4EC),   // Pink 50
+        barSurfaceDark   = Color(0xFF251220)
     ),
     SvoiAccent.PURPLE to AccentPalette(
-        primary       = Color(0xFF5E35B1),   // Material Deep Purple 600
-        primaryDark   = Color(0xFF9B7FD4),
-        container     = Color(0xFFEDE7F6),
-        onContainer   = Color(0xFF311B92)
+        primary          = Color(0xFF5E35B1),
+        primaryDark      = Color(0xFF9B7FD4),
+        container        = Color(0xFFEDE7F6),
+        onContainer      = Color(0xFF311B92),
+        barSurface       = Color(0xFFEDE7F6),   // Deep Purple 50
+        barSurfaceDark   = Color(0xFF1C1528)
     )
 )
 
