@@ -1173,7 +1173,7 @@ fun ChatScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
                         .navigationBarsPadding()
                 ) {
                     // Thin separator above input bar
