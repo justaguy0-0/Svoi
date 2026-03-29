@@ -2,7 +2,6 @@ package com.example.svoi.data.repository
 
 import android.util.Log
 import com.example.svoi.data.local.EncryptedPrefsManager
-import com.example.svoi.data.model.InviteKey
 import com.example.svoi.data.model.Profile
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.status.SessionStatus
@@ -10,7 +9,10 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.user.UserSession
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.Instant
 
@@ -132,18 +134,14 @@ class AuthRepository(
         }
     }
 
-    /** Validates an invite key. Returns true if key exists and is unused. */
+    /** Validates an invite key. Returns true if key exists and is unused.
+     *  Uses a SECURITY DEFINER RPC so the table is never exposed to anon directly. */
     suspend fun validateInviteKey(key: String): Boolean {
         return try {
-            val results = supabase.from("invite_keys")
-                .select {
-                    filter {
-                        eq("key", key)
-                        eq("used", false)
-                    }
-                }
-                .decodeList<InviteKey>()
-            results.isNotEmpty()
+            supabase.postgrest.rpc(
+                "validate_invite_key",
+                buildJsonObject { put("p_key", key) }
+            ).decodeAs<Boolean>()
         } catch (e: Exception) {
             false
         }
