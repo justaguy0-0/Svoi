@@ -27,11 +27,14 @@ import io.github.jan.supabase.realtime.realtime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 @Serializable
 private data class MessageReadInsert(
@@ -709,20 +712,55 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (_: Exception) { emptyMap() }
     }
 
-    /** Upload a file/image to Supabase Storage and return the public URL.
-     *  [onProgress] is called with 1.0 when the upload completes. */
+    /** Upload a file to Supabase Storage and return the public URL.
+     *  Timeout scales with file size (min 90s, +1s per 8KB, max 5min).
+     *  [onProgress] is called with 1.0 on completion; use [uploadFileWithSimulatedProgress]
+     *  for smooth intermediate progress on slow connections. */
     suspend fun uploadFile(
         chatId: String,
         fileName: String,
         bytes: ByteArray,
         onProgress: ((Float) -> Unit)? = null
     ): String? {
+        val timeoutMs = minOf(maxOf(90_000L, bytes.size / 8L + 30_000L), 300_000L)
         return try {
-            val path = "$chatId/${java.util.UUID.randomUUID()}/$fileName"
-            supabase.storage.from("chat-media").upload(path, bytes)
-            onProgress?.invoke(1f)
-            supabase.storage.from("chat-media").publicUrl(path)
-        } catch (e: Exception) { null }
+            withTimeout(timeoutMs) {
+                val path = "$chatId/${java.util.UUID.randomUUID()}/$fileName"
+                supabase.storage.from("chat-media").upload(path, bytes)
+                onProgress?.invoke(1f)
+                supabase.storage.from("chat-media").publicUrl(path)
+            }
+        } catch (_: Exception) { null }
+    }
+
+    /** Like [uploadFile] but fires [onProgress] continuously 0→0.9 during the upload
+     *  (estimated from file size at 20 KB/s), then snaps to 1.0 on completion.
+     *  Gives users real visual feedback on slow connections. */
+    suspend fun uploadFileWithSimulatedProgress(
+        chatId: String,
+        fileName: String,
+        bytes: ByteArray,
+        onProgress: (Float) -> Unit
+    ): String? = coroutineScope {
+        var done = false
+        val estimatedMs = maxOf(2_000L, bytes.size / 20L)
+        val timer = launch {
+            val start = System.currentTimeMillis()
+            while (!done) {
+                val fraction = ((System.currentTimeMillis() - start).toFloat() / estimatedMs)
+                    .coerceIn(0f, 0.9f)
+                onProgress(fraction)
+                delay(200)
+            }
+        }
+        val url = try {
+            uploadFile(chatId, fileName, bytes)
+        } finally {
+            done = true
+            timer.cancel()
+        }
+        if (url != null) onProgress(1f)
+        url
     }
 
     /** Send a message with one or more photos (and optional text caption). */

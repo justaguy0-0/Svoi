@@ -13,6 +13,7 @@ import com.example.svoi.data.model.Chat
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
+import com.example.svoi.data.model.PendingMediaContext
 import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.ReactionGroup
@@ -1433,38 +1434,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         _error.value = "Не удалось создать чат"
                         return@launch
                     }
-                    val uploadedUrls = mutableListOf<String>()
-                    photos.forEachIndexed { idx, staged ->
-                        val bytes = compressImage(staged.uri, context)
-                        if (bytes == null) {
-                            _error.value = "Не удалось прочитать изображение"
-                            _messages.value = _messages.value.filter { it.message.id != pendingId }
-                            _uploadProgresses.value = emptyList()
-                            return@launch
-                        }
-                        val fileName = "photo_${System.currentTimeMillis()}.jpg"
-                        val url = messageRepo.uploadFile(chatId, fileName, bytes) { progress ->
-                            val progs = _uploadProgresses.value.toMutableList()
-                            if (idx < progs.size) { progs[idx] = progress; _uploadProgresses.value = progs }
-                        }
-                        if (url == null) {
-                            _error.value = "Ошибка загрузки изображения"
-                            _messages.value = _messages.value.filter { it.message.id != pendingId }
-                            _uploadProgresses.value = emptyList()
-                            return@launch
-                        }
-                        uploadedUrls.add(url)
-                    }
-                    if (photos.size == 1) {
-                        messageRepo.sendPhotoMessage(chatId, uploadedUrls[0], replyId, text.trim().ifBlank { null }, silent)
-                    } else {
-                        messageRepo.sendAlbumMessage(chatId, uploadedUrls, text.trim().ifBlank { null }, replyId, silent)
-                    }
-                    _messages.value = _messages.value.filter { it.message.id != pendingId }
+                    doUploadAndSendPhotos(
+                        pendingId = pendingId,
+                        photoUris = photos.map { it.uri },
+                        caption = text.trim().ifBlank { null },
+                        replyId = replyId,
+                        silent = silent,
+                        context = context
+                    )
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
-                    _error.value = "Ошибка: ${e.message}"
-                    _messages.value = _messages.value.filter { it.message.id != pendingId }
+                    markMediaFailed(pendingId, PendingMediaContext(
+                        uris = photos.map { it.uri.toString() }, isVideo = false,
+                        caption = text.trim().ifBlank { null }, replyToId = replyId, silent = silent
+                    ))
                 } finally {
                     _isSending.value = false
                     _uploadProgresses.value = emptyList()
@@ -1513,32 +1496,200 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     _error.value = "Не удалось создать чат"
                     return@launch
                 }
-                val bytes = context.contentResolver.openInputStream(staged.uri)?.readBytes()
-                if (bytes == null) {
-                    _messages.value = _messages.value.filter { it.message.id != pendingId }
-                    _error.value = "Не удалось прочитать видео"
-                    return@launch
-                }
-                // Дополнительная проверка после чтения (если pre-check вернул 0)
-                if (bytes.size > 50 * 1024 * 1024) {
-                    _messages.value = _messages.value.filter { it.message.id != pendingId }
-                    _error.value = "Видео слишком большое. Максимальный размер — 50 МБ."
-                    return@launch
-                }
-                val ext = name.substringAfterLast('.', "mp4")
-                val fileName = "video_${System.currentTimeMillis()}.$ext"
-                val url = messageRepo.uploadFile(chatId, fileName, bytes)
-                if (url != null) {
-                    messageRepo.sendVideoMessage(chatId, url, name, bytes.size.toLong(), mimeType, replyId, caption, silent)
-                } else {
-                    _error.value = "Ошибка загрузки видео"
-                }
-                _messages.value = _messages.value.filter { it.message.id != pendingId }
+                doUploadAndSendVideo(
+                    pendingId = pendingId,
+                    uri = staged.uri,
+                    name = name,
+                    mimeType = mimeType,
+                    caption = caption,
+                    replyId = replyId,
+                    silent = silent,
+                    context = context
+                )
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                _messages.value = _messages.value.filter { it.message.id != pendingId }
-                _error.value = "Ошибка загрузки видео"
+                markMediaFailed(pendingId, PendingMediaContext(
+                    uris = listOf(staged.uri.toString()), isVideo = true,
+                    caption = caption, replyToId = replyId, silent = silent,
+                    mimeType = mimeType, originalFileName = name
+                ))
             } finally {
+                if (activeUploadCount.decrementAndGet() == 0) {
+                    messageRepo.clearTyping(chatId, myId)
+                }
+            }
+        }
+    }
+
+    // ── Media upload helpers ───────────────────────────────────────────────────
+
+    /** Marks a pending media message as failed and stores the context needed to retry. */
+    private fun markMediaFailed(pendingId: String, ctx: PendingMediaContext) {
+        _messages.value = _messages.value.map { item ->
+            if (item.message.id != pendingId) item
+            else item.copy(isPending = false, isFailed = true, pendingMediaContext = ctx)
+        }
+        _uploadProgresses.value = emptyList()
+    }
+
+    /**
+     * Uploads photos and sends the message. Suspends until complete or failed.
+     * On failure marks the pending item as isFailed instead of removing it.
+     * Must be called from Dispatchers.IO.
+     */
+    private suspend fun doUploadAndSendPhotos(
+        pendingId: String,
+        photoUris: List<Uri>,
+        caption: String?,
+        replyId: String?,
+        silent: Boolean,
+        context: Context
+    ) {
+        val uploadedUrls = mutableListOf<String>()
+        photoUris.forEachIndexed { idx, uri ->
+            val bytes = compressImage(uri, context)
+            if (bytes == null) {
+                markMediaFailed(pendingId, PendingMediaContext(
+                    uris = photoUris.map { it.toString() }, isVideo = false,
+                    caption = caption, replyToId = replyId, silent = silent
+                ))
+                return
+            }
+            val fileName = "photo_${System.currentTimeMillis()}.jpg"
+            val url = messageRepo.uploadFileWithSimulatedProgress(chatId, fileName, bytes) { progress ->
+                val progs = _uploadProgresses.value.toMutableList()
+                if (idx < progs.size) { progs[idx] = progress; _uploadProgresses.value = progs }
+            }
+            if (url == null) {
+                markMediaFailed(pendingId, PendingMediaContext(
+                    uris = photoUris.map { it.toString() }, isVideo = false,
+                    caption = caption, replyToId = replyId, silent = silent
+                ))
+                return
+            }
+            uploadedUrls.add(url)
+        }
+        if (photoUris.size == 1) {
+            messageRepo.sendPhotoMessage(chatId, uploadedUrls[0], replyId, caption, silent)
+        } else {
+            messageRepo.sendAlbumMessage(chatId, uploadedUrls, caption, replyId, silent)
+        }
+        // Success: remove placeholder; Realtime will deliver the confirmed message
+        _messages.value = _messages.value.filter { it.message.id != pendingId }
+    }
+
+    /**
+     * Uploads video and sends the message. Suspends until complete or failed.
+     * On failure marks the pending item as isFailed instead of removing it.
+     * Must be called from Dispatchers.IO.
+     */
+    private suspend fun doUploadAndSendVideo(
+        pendingId: String,
+        uri: Uri,
+        name: String,
+        mimeType: String,
+        caption: String?,
+        replyId: String?,
+        silent: Boolean,
+        context: Context
+    ) {
+        val bytes = context.contentResolver.openInputStream(uri)?.readBytes()
+        if (bytes == null) {
+            markMediaFailed(pendingId, PendingMediaContext(
+                uris = listOf(uri.toString()), isVideo = true,
+                caption = caption, replyToId = replyId, silent = silent,
+                mimeType = mimeType, originalFileName = name
+            ))
+            _error.value = "Не удалось прочитать видео"
+            return
+        }
+        if (bytes.size > 50 * 1024 * 1024) {
+            // Over limit after reading — just remove (can't retry, file won't shrink)
+            _messages.value = _messages.value.filter { it.message.id != pendingId }
+            _error.value = "Видео слишком большое. Максимальный размер — 50 МБ."
+            return
+        }
+        val ext = name.substringAfterLast('.', "mp4")
+        val fileName = "video_${System.currentTimeMillis()}.$ext"
+        val url = messageRepo.uploadFile(chatId, fileName, bytes)
+        if (url != null) {
+            messageRepo.sendVideoMessage(chatId, url, name, bytes.size.toLong(), mimeType, replyId, caption, silent)
+            _messages.value = _messages.value.filter { it.message.id != pendingId }
+        } else {
+            markMediaFailed(pendingId, PendingMediaContext(
+                uris = listOf(uri.toString()), isVideo = true,
+                caption = caption, replyToId = replyId, silent = silent,
+                mimeType = mimeType, originalFileName = name
+            ))
+        }
+    }
+
+    /**
+     * Retries a failed media upload. Validates the URI is still readable before
+     * re-entering the upload flow. Updates the existing list item in-place
+     * (no jumping to bottom, same stableKey).
+     */
+    fun retryFailedMediaMessage(localId: String, context: Context) {
+        val item = _messages.value.find { it.message.id == localId } ?: return
+        val ctx = item.pendingMediaContext ?: return
+
+        // Validate URI still readable
+        val firstUri = Uri.parse(ctx.uris.first())
+        val readable = try {
+            context.contentResolver.openInputStream(firstUri)?.close(); true
+        } catch (_: Exception) { false }
+
+        if (!readable) {
+            _messages.value = _messages.value.filter { it.message.id != localId }
+            _error.value = "Файл недоступен. Выберите заново."
+            return
+        }
+
+        // Optimistic: restore to pending state
+        _messages.value = _messages.value.map {
+            if (it.message.id == localId) it.copy(isPending = true, isFailed = false, pendingMediaContext = null)
+            else it
+        }
+        if (!ctx.isVideo) {
+            _uploadProgresses.value = List(ctx.uris.size) { 0f }
+        }
+
+        val myId = currentUserId
+        if (activeUploadCount.incrementAndGet() == 1) {
+            val displayName = profileCache[myId]?.displayName ?: ""
+            viewModelScope.launch { messageRepo.setTyping(chatId, myId, displayName, "uploading_media") }
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSending.value = true
+            try {
+                if (ctx.isVideo) {
+                    doUploadAndSendVideo(
+                        pendingId = localId,
+                        uri = firstUri,
+                        name = ctx.originalFileName ?: "video.mp4",
+                        mimeType = ctx.mimeType ?: "video/mp4",
+                        caption = ctx.caption,
+                        replyId = ctx.replyToId,
+                        silent = ctx.silent,
+                        context = context
+                    )
+                } else {
+                    doUploadAndSendPhotos(
+                        pendingId = localId,
+                        photoUris = ctx.uris.map { Uri.parse(it) },
+                        caption = ctx.caption,
+                        replyId = ctx.replyToId,
+                        silent = ctx.silent,
+                        context = context
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                markMediaFailed(localId, ctx)
+            } finally {
+                _isSending.value = false
+                _uploadProgresses.value = emptyList()
                 if (activeUploadCount.decrementAndGet() == 0) {
                     messageRepo.clearTyping(chatId, myId)
                 }
@@ -1574,7 +1725,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     .also { if (it != original) original.recycle() }
             } else original
 
-            val maxDim = 1280
+            val maxDim = 960
             val scaled = if (rotated.width > maxDim || rotated.height > maxDim) {
                 val ratio = minOf(maxDim.toFloat() / rotated.width, maxDim.toFloat() / rotated.height)
                 android.graphics.Bitmap.createScaledBitmap(
@@ -1586,7 +1737,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             } else rotated
 
             val out = java.io.ByteArrayOutputStream()
-            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, out)
             if (scaled != rotated) scaled.recycle()
             out.toByteArray()
         } catch (e: Exception) { null }

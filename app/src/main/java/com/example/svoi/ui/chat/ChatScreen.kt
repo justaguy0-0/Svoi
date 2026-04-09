@@ -1681,7 +1681,11 @@ fun ChatScreen(
                     // ── Failed message: only retry / cancel options ────────────
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     BottomSheetAction(Icons.Default.Refresh, "Повторить отправку") {
-                        viewModel.retryFailedMessage(selected.message.id)
+                        if (selected.pendingMediaContext != null) {
+                            viewModel.retryFailedMediaMessage(selected.message.id, context)
+                        } else {
+                            viewModel.retryFailedMessage(selected.message.id)
+                        }
                         selectedMessage = null
                     }
                     BottomSheetAction(
@@ -2709,7 +2713,7 @@ private fun MessageItem(
                         when (msg.type) {
                             "photo", "album" -> {
                                 val photos: List<String> = when {
-                                    item.isPending -> item.pendingLocalUris
+                                    item.isPending || item.isFailed -> item.pendingLocalUris
                                     msg.type == "album" -> msg.photoUrls ?: emptyList()
                                     msg.fileUrl != null -> listOf(msg.fileUrl)
                                     else -> emptyList()

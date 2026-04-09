@@ -74,6 +74,20 @@ data class TypingStatus(
     val status: String = "typing"
 )
 
+/**
+ * Context needed to retry a failed media upload without asking the user to re-select the file.
+ * Stored on [MessageUiItem] when [MessageUiItem.isFailed] is true for a media message.
+ */
+data class PendingMediaContext(
+    val uris: List<String>,
+    val isVideo: Boolean,
+    val caption: String?,
+    val replyToId: String?,
+    val silent: Boolean,
+    val mimeType: String? = null,
+    val originalFileName: String? = null
+)
+
 /** UI model combining message + sender profile + read status */
 @Immutable
 data class MessageUiItem(
@@ -97,8 +111,10 @@ data class MessageUiItem(
     val isPending: Boolean = false,
     /** True when the send attempt failed — message is saved in OutboxManager for retry */
     val isFailed: Boolean = false,
-    /** Content-URI strings of locally-staged images (used while isPending=true) */
+    /** Content-URI strings of locally-staged images (used while isPending=true or isFailed=true) */
     val pendingLocalUris: List<String> = emptyList(),
     /** Aggregated emoji reactions on this message */
-    val reactions: List<ReactionGroup> = emptyList()
+    val reactions: List<ReactionGroup> = emptyList(),
+    /** Non-null when isFailed=true for a media message — holds enough data to retry without re-selecting */
+    val pendingMediaContext: PendingMediaContext? = null
 )
