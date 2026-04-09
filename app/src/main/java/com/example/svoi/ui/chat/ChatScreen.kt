@@ -247,19 +247,6 @@ fun ChatScreen(
         else viewModel.init(chatId)
     }
 
-    LaunchedEffect(initialMessageId) {
-        if (initialMessageId == null) return@LaunchedEffect
-        // Wait until the chat finishes its initial load and has messages to display.
-        // Without this, scrollToMessage fires before init() completes: loadMoreMessages()
-        // runs with chatId="" → returns empty → marks hasMoreMessages=false → scroll breaks.
-        withTimeoutOrNull(10_000L) {
-            viewModel.messages.first { it.isNotEmpty() }
-        } ?: return@LaunchedEffect
-        // Brief delay so the initial scroll-to-bottom coroutine completes first.
-        delay(300)
-        viewModel.scrollToMessage(initialMessageId)
-    }
-
     DisposableEffect(chatId) {
         ActiveChatTracker.activeChatId = chatId
         onDispose {
@@ -366,6 +353,20 @@ fun ChatScreen(
         label = "chatReveal"
     )
     LaunchedEffect(isLoading) { if (isLoading) chatReady = false }
+
+    // When opened from global search: scroll to the matched message once the chat is ready.
+    // We wait for: (1) data to arrive, (2) isLoading to go false, (3) items to be laid out.
+    // No artificial delay — the scroll fires as soon as the LazyColumn is rendered.
+    LaunchedEffect(initialMessageId) {
+        if (initialMessageId == null) return@LaunchedEffect
+        withTimeoutOrNull(10_000L) {
+            viewModel.messages.first { it.isNotEmpty() }     // data arrived (isLoading still true)
+            viewModel.isLoading.first { !it }                // overlay hidden, LazyColumn visible
+            snapshotFlow { listState.layoutInfo.totalItemsCount }
+                .first { it > 0 }                           // items laid out and measured
+        } ?: return@LaunchedEffect
+        viewModel.scrollToMessage(initialMessageId)
+    }
 
     // Keep screen on while recording voice (prevents phone sleep during locked recording)
     val isRecordingVoice = voiceRecordState is VoiceRecordState.Recording
