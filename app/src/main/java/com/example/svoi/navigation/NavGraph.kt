@@ -53,7 +53,7 @@ object Routes {
     const val GLOBAL_SEARCH = "global_search"
 
     fun setupStep1(inviteKey: String) = "setup_step1/$inviteKey"
-    fun chat(chatId: String) = "chat/$chatId?messageId="
+    fun chat(chatId: String) = "chat/$chatId"
     fun chatWithMessage(chatId: String, messageId: String) = "chat/$chatId?messageId=$messageId"
     fun chatNew(userId: String) = "chat_new/$userId"
     fun userProfile(userId: String) = "user_profile/$userId"

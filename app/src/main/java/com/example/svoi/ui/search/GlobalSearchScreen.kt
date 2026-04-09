@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.data.model.MessageSearchResult
 import com.example.svoi.ui.components.Avatar
+import com.example.svoi.ui.theme.groupAvatarColor
 import com.example.svoi.util.toChatListTime
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -183,10 +184,11 @@ private fun SearchResultItem(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Chat avatar — groups always use the fixed dark color #455A64, matching chat list style
+        // Group color is deterministic from chatId (same logic as chat list)
+        val avatarBg = if (result.chatType == "group") groupAvatarColor(result.chatId) else result.bgColor
         Avatar(
             emoji = result.emoji,
-            bgColor = if (result.chatType == "group") "#455A64" else result.bgColor,
+            bgColor = avatarBg,
             isGroup = result.chatType == "group",
             letter = result.chatName,
             size = 48.dp
