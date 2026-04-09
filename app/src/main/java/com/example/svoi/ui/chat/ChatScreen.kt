@@ -248,7 +248,16 @@ fun ChatScreen(
     }
 
     LaunchedEffect(initialMessageId) {
-        if (initialMessageId != null) viewModel.scrollToMessage(initialMessageId)
+        if (initialMessageId == null) return@LaunchedEffect
+        // Wait until the chat finishes its initial load and has messages to display.
+        // Without this, scrollToMessage fires before init() completes: loadMoreMessages()
+        // runs with chatId="" → returns empty → marks hasMoreMessages=false → scroll breaks.
+        withTimeoutOrNull(10_000L) {
+            viewModel.messages.first { it.isNotEmpty() }
+        } ?: return@LaunchedEffect
+        // Brief delay so the initial scroll-to-bottom coroutine completes first.
+        delay(300)
+        viewModel.scrollToMessage(initialMessageId)
     }
 
     DisposableEffect(chatId) {

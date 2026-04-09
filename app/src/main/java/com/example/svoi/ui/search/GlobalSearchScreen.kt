@@ -183,10 +183,10 @@ private fun SearchResultItem(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Chat avatar
+        // Chat avatar — groups always use the fixed dark color #455A64, matching chat list style
         Avatar(
             emoji = result.emoji,
-            bgColor = result.bgColor,
+            bgColor = if (result.chatType == "group") "#455A64" else result.bgColor,
             isGroup = result.chatType == "group",
             letter = result.chatName,
             size = 48.dp
