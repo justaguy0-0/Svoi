@@ -112,11 +112,11 @@ Deno.serve(async (req) => {
     if (type === 'system') {
       messagePreview = content ?? ''
     } else if (type === 'photo') {
-      messagePreview = '📷 Фото'
+      messagePreview = content ? `📷 Фото: ${content}` : '📷 Фото'
     } else if (type === 'album') {
-      messagePreview = '📷 Фото'
+      messagePreview = content ? `📷 Фото: ${content}` : '📷 Фото'
     } else if (type === 'video') {
-      messagePreview = '🎥 Видео'
+      messagePreview = content ? `🎥 Видео: ${content}` : '🎥 Видео'
     } else if (type === 'voice') {
       messagePreview = '🎤 Голосовое сообщение'
     } else if (type === 'file') {

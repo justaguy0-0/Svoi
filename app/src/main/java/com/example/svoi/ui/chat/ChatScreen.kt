@@ -880,10 +880,20 @@ fun ChatScreen(
                 ) {
                     pinnedMessage?.let { pinned ->
                         val contentText = when (pinnedContent?.type) {
-                            "album" -> "📷 ${pinnedContent?.photoUrls?.size ?: 0} фото"
-                            "photo" -> "📷 Фото"
+                            "album" -> {
+                                val count = pinnedContent?.photoUrls?.size ?: 0
+                                val caption = pinnedContent?.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                "📷 ${if (count > 1) "$count фото" else "Фото"}$caption"
+                            }
+                            "photo" -> {
+                                val caption = pinnedContent?.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                "📷 Фото$caption"
+                            }
                             "file" -> "📎 ${pinnedContent?.fileName ?: "Файл"}"
-                            "video" -> "🎬 ${pinnedContent?.fileName ?: "Видео"}"
+                            "video" -> {
+                                val caption = pinnedContent?.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                "🎬 Видео$caption"
+                            }
                             "voice" -> "🎤 Голосовое сообщение"
                             else -> pinnedContent?.content ?: ""
                         }
@@ -1333,10 +1343,19 @@ fun ChatScreen(
                                     )
                                     Text(
                                         text = when {
-                                            msg.type == "album" -> "📷 ${msg.photoUrls?.size ?: 0} фото"
-                                            msg.type == "photo" -> "📷 Фото"
+                                            msg.type == "album" -> {
+                                                val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                                "📷 ${msg.photoUrls?.size ?: 0} фото$caption"
+                                            }
+                                            msg.type == "photo" -> {
+                                                val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                                "📷 Фото$caption"
+                                            }
                                             msg.type == "file" -> "📎 ${msg.fileName ?: "Файл"}"
-                                            msg.type == "video" -> "🎬 ${msg.fileName ?: "Видео"}"
+                                            msg.type == "video" -> {
+                                                val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                                "🎬 Видео$caption"
+                                            }
                                             msg.type == "voice" -> "🎤 Голосовое сообщение"
                                             else -> msg.content ?: "[медиа]"
                                         },
@@ -1731,10 +1750,19 @@ fun ChatScreen(
                 // Message preview
                 Text(
                     text = when (selected.message.type) {
-                        "album" -> "📷 ${selected.message.photoUrls?.size ?: 0} фото"
-                        "photo" -> "📷 Фото"
+                        "album" -> {
+                            val caption = selected.message.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                            "📷 ${selected.message.photoUrls?.size ?: 0} фото$caption"
+                        }
+                        "photo" -> {
+                            val caption = selected.message.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                            "📷 Фото$caption"
+                        }
                         "file" -> "📎 ${selected.message.fileName ?: "Файл"}"
-                        "video" -> "🎬 ${selected.message.fileName ?: "Видео"}"
+                        "video" -> {
+                            val caption = selected.message.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                            "🎬 Видео$caption"
+                        }
                         "voice" -> "🎤 Голосовое (${selected.message.duration?.toVoiceDuration() ?: "0:00"})"
                         else -> selected.message.content ?: ""
                     },
@@ -2759,10 +2787,19 @@ private fun MessageItem(
                                         )
                                         Text(
                                             text = when {
-                                                reply.type == "video" -> "🎬 ${reply.fileName ?: "Видео"}"
+                                                reply.type == "video" -> {
+                                                    val caption = reply.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                                    "🎬 Видео$caption"
+                                                }
                                                 reply.type == "file" -> "📎 ${reply.fileName ?: "Файл"}"
-                                                reply.type == "photo" -> "📷 Фото"
-                                                reply.type == "album" -> "📷 ${reply.photoUrls?.size ?: 0} фото"
+                                                reply.type == "photo" -> {
+                                                    val caption = reply.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                                    "📷 Фото$caption"
+                                                }
+                                                reply.type == "album" -> {
+                                                    val caption = reply.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                                    "📷 ${reply.photoUrls?.size ?: 0} фото$caption"
+                                                }
                                                 reply.type == "voice" -> "🎤 Голосовое"
                                                 else -> reply.content ?: "[медиа]"
                                             },

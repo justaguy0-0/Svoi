@@ -205,15 +205,21 @@ class ChatRepository(private val supabase: SupabaseClient) {
             val lastMessageText = when {
                 lastMsg == null -> ""
                 lastMsg.deletedForAll -> "Сообщение удалено"
-                lastMsg.type == "photo" -> if (senderName != null) "$senderName: 📷 Фото" else "📷 Фото"
+                lastMsg.type == "photo" -> {
+                    val caption = lastMsg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                    val label = "📷 Фото$caption"
+                    if (senderName != null) "$senderName: $label" else label
+                }
                 lastMsg.type == "album" -> {
                     val count = lastMsg.photoUrls?.size ?: 0
-                    val label = if (count > 1) "📷 $count фото" else "📷 Фото"
+                    val caption = lastMsg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                    val label = if (count > 1) "📷 $count фото$caption" else "📷 Фото$caption"
                     if (senderName != null) "$senderName: $label" else label
                 }
                 lastMsg.type == "video" -> {
-                    val name = lastMsg.fileName ?: "Видео"
-                    if (senderName != null) "$senderName: 🎥 $name" else "🎥 $name"
+                    val caption = lastMsg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                    val label = "🎥 Видео$caption"
+                    if (senderName != null) "$senderName: $label" else label
                 }
                 lastMsg.type == "file" -> if (senderName != null) "$senderName: 📎 ${lastMsg.fileName ?: "Файл"}" else "📎 ${lastMsg.fileName ?: "Файл"}"
                 lastMsg.type == "voice" -> if (senderName != null) "$senderName: 🎤 Голосовое сообщение" else "🎤 Голосовое сообщение"

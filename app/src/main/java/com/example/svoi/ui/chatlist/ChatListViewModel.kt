@@ -189,9 +189,18 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         } else ""
 
         val lastText = when (msg.type) {
-            "photo" -> "${senderPrefix}📷 Фото"
-            "album" -> "${senderPrefix}📷 ${msg.photoUrls?.size ?: 0} фото"
-            "video" -> "${senderPrefix}🎥 ${msg.fileName ?: "Видео"}"
+            "photo" -> {
+                val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                "${senderPrefix}📷 Фото$caption"
+            }
+            "album" -> {
+                val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                "${senderPrefix}📷 ${msg.photoUrls?.size ?: 0} фото$caption"
+            }
+            "video" -> {
+                val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                "${senderPrefix}🎥 Видео$caption"
+            }
             "file" -> "${senderPrefix}📎 ${msg.fileName ?: "Файл"}"
             "voice" -> "${senderPrefix}🎤 Голосовое сообщение"
             else -> "$senderPrefix${msg.content ?: ""}"
