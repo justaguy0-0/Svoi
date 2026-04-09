@@ -950,6 +950,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _scrollToMessageEvent.value = null
     }
 
+    /** Re-starts the 2-second highlight timer. Call this when the message is actually visible
+     *  on screen — avoids the timer expiring during history loading before the scroll happens. */
+    fun refreshHighlight(messageId: String) {
+        _highlightedMessageId.value = messageId
+        viewModelScope.launch {
+            delay(2_000L)
+            if (_highlightedMessageId.value == messageId) _highlightedMessageId.value = null
+        }
+    }
+
     private fun observeNewMessages() {
         viewModelScope.launch {
             messageRepo.messageInsertFlow(chatId).collect { newMsg ->

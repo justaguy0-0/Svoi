@@ -542,6 +542,7 @@ fun ChatScreen(
                         pendingScrollRestore = false
                         pendingScrollToId = null
                         isScrollSearchLoading = false
+                        viewModel.refreshHighlight(targetId)  // restart timer — message now visible
                         if (isRevealingToMessage) {
                             // Chat was hidden — snap instantly then reveal with fade-in
                             listState.scrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
@@ -686,6 +687,7 @@ fun ChatScreen(
         val idx = currentDisplayEntries.indexOfFirst { it is ChatEntry.Msg && it.item.message.id == targetId }
         viewModel.clearScrollToMessageEvent()
         if (idx >= 0) {
+            viewModel.refreshHighlight(targetId)  // restart timer — message is now visible
             if (isRevealingToMessage) {
                 // Chat is still hidden — snap instantly then reveal
                 listState.scrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
