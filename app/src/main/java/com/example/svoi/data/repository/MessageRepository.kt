@@ -3,6 +3,7 @@ package com.example.svoi.data.repository
 import android.util.Log
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageRead
+import com.example.svoi.data.model.MessageSearchResult
 import com.example.svoi.data.model.MessageUiItem
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.TypingStatus
@@ -787,5 +788,23 @@ class MessageRepository(private val supabase: SupabaseClient) {
             )
             null // Message arrives via realtime
         } catch (e: Exception) { null }
+    }
+
+    /** Search messages across all chats the current user is a member of.
+     *  Delegates to the server-side `search_messages` SQL function (SECURITY DEFINER)
+     *  which enforces membership and history_from constraints. */
+    suspend fun searchMessages(query: String, limit: Int = 25, offset: Int = 0): List<MessageSearchResult> {
+        return try {
+            supabase.postgrest.rpc(
+                "search_messages",
+                buildJsonObject {
+                    put("query", query)
+                    put("lim", limit)
+                    put("off", offset)
+                }
+            ).decodeList<MessageSearchResult>()
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 }

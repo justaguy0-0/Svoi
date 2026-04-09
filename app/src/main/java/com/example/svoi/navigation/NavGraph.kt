@@ -32,6 +32,7 @@ import com.example.svoi.ui.newchat.CreateGroupScreen
 import com.example.svoi.ui.newchat.UserSearchScreen
 import com.example.svoi.ui.profile.ProfileScreen
 import com.example.svoi.ui.profile.UserProfileScreen
+import com.example.svoi.ui.search.GlobalSearchScreen
 import com.example.svoi.ui.settings.SettingsScreen
 
 object Routes {
@@ -49,6 +50,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val USER_PROFILE = "user_profile/{userId}"
     const val GROUP_INFO = "group_info/{chatId}"
+    const val GLOBAL_SEARCH = "global_search"
 
     fun setupStep1(inviteKey: String) = "setup_step1/$inviteKey"
     fun chat(chatId: String) = "chat/$chatId"
@@ -156,6 +158,20 @@ fun NavGraph(
                     },
                     onSettingsClick = {
                         if (canNav()) navController.navigate(Routes.SETTINGS)
+                    },
+                    onSearchClick = {
+                        if (canNav()) navController.navigate(Routes.GLOBAL_SEARCH)
+                    }
+                )
+            }
+
+            composable(Routes.GLOBAL_SEARCH) {
+                GlobalSearchScreen(
+                    onBack = { if (canNav()) navController.navigateUp() },
+                    onChatClick = { chatId ->
+                        if (canNav()) navController.navigate(Routes.chat(chatId)) {
+                            popUpTo(Routes.GLOBAL_SEARCH) { inclusive = true }
+                        }
                     }
                 )
             }

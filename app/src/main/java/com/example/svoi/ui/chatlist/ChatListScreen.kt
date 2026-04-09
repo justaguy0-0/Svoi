@@ -34,8 +34,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -94,6 +96,7 @@ fun ChatListScreen(
     onNewChatClick: () -> Unit,
     onProfileClick: () -> Unit,
     onSettingsClick: () -> Unit = {},
+    onSearchClick: () -> Unit = {},
     viewModel: ChatListViewModel = viewModel()
 ) {
     // Перехватываем системный «назад» — чтобы Navigation не попытался убрать
@@ -150,6 +153,12 @@ fun ChatListScreen(
                     )
                 },
                 actions = {
+                    IconButton(onClick = onSearchClick) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Поиск по сообщениям"
+                        )
+                    }
                     if (!isOnline || !isReachable) {
                         Icon(
                             imageVector = if (!isOnline) Icons.Default.WifiOff else Icons.Default.CloudOff,
