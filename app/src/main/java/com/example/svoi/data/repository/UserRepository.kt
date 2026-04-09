@@ -47,12 +47,18 @@ class UserRepository(private val supabase: SupabaseClient) {
         return getProfile(userId)
     }
 
+    /**
+     * Searches users by display name. Excludes profiles where hidden_from_search = true.
+     * For an additional server-side enforcement layer, the `search_users` SQL function
+     * (SECURITY DEFINER) can be used via direct DB calls — see supabase/30_hidden_from_search.sql.
+     */
     suspend fun searchUsers(query: String): List<Profile> {
         return try {
             supabase.from("profiles")
                 .select {
                     filter {
                         ilike("display_name", "%$query%")
+                        eq("hidden_from_search", false)
                     }
                     limit(20)
                 }
@@ -60,6 +66,20 @@ class UserRepository(private val supabase: SupabaseClient) {
                 .filter { it.id != supabase.auth.currentUserOrNull()?.id }
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    suspend fun updateHiddenFromSearch(hidden: Boolean): String? {
+        return try {
+            val userId = supabase.auth.currentUserOrNull()?.id ?: return "Не авторизован"
+            supabase.from("profiles").update({
+                set("hidden_from_search", hidden)
+            }) {
+                filter { eq("id", userId) }
+            }
+            null
+        } catch (e: Exception) {
+            e.message
         }
     }
 

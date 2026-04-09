@@ -13,7 +13,8 @@ data class Profile(
     val emoji: String = "😊",
     @SerialName("bg_color") val bgColor: String = "#5C6BC0",
     @SerialName("created_at") val createdAt: String? = null,
-    @SerialName("updated_at") val updatedAt: String? = null
+    @SerialName("updated_at") val updatedAt: String? = null,
+    @SerialName("hidden_from_search") val hiddenFromSearch: Boolean = false
 )
 
 @Serializable

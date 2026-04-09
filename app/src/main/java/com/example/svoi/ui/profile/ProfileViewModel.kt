@@ -121,6 +121,28 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * Toggles the "hidden from search" flag. Uses an optimistic update:
+     * the UI changes immediately and reverts if the server call fails.
+     */
+    fun setHiddenFromSearch(hidden: Boolean) {
+        val updated = _profile.value?.copy(hiddenFromSearch = hidden) ?: return
+        _profile.value = updated
+        cache.saveOwnProfile(updated)
+        viewModelScope.launch {
+            val err = userRepo.updateHiddenFromSearch(hidden)
+            if (err != null) {
+                // Revert on failure
+                val reverted = _profile.value?.copy(hiddenFromSearch = !hidden)
+                if (reverted != null) {
+                    _profile.value = reverted
+                    cache.saveOwnProfile(reverted)
+                }
+                _error.value = "Не удалось сохранить настройку"
+            }
+        }
+    }
+
     fun signOut(onDone: () -> Unit) {
         viewModelScope.launch {
             app.logout()
