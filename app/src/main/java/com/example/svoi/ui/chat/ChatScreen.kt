@@ -354,17 +354,24 @@ fun ChatScreen(
     )
     LaunchedEffect(isLoading) { if (isLoading) chatReady = false }
 
+    // True when opening chat with a target message — suppress normal reveal until positioned.
+    var isRevealingToMessage by remember { mutableStateOf(initialMessageId != null) }
+    // True when the search loop is loading history for a pinned/searched message.
+    var isScrollSearchLoading by remember { mutableStateOf(false) }
+
     // When opened from global search: scroll to the matched message once the chat is ready.
-    // We wait for: (1) data to arrive, (2) isLoading to go false, (3) items to be laid out.
-    // No artificial delay — the scroll fires as soon as the LazyColumn is rendered.
+    // isRevealingToMessage keeps the overlay visible until we're positioned at the target.
     LaunchedEffect(initialMessageId) {
         if (initialMessageId == null) return@LaunchedEffect
         withTimeoutOrNull(10_000L) {
-            viewModel.messages.first { it.isNotEmpty() }     // data arrived (isLoading still true)
-            viewModel.isLoading.first { !it }                // overlay hidden, LazyColumn visible
-            snapshotFlow { listState.layoutInfo.totalItemsCount }
-                .first { it > 0 }                           // items laid out and measured
-        } ?: return@LaunchedEffect
+            viewModel.messages.first { it.isNotEmpty() }  // data arrived
+            viewModel.isLoading.first { !it }             // loading done
+            snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
+        } ?: run {
+            // Timeout — give up and reveal normally
+            isRevealingToMessage = false
+            return@LaunchedEffect
+        }
         viewModel.scrollToMessage(initialMessageId)
     }
 
@@ -523,37 +530,58 @@ fun ChatScreen(
     // отменит coroutine до выполнения smoothScrollToItem.
     LaunchedEffect(searchTrigger) {
         val targetId = pendingScrollToId ?: return@LaunchedEffect
-        while (pendingScrollToId == targetId) {
-            val idx = currentDisplayEntries
-                .indexOfFirst { it is ChatEntry.Msg && it.item.message.id == targetId }
-            when {
-                idx >= 0 -> {
-                    // Нашли — сначала сбрасываем состояние, потом скроллим
-                    pendingScrollRestore = false
-                    pendingScrollToId = null
-                    listState.smoothScrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
-                    return@LaunchedEffect
-                }
-                !hasMoreMessages -> {
-                    pendingScrollToId = null
-                    return@LaunchedEffect
-                }
-                !isLoadingMore -> {
-                    // Сохраняем позицию и грузим следующую порцию
-                    loadMoreSavedIndex = listState.firstVisibleItemIndex
-                    loadMoreSavedOffset = listState.firstVisibleItemScrollOffset
-                    loadMoreCountBefore = messages.size
-                    pendingScrollRestore = true
-                    viewModel.loadMoreMessages()
-                    // Ждём пока эта порция загрузится
-                    snapshotFlow { messages.size }.first { it > loadMoreCountBefore }
-                    delay(50) // даём layout пересчитать индексы
-                }
-                else -> {
-                    // Загрузка уже идёт — ждём завершения
-                    snapshotFlow { isLoadingMore }.first { !it }
+        // Show loading overlay while we're searching through history
+        isScrollSearchLoading = true
+        try {
+            while (pendingScrollToId == targetId) {
+                val idx = currentDisplayEntries
+                    .indexOfFirst { it is ChatEntry.Msg && it.item.message.id == targetId }
+                when {
+                    idx >= 0 -> {
+                        // Found — reset state first, then position and reveal
+                        pendingScrollRestore = false
+                        pendingScrollToId = null
+                        isScrollSearchLoading = false
+                        if (isRevealingToMessage) {
+                            // Chat was hidden — snap instantly then reveal with fade-in
+                            listState.scrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
+                            chatReady = true
+                            isRevealingToMessage = false
+                        } else {
+                            // Chat was already visible — smooth animated scroll
+                            listState.smoothScrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
+                        }
+                        return@LaunchedEffect
+                    }
+                    !hasMoreMessages -> {
+                        pendingScrollToId = null
+                        isScrollSearchLoading = false
+                        if (isRevealingToMessage) {
+                            chatReady = true
+                            isRevealingToMessage = false
+                        }
+                        return@LaunchedEffect
+                    }
+                    !isLoadingMore -> {
+                        // Сохраняем позицию и грузим следующую порцию
+                        loadMoreSavedIndex = listState.firstVisibleItemIndex
+                        loadMoreSavedOffset = listState.firstVisibleItemScrollOffset
+                        loadMoreCountBefore = messages.size
+                        pendingScrollRestore = true
+                        viewModel.loadMoreMessages()
+                        // Ждём пока эта порция загрузится
+                        snapshotFlow { messages.size }.first { it > loadMoreCountBefore }
+                        delay(50) // даём layout пересчитать индексы
+                    }
+                    else -> {
+                        // Загрузка уже идёт — ждём завершения
+                        snapshotFlow { isLoadingMore }.first { !it }
+                    }
                 }
             }
+        } finally {
+            // Safety: always clear the overlay if coroutine is cancelled
+            isScrollSearchLoading = false
         }
     }
 
@@ -638,8 +666,8 @@ fun ChatScreen(
                 } catch (_: Exception) { /* best-effort scroll — chat must be revealed regardless */ }
             }
         }
-        // Reveal chat after positioning — user sees final state immediately
-        chatReady = true
+        // Reveal chat — unless we're waiting for a specific message to be positioned first
+        if (!isRevealingToMessage) chatReady = true
         // After initial scroll, allow markAsRead to fire when user reaches the bottom
         initialScrollDone = true
     }
@@ -658,10 +686,21 @@ fun ChatScreen(
         val idx = currentDisplayEntries.indexOfFirst { it is ChatEntry.Msg && it.item.message.id == targetId }
         viewModel.clearScrollToMessageEvent()
         if (idx >= 0) {
-            listState.smoothScrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
+            if (isRevealingToMessage) {
+                // Chat is still hidden — snap instantly then reveal
+                listState.scrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
+                chatReady = true
+                isRevealingToMessage = false
+            } else {
+                listState.smoothScrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
+            }
         } else if (hasMoreMessages) {
             pendingScrollToId = targetId
             searchTrigger++
+        } else if (isRevealingToMessage) {
+            // Message not found and no more history — reveal anyway
+            chatReady = true
+            isRevealingToMessage = false
         }
     }
 
@@ -904,7 +943,7 @@ fun ChatScreen(
 
             // Messages
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                if (isLoading || !chatReady) {
+                if (isLoading || !chatReady || isScrollSearchLoading) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
                 if (!isLoading && chatReady && messages.isEmpty()) {
