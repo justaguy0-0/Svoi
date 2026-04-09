@@ -34,6 +34,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Box
@@ -2853,18 +2854,43 @@ private fun MessageItem(
                                 }
                             }
                             "video" -> {
-                                msg.fileUrl?.let { url ->
+                                if (msg.fileUrl != null) {
                                     if (exoPlayer != null) {
                                         InlineVideoPlayer(
-                                            url = url,
-                                            isActive = activeVideoUrl == url,
+                                            url = msg.fileUrl,
+                                            isActive = activeVideoUrl == msg.fileUrl,
                                             exoPlayer = exoPlayer,
                                             isMuted = isMuted,
-                                            aspectRatio = videoAspectRatios[url] ?: (16f / 9f),
-                                            onTap = { onVideoTap(url) },
+                                            aspectRatio = videoAspectRatios[msg.fileUrl] ?: (16f / 9f),
+                                            onTap = { onVideoTap(msg.fileUrl) },
                                             onMuteToggle = onVideoMuteToggle,
-                                            onVideoSizeDetected = { ratio -> onVideoSizeDetected(url, ratio) }
+                                            onVideoSizeDetected = { ratio -> onVideoSizeDetected(msg.fileUrl, ratio) }
                                         )
+                                    }
+                                } else {
+                                    // Pending or failed — show placeholder matching video proportions
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(16f / 9f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.Black.copy(alpha = 0.55f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (item.isPending) {
+                                            CircularProgressIndicator(
+                                                color = Color.White,
+                                                modifier = Modifier.size(36.dp),
+                                                strokeWidth = 3.dp
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.PlayArrow,
+                                                contentDescription = null,
+                                                tint = Color.White.copy(alpha = 0.45f),
+                                                modifier = Modifier.size(48.dp)
+                                            )
+                                        }
                                     }
                                 }
                                 if (!msg.content.isNullOrBlank()) {

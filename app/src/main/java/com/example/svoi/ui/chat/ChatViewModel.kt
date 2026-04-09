@@ -1534,7 +1534,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val pendingId = "pending_${java.util.UUID.randomUUID()}"
         val now = java.time.Instant.now().toString()
         val pendingMsg = Message(id = pendingId, chatId = chatId, senderId = myId, type = "video",
-            fileName = name, mimeType = mimeType, createdAt = now)
+            content = caption, fileName = name, mimeType = mimeType, createdAt = now)
         val pendingItem = MessageUiItem(message = pendingMsg, senderProfile = profileCache[myId],
             isOwn = true, isRead = false, isPending = true)
         _messages.value = _messages.value + pendingItem
@@ -1684,7 +1684,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             // Mark as sent with CDN URL — same race-free pattern as photos
             _messages.value = _messages.value.map { item ->
                 if (item.message.id != pendingId) item
-                else item.copy(message = item.message.copy(fileUrl = url), isPending = false)
+                else item.copy(message = item.message.copy(fileUrl = url, content = caption), isPending = false)
             }
         } else {
             markMediaFailed(pendingId, PendingMediaContext(
