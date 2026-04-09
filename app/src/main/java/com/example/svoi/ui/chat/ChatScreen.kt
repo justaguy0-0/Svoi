@@ -943,9 +943,6 @@ fun ChatScreen(
 
             // Messages
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                if (isLoading || !chatReady || isScrollSearchLoading) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
                 if (!isLoading && chatReady && messages.isEmpty()) {
                     Text(
                         text = "Начните общение сегодня",
@@ -1196,6 +1193,26 @@ fun ChatScreen(
 
                 // Mini-player overlay: floats under top bar, doesn't shift messages
                 MiniPlayerOverlay(state = globalVoiceState, player = app.globalVoicePlayer)
+
+                // Loading overlays — rendered last so they appear on top of the LazyColumn
+                if (isLoading || !chatReady) {
+                    // Initial load: chat not visible yet, plain spinner
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+                if (isScrollSearchLoading) {
+                    // History search (pinned/searched message): chat is visible, use a card
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .background(
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+                            )
+                            .padding(24.dp)
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
             }
 
             // Input area or Selection action bar
