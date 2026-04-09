@@ -1630,8 +1630,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             messageRepo.sendAlbumMessage(chatId, uploadedUrls, caption, replyId, silent)
         }
-        // Success: remove placeholder; Realtime will deliver the confirmed message
-        _messages.value = _messages.value.filter { it.message.id != pendingId }
+        // Mark placeholder as sent (isPending=false) with the CDN URL so the photo stays visible.
+        // Do NOT filter/remove — that races with the Realtime delivery which may have already
+        // replaced this item with the confirmed message. Realtime dedup will replace in-place.
+        _messages.value = _messages.value.map { item ->
+            if (item.message.id != pendingId) item
+            else {
+                val updatedMsg = if (uploadedUrls.size == 1)
+                    item.message.copy(fileUrl = uploadedUrls[0])
+                else
+                    item.message.copy(photoUrls = uploadedUrls)
+                item.copy(message = updatedMsg, isPending = false)
+            }
+        }
     }
 
     /**
@@ -1670,7 +1681,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val url = messageRepo.uploadFile(chatId, fileName, bytes)
         if (url != null) {
             messageRepo.sendVideoMessage(chatId, url, name, bytes.size.toLong(), mimeType, replyId, caption, silent)
-            _messages.value = _messages.value.filter { it.message.id != pendingId }
+            // Mark as sent with CDN URL — same race-free pattern as photos
+            _messages.value = _messages.value.map { item ->
+                if (item.message.id != pendingId) item
+                else item.copy(message = item.message.copy(fileUrl = url), isPending = false)
+            }
         } else {
             markMediaFailed(pendingId, PendingMediaContext(
                 uris = listOf(uri.toString()), isVideo = true,
