@@ -713,7 +713,7 @@ fun ChatScreen(
                                     !isReachable -> "Нет доступа к серверам"
                                     isUpdating && memberCount == 0 && presenceText.isBlank() -> "Обновление..."
                                     isGroup && memberCount > 0 -> memberCountText(memberCount).let { base ->
-                                        if (groupOnlineCount >= 1) "$base, $groupOnlineCount в сети" else base
+                                        if (groupOnlineCount >= 1) "$base, ${groupOnlineCount + 1} в сети" else base
                                     }
                                     !isGroup && presenceText.isNotBlank() -> presenceText
                                     else -> null
