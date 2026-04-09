@@ -18,6 +18,7 @@ import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.ReactionGroup
 import com.example.svoi.data.model.UserPresence
+import com.example.svoi.data.model.isTrulyOnline
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -90,6 +91,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _otherUserPresence = MutableStateFlow<UserPresence?>(null)
     val otherUserPresence: StateFlow<UserPresence?> = _otherUserPresence
+
+    /** Number of group members (excluding self) currently online. 0 = nobody or not a group. */
+    private val _groupOnlineCount = MutableStateFlow(0)
+    val groupOnlineCount: StateFlow<Int> = _groupOnlineCount
 
     private val _pinnedMessage = MutableStateFlow<PinnedMessage?>(null)
     val pinnedMessage: StateFlow<PinnedMessage?> = _pinnedMessage
@@ -689,6 +694,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         } else {
             _chatName.value = chat.name ?: "Группа"
+            // Poll presence for active members (excluding self) so we can show "X в сети" in the header
+            val otherMemberIds = members.filter { it.userId != myId && it.leftAt == null }.map { it.userId }
+            startGroupPresencePolling(otherMemberIds)
         }
 
         cache.saveChatInfo(CachedChatInfo(
@@ -698,6 +706,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             memberCount = _memberCount.value,
             otherUserId = otherUserIdVal
         ))
+    }
+
+    /** Polls presence for group members (already excluding self) every 30s. */
+    private fun startGroupPresencePolling(memberIds: List<String>) {
+        if (memberIds.isEmpty()) return
+        viewModelScope.launch {
+            val initial = userRepo.getPresences(memberIds)
+            _groupOnlineCount.value = initial.count { it.isTrulyOnline() }
+            while (true) {
+                delay(30_000L)
+                val updated = userRepo.getPresences(memberIds)
+                _groupOnlineCount.value = updated.count { it.isTrulyOnline() }
+            }
+        }
     }
 
     private fun startPresencePolling(userId: String) {

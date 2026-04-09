@@ -269,6 +269,7 @@ fun ChatScreen(
     val isOnline by viewModel.isOnline.collectAsState()
     val isReachable by viewModel.isReachable.collectAsState()
     val memberCount by viewModel.memberCount.collectAsState()
+    val groupOnlineCount by viewModel.groupOnlineCount.collectAsState()
     val error by viewModel.error.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val hasMoreMessages by viewModel.hasMoreMessages.collectAsState()
@@ -711,7 +712,9 @@ fun ChatScreen(
                                     !isOnline -> "Нет подключения"
                                     !isReachable -> "Нет доступа к серверам"
                                     isUpdating && memberCount == 0 && presenceText.isBlank() -> "Обновление..."
-                                    isGroup && memberCount > 0 -> memberCountText(memberCount)
+                                    isGroup && memberCount > 0 -> memberCountText(memberCount).let { base ->
+                                        if (groupOnlineCount >= 1) "$base, $groupOnlineCount в сети" else base
+                                    }
                                     !isGroup && presenceText.isNotBlank() -> presenceText
                                     else -> null
                                 }
