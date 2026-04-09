@@ -234,6 +234,7 @@ import androidx.media3.exoplayer.ExoPlayer
 fun ChatScreen(
     chatId: String,
     draftUserId: String? = null,
+    initialMessageId: String? = null,
     autoPlayVideos: Boolean = true,
     onBack: () -> Unit,
     onForwardTo: (String) -> Unit,
@@ -244,6 +245,10 @@ fun ChatScreen(
     LaunchedEffect(chatId, draftUserId) {
         if (draftUserId != null) viewModel.initDraft(draftUserId)
         else viewModel.init(chatId)
+    }
+
+    LaunchedEffect(initialMessageId) {
+        if (initialMessageId != null) viewModel.scrollToMessage(initialMessageId)
     }
 
     DisposableEffect(chatId) {

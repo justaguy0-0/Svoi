@@ -42,7 +42,7 @@ object Routes {
     const val SETUP_STEP_2 = "setup_step2"
     const val SETUP_STEP_3 = "setup_step3"
     const val CHAT_LIST = "chat_list"
-    const val CHAT = "chat/{chatId}"
+    const val CHAT = "chat/{chatId}?messageId={messageId}"
     const val CHAT_NEW = "chat_new/{userId}"
     const val USER_SEARCH = "user_search"
     const val CREATE_GROUP = "create_group"
@@ -53,7 +53,8 @@ object Routes {
     const val GLOBAL_SEARCH = "global_search"
 
     fun setupStep1(inviteKey: String) = "setup_step1/$inviteKey"
-    fun chat(chatId: String) = "chat/$chatId"
+    fun chat(chatId: String) = "chat/$chatId?messageId="
+    fun chatWithMessage(chatId: String, messageId: String) = "chat/$chatId?messageId=$messageId"
     fun chatNew(userId: String) = "chat_new/$userId"
     fun userProfile(userId: String) = "user_profile/$userId"
     fun groupInfo(chatId: String) = "group_info/$chatId"
@@ -168,21 +169,24 @@ fun NavGraph(
             composable(Routes.GLOBAL_SEARCH) {
                 GlobalSearchScreen(
                     onBack = { if (canNav()) navController.navigateUp() },
-                    onChatClick = { chatId ->
-                        if (canNav()) navController.navigate(Routes.chat(chatId)) {
-                            popUpTo(Routes.GLOBAL_SEARCH) { inclusive = true }
-                        }
+                    onChatClick = { chatId, messageId ->
+                        if (canNav()) navController.navigate(Routes.chatWithMessage(chatId, messageId))
                     }
                 )
             }
 
             composable(
                 route = Routes.CHAT,
-                arguments = listOf(navArgument("chatId") { type = NavType.StringType })
+                arguments = listOf(
+                    navArgument("chatId") { type = NavType.StringType },
+                    navArgument("messageId") { type = NavType.StringType; nullable = true; defaultValue = null }
+                )
             ) { backStack ->
                 val chatId = backStack.arguments?.getString("chatId") ?: ""
+                val messageId = backStack.arguments?.getString("messageId")?.takeIf { it.isNotEmpty() }
                 ChatScreen(
                     chatId = chatId,
+                    initialMessageId = messageId,
                     autoPlayVideos = autoPlayVideos,
                     onBack = { if (canNav()) navController.navigateUp() },
                     onForwardTo = { targetChatId ->

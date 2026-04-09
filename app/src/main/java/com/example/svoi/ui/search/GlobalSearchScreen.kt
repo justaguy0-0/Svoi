@@ -55,7 +55,7 @@ import com.example.svoi.util.toChatListTime
 @Composable
 fun GlobalSearchScreen(
     onBack: () -> Unit,
-    onChatClick: (String) -> Unit,
+    onChatClick: (chatId: String, messageId: String) -> Unit,
     viewModel: GlobalSearchViewModel = viewModel()
 ) {
     val query by viewModel.query.collectAsState()
@@ -156,7 +156,7 @@ fun GlobalSearchScreen(
                             SearchResultItem(
                                 result = result,
                                 query = query.trim(),
-                                onClick = { onChatClick(result.chatId) }
+                                onClick = { onChatClick(result.chatId, result.messageId) }
                             )
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 72.dp),
@@ -187,6 +187,8 @@ private fun SearchResultItem(
         Avatar(
             emoji = result.emoji,
             bgColor = result.bgColor,
+            isGroup = result.chatType == "group",
+            letter = result.chatName,
             size = 48.dp
         )
 
