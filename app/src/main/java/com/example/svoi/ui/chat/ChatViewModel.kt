@@ -708,9 +708,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         ))
     }
 
-    /** Polls presence for group members (already excluding self) every 30s. */
+    /** Tracks online count for group members (excluding self).
+     *  Realtime subscription for instant updates + 30s periodic poll as fallback. */
     private fun startGroupPresencePolling(memberIds: List<String>) {
         if (memberIds.isEmpty()) return
+        val memberIdSet = memberIds.toHashSet()
+
+        // Periodic fallback: ensures correctness even if Realtime misses an event
         viewModelScope.launch {
             val initial = userRepo.getPresences(memberIds)
             _groupOnlineCount.value = initial.count { it.isTrulyOnline() }
@@ -718,6 +722,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 delay(30_000L)
                 val updated = userRepo.getPresences(memberIds)
                 _groupOnlineCount.value = updated.count { it.isTrulyOnline() }
+            }
+        }
+
+        // Realtime: instant update whenever any group member's presence row changes
+        viewModelScope.launch {
+            while (true) {
+                try {
+                    userRepo.presenceUpdateFlowAll().collect { presence ->
+                        if (presence.userId in memberIdSet) {
+                            // Re-fetch all to get server-computed isTrulyOnline values
+                            val updated = userRepo.getPresences(memberIds)
+                            _groupOnlineCount.value = updated.count { it.isTrulyOnline() }
+                        }
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("Presence", "Group presence Realtime failed, retry in 3s: ${e.message}")
+                    delay(3_000L)
+                }
             }
         }
     }
