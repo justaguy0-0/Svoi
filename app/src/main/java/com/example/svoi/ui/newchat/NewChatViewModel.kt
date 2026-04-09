@@ -7,9 +7,12 @@ import com.example.svoi.SvoiApp
 import com.example.svoi.data.model.Profile
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @OptIn(FlowPreview::class)
@@ -37,7 +40,32 @@ class NewChatViewModel(application: Application) : AndroidViewModel(application)
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    /** All users the current user shares at least one chat with (loaded once on init). */
+    private val _contacts = MutableStateFlow<List<Profile>>(emptyList())
+
+    /** True while the initial contacts list is loading. */
+    private val _contactsLoading = MutableStateFlow(false)
+    val contactsLoading: StateFlow<Boolean> = _contactsLoading
+
+    /** Contacts filtered by the current search query — for CreateGroupScreen. */
+    val filteredContacts: StateFlow<List<Profile>> = _searchQuery
+        .combine(_contacts) { query, contacts ->
+            if (query.isBlank()) contacts
+            else contacts.filter { it.displayName.contains(query, ignoreCase = true) }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     init {
+        viewModelScope.launch {
+            _contactsLoading.value = true
+            try {
+                _contacts.value = userRepo.getMyContacts()
+            } catch (_: Exception) {
+                // empty list handled in UI
+            } finally {
+                _contactsLoading.value = false
+            }
+        }
         viewModelScope.launch {
             _searchQuery
                 .debounce(300)

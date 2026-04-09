@@ -1,6 +1,7 @@
 package com.example.svoi.data.repository
 
 import android.util.Log
+import com.example.svoi.data.model.ChatMember
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.UserPresence
 import io.github.jan.supabase.SupabaseClient
@@ -64,6 +65,42 @@ class UserRepository(private val supabase: SupabaseClient) {
                 }
                 .decodeList<Profile>()
                 .filter { it.id != supabase.auth.currentUserOrNull()?.id }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Returns all users the current user shares at least one active chat with.
+     * Ignores hidden_from_search — if you've already chatted with someone, you can add them to a group.
+     */
+    suspend fun getMyContacts(): List<Profile> {
+        return try {
+            val myId = supabase.auth.currentUserOrNull()?.id ?: return emptyList()
+
+            // Step 1 — chat IDs where I'm an active member
+            val myChatIds = supabase.from("chat_members")
+                .select { filter { eq("user_id", myId) } }
+                .decodeList<ChatMember>()
+                .filter { it.leftAt == null }
+                .map { it.chatId }
+
+            if (myChatIds.isEmpty()) return emptyList()
+
+            // Step 2 — all user IDs sharing those chats (excluding me)
+            val contactIds = supabase.from("chat_members")
+                .select { filter { isIn("chat_id", myChatIds); neq("user_id", myId) } }
+                .decodeList<ChatMember>()
+                .map { it.userId }
+                .distinct()
+
+            if (contactIds.isEmpty()) return emptyList()
+
+            // Step 3 — load profiles sorted by name (hidden_from_search intentionally NOT filtered)
+            supabase.from("profiles")
+                .select { filter { isIn("id", contactIds) } }
+                .decodeList<Profile>()
+                .sortedBy { it.displayName }
         } catch (e: Exception) {
             emptyList()
         }

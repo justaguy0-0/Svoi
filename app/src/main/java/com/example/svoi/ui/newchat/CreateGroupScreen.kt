@@ -1,5 +1,6 @@
 package com.example.svoi.ui.newchat
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -43,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -58,9 +60,10 @@ fun CreateGroupScreen(
     viewModel: NewChatViewModel = viewModel()
 ) {
     val query by viewModel.searchQuery.collectAsState()
-    val results by viewModel.searchResults.collectAsState()
+    val results by viewModel.filteredContacts.collectAsState()
     val selected by viewModel.selectedUsers.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val contactsLoading by viewModel.contactsLoading.collectAsState()
     val error by viewModel.error.collectAsState()
 
     var groupName by remember { mutableStateOf("") }
@@ -165,7 +168,7 @@ fun CreateGroupScreen(
                 HorizontalDivider()
             }
 
-            // User search
+            // Contact filter (local — no network request)
             SearchBar(
                 query = query,
                 onQueryChange = viewModel::onQueryChange,
@@ -176,28 +179,51 @@ fun CreateGroupScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 windowInsets = WindowInsets(0),
-                placeholder = { Text("Добавить участников") },
+                placeholder = { Text("Поиск среди контактов") },
                 leadingIcon = { Icon(Icons.Default.Search, null) }
             ) {}
 
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(results, key = { it.id }) { profile ->
-                    val isSelected = viewModel.isSelected(profile.id)
-                    UserItem(
-                        profile = profile,
-                        onClick = { viewModel.toggleUserSelection(profile) },
-                        trailing = {
-                            Checkbox(
-                                checked = isSelected,
-                                onCheckedChange = { viewModel.toggleUserSelection(profile) }
+            when {
+                contactsLoading -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                results.isEmpty() && !contactsLoading -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = if (query.isBlank())
+                                "Нет контактов. Сначала начните переписку с кем-нибудь."
+                            else
+                                "Ничего не найдено",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 32.dp)
+                        )
+                    }
+                }
+                else -> {
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        items(results, key = { it.id }) { profile ->
+                            val isSelected = viewModel.isSelected(profile.id)
+                            UserItem(
+                                profile = profile,
+                                onClick = { viewModel.toggleUserSelection(profile) },
+                                trailing = {
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = { viewModel.toggleUserSelection(profile) }
+                                    )
+                                }
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 72.dp),
+                                thickness = 0.4.dp,
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                             )
                         }
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = 72.dp),
-                        thickness = 0.4.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-                    )
+                    }
                 }
             }
         }
