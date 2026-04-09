@@ -1195,20 +1195,12 @@ fun ChatScreen(
                 MiniPlayerOverlay(state = globalVoiceState, player = app.globalVoicePlayer)
 
                 // Loading overlays — rendered last so they appear on top of the LazyColumn
-                if (isLoading || !chatReady) {
-                    // Initial load: chat not visible yet, plain spinner
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-                if (isScrollSearchLoading) {
-                    // History search (pinned/searched message): chat is visible, use a card
+                if (isLoading || !chatReady || isScrollSearchLoading) {
                     Box(
                         modifier = Modifier
-                            .align(Alignment.Center)
-                            .background(
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
-                            )
-                            .padding(24.dp)
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface),
+                        contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator()
                     }
