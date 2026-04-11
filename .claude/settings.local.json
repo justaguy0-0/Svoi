@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/Users/Mimoza/AndroidStudioProjects/Svoi -type f -name \"*.kt\" | xargs grep -l \"muted\\\\|notification\\\\|mute\" 2>/dev/null | head -10)",
+      "Bash(grep -r \"setMuted\\\\|isMuted\\\\|muted\" /c/Users/Mimoza/AndroidStudioProjects/Svoi/app/src/main/java --include=\"*.kt\" 2>/dev/null | head -20)",
+      "Bash(grep:*)",
+      "Bash(./gradlew assembleDebug 2>&1 | tail -40)",
+      "Bash(./gradlew assembleDebug)",
+      "Bash(find /c/Users/Mimoza/AndroidStudioProjects/Svoi -name *Nav* -type f)"
+    ]
+  }
+}

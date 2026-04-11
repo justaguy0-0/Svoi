@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Placeholder: sunset gradient. Replace with wallpaper_preset_2.png if desired. -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <gradient
-        android:startColor="#FFF8E1"
-        android:centerColor="#FFCC80"
-        android:endColor="#FF7043"
-        android:angle="315" />
-</shape>

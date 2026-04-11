@@ -2,8 +2,6 @@ package com.example.svoi.ui.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.GetContent
-import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -45,20 +43,56 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.svoi.R
 import com.example.svoi.SvoiApp
 import com.example.svoi.data.local.ChatWallpaper
-import com.example.svoi.ui.theme.SvoiShapes
 import kotlinx.coroutines.launch
 import java.io.File
+
+// ── Preset gradient definitions ───────────────────────────────────────────────
+// To replace a preset with your own photo:
+// 1. Add wallpaper_preset_N.png to res/drawable/
+// 2. Swap the Brush case for: AsyncImage(model = R.drawable.wallpaper_preset_N, ...)
+
+private val PRESET_BRUSHES: List<Brush> = listOf(
+    // 1 — Sky blue
+    Brush.linearGradient(
+        colors = listOf(Color(0xFFE3F2FD), Color(0xFF90CAF9), Color(0xFF42A5F5)),
+        start = Offset(0f, 0f), end = Offset(0f, Float.POSITIVE_INFINITY)
+    ),
+    // 2 — Sunset
+    Brush.linearGradient(
+        colors = listOf(Color(0xFFFFF8E1), Color(0xFFFFCC80), Color(0xFFFF7043)),
+        start = Offset(0f, 0f), end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+    ),
+    // 3 — Forest
+    Brush.linearGradient(
+        colors = listOf(Color(0xFFF1F8E9), Color(0xFFA5D6A7), Color(0xFF388E3C)),
+        start = Offset(0f, 0f), end = Offset(0f, Float.POSITIVE_INFINITY)
+    ),
+    // 4 — Night sky
+    Brush.linearGradient(
+        colors = listOf(Color(0xFF1A237E), Color(0xFF283593), Color(0xFF4527A0)),
+        start = Offset(Float.POSITIVE_INFINITY, 0f), end = Offset(0f, Float.POSITIVE_INFINITY)
+    ),
+    // 5 — Lavender
+    Brush.linearGradient(
+        colors = listOf(Color(0xFFF3E5F5), Color(0xFFCE93D8), Color(0xFFAB47BC)),
+        start = Offset(0f, 0f), end = Offset(0f, Float.POSITIVE_INFINITY)
+    ),
+)
+
+private val PRESET_LABELS = listOf("Небо", "Закат", "Лес", "Ночь", "Сирень")
+
+private fun presetBrush(id: Int): Brush = PRESET_BRUSHES.getOrElse(id - 1) { PRESET_BRUSHES[0] }
 
 // ── Shared composable: renders the wallpaper as a full-size background ────────
 
@@ -69,12 +103,7 @@ internal fun ChatWallpaperBackground(
 ) {
     when (wallpaper) {
         is ChatWallpaper.None -> Unit
-        is ChatWallpaper.Preset -> Image(
-            painter = painterResource(presetResId(wallpaper.id)),
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = ContentScale.Crop
-        )
+        is ChatWallpaper.Preset -> Box(modifier = modifier.background(brush = presetBrush(wallpaper.id)))
         is ChatWallpaper.Custom -> AsyncImage(
             model = File(wallpaper.path),
             contentDescription = null,
@@ -82,16 +111,6 @@ internal fun ChatWallpaperBackground(
             contentScale = ContentScale.Crop
         )
     }
-}
-
-@DrawableRes
-private fun presetResId(id: Int): Int = when (id) {
-    1 -> R.drawable.wallpaper_preset_1
-    2 -> R.drawable.wallpaper_preset_2
-    3 -> R.drawable.wallpaper_preset_3
-    4 -> R.drawable.wallpaper_preset_4
-    5 -> R.drawable.wallpaper_preset_5
-    else -> R.drawable.wallpaper_preset_1
 }
 
 // ── Picker screen ─────────────────────────────────────────────────────────────
@@ -127,18 +146,11 @@ fun WallpaperPickerScreen(onBack: () -> Unit) {
 
             // ── Chat preview (fills remaining space) ──────────────────────────
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                // Background
-                ChatWallpaperBackground(current)
-
-                // If no wallpaper, show a subtle hint
                 if (current is ChatWallpaper.None) {
-                    Box(
-                        modifier = Modifier.fillMaxSize()
-                            .background(MaterialTheme.colorScheme.background)
-                    )
+                    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+                } else {
+                    ChatWallpaperBackground(current)
                 }
-
-                // Mock chat messages
                 MockChatPreview(hasWallpaper = current !is ChatWallpaper.None)
             }
 
@@ -172,7 +184,6 @@ fun WallpaperPickerScreen(onBack: () -> Unit) {
                                         .background(MaterialTheme.colorScheme.surface),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    // Diagonal strike-through hint
                                     Text(
                                         text = "—",
                                         fontSize = 24.sp,
@@ -185,16 +196,14 @@ fun WallpaperPickerScreen(onBack: () -> Unit) {
                         // ── 5 presets ─────────────────────────────────────────
                         items((1..5).toList(), key = { "preset_$it" }) { id ->
                             WallpaperOption(
-                                label = "Фон $id",
+                                label = PRESET_LABELS.getOrElse(id - 1) { "Фон $id" },
                                 isSelected = current is ChatWallpaper.Preset &&
                                     (current as ChatWallpaper.Preset).id == id,
                                 onClick = { wallpaperManager.setPreset(id) }
                             ) {
-                                Image(
-                                    painter = painterResource(presetResId(id)),
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
+                                Box(
+                                    modifier = Modifier.fillMaxSize()
+                                        .background(brush = presetBrush(id))
                                 )
                             }
                         }
@@ -264,7 +273,6 @@ private fun WallpaperOption(
         ) {
             content()
 
-            // Checkmark badge
             if (isSelected) {
                 Box(
                     modifier = Modifier
