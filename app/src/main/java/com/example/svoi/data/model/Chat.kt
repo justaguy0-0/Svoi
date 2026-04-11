@@ -42,5 +42,6 @@ data class ChatListItem(
     val isOtherOnline: Boolean = false,
     val lastMessageIsOwn: Boolean = false,
     val lastMessageIsRead: Boolean = false,
-    val isMuted: Boolean = false
+    val isMuted: Boolean = false,
+    val lastMessageIsForwarded: Boolean = false
 )

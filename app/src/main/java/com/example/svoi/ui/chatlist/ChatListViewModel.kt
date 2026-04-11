@@ -217,7 +217,8 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             lastMessageTime = msg.createdAt ?: existing.lastMessageTime,
             unreadCount = if (isOwn) existing.unreadCount else existing.unreadCount + 1,
             lastMessageIsOwn = isOwn,
-            lastMessageIsRead = false
+            lastMessageIsRead = false,
+            lastMessageIsForwarded = msg.forwardedFromId != null
         )
         // Move chat to top
         _chats.value = listOf(updated) + current.filter { it.chatId != chatId }

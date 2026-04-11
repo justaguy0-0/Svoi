@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
@@ -552,15 +553,28 @@ private fun ChatListItem(
                         modifier = Modifier.weight(1f)
                     )
                 } else {
-                    Text(
-                        text = typingText ?: item.lastMessageText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (typingText != null) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (typingText == null && item.lastMessageIsForwarded) {
+                            Icon(
+                                imageVector = Icons.Default.Redo,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp).padding(end = 2.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = typingText ?: item.lastMessageText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (typingText != null) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
                 if (item.unreadCount > 0) {
                     Spacer(Modifier.width(8.dp))

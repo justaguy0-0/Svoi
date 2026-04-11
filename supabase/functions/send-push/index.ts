@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
     const record = body.record
     if (!record) return new Response('No record', { status: 400 })
 
-    const { chat_id, sender_id, content, type, silent, mentioned_user_ids } = record
+    const { chat_id, sender_id, content, type, silent, mentioned_user_ids, forwarded_from_id } = record
     if (silent) return new Response('Silent message — skip push', { status: 200 })
     const SUPPORTED_TYPES = ['text', 'photo', 'album', 'video', 'voice', 'file', 'system']
     if (!SUPPORTED_TYPES.includes(type)) {
@@ -109,7 +109,9 @@ Deno.serve(async (req) => {
 
     const notificationTitle = isGroup ? chatName || 'Групповой чат' : senderName
     let messagePreview: string
-    if (type === 'system') {
+    if (forwarded_from_id) {
+      messagePreview = 'Пересланное сообщение'
+    } else if (type === 'system') {
       messagePreview = content ?? ''
     } else if (type === 'photo') {
       messagePreview = content ? `📷 Фото: ${content}` : '📷 Фото'

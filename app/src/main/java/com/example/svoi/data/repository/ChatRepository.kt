@@ -244,7 +244,8 @@ class ChatRepository(private val supabase: SupabaseClient) {
                 isOtherOnline = isOtherOnline,
                 lastMessageIsOwn = lastMsg?.senderId == userId,
                 lastMessageIsRead = lastMsg?.id?.let { it in readOwnMessageIds } ?: false,
-                isMuted = membership?.muted == true
+                isMuted = membership?.muted == true,
+                lastMessageIsForwarded = lastMsg?.forwardedFromId != null
             )
         }.sortedByDescending { it.lastMessageTime }
     }
