@@ -33,6 +33,7 @@ import com.example.svoi.ui.newchat.UserSearchScreen
 import com.example.svoi.ui.profile.ProfileScreen
 import com.example.svoi.ui.profile.UserProfileScreen
 import com.example.svoi.ui.search.GlobalSearchScreen
+import com.example.svoi.ui.settings.AppearanceScreen
 import com.example.svoi.ui.settings.SettingsScreen
 import com.example.svoi.ui.settings.WallpaperPickerScreen
 
@@ -53,6 +54,7 @@ object Routes {
     const val GROUP_INFO = "group_info/{chatId}"
     const val GLOBAL_SEARCH = "global_search"
     const val WALLPAPER_PICKER = "wallpaper_picker"
+    const val APPEARANCE = "appearance"
 
     fun setupStep1(inviteKey: String) = "setup_step1/$inviteKey"
     fun chat(chatId: String) = "chat/$chatId"
@@ -311,12 +313,8 @@ fun NavGraph(
 
             composable(Routes.SETTINGS) {
                 SettingsScreen(
-                    currentThemeMode = currentThemeMode,
-                    onThemeChanged = onThemeChanged,
                     autoPlayVideos = autoPlayVideos,
                     onAutoPlayChanged = onAutoPlayChanged,
-                    currentAccent = currentAccent,
-                    onAccentChanged = onAccentChanged,
                     onNavigateToChats = {
                         if (canNav()) navController.popBackStack(Routes.CHAT_LIST, inclusive = false)
                     },
@@ -328,12 +326,25 @@ fun NavGraph(
                     },
                     onWallpaperClick = {
                         if (canNav()) navController.navigate(Routes.WALLPAPER_PICKER)
+                    },
+                    onAppearanceClick = {
+                        if (canNav()) navController.navigate(Routes.APPEARANCE)
                     }
                 )
             }
 
             composable(Routes.WALLPAPER_PICKER) {
                 WallpaperPickerScreen(
+                    onBack = { if (canNav()) navController.navigateUp() }
+                )
+            }
+
+            composable(Routes.APPEARANCE) {
+                AppearanceScreen(
+                    currentThemeMode = currentThemeMode,
+                    onThemeChanged = onThemeChanged,
+                    currentAccent = currentAccent,
+                    onAccentChanged = onAccentChanged,
                     onBack = { if (canNav()) navController.navigateUp() }
                 )
             }

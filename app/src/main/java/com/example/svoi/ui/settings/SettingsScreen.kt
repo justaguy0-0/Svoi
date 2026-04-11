@@ -2,8 +2,6 @@ package com.example.svoi.ui.settings
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,15 +24,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Wallpaper
-import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -44,7 +40,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -77,15 +72,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.imageLoader
 import com.example.svoi.BuildConfig
 import com.example.svoi.SvoiApp
-import com.example.svoi.data.local.SvoiAccent
-import com.example.svoi.data.local.ThemeMode
 import com.example.svoi.data.model.AppVersion
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.components.OfflineBanner
 import com.example.svoi.ui.profile.ProfileViewModel
 import com.example.svoi.ui.theme.SvoiDimens
 import com.example.svoi.ui.theme.SvoiShapes
-import com.example.svoi.ui.theme.accentPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,15 +85,12 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    currentThemeMode: ThemeMode,
-    onThemeChanged: (ThemeMode) -> Unit,
     autoPlayVideos: Boolean = true,
     onAutoPlayChanged: (Boolean) -> Unit = {},
-    currentAccent: SvoiAccent = SvoiAccent.BLUE,
-    onAccentChanged: (SvoiAccent) -> Unit = {},
     onNavigateToChats: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onWallpaperClick: () -> Unit = {},
+    onAppearanceClick: () -> Unit = {},
     profileViewModel: ProfileViewModel = viewModel()
 ) {
     val currentProfile by profileViewModel.profile.collectAsState()
@@ -162,7 +151,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(4.dp))
             }
 
-            // ── Тема ─────────────────────────────────────────────────────────
+            // ── Внешний вид приложения ────────────────────────────────────────
             Surface(
                 modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
                 shape = SvoiShapes.Card,
@@ -170,52 +159,18 @@ fun SettingsScreen(
                 tonalElevation = 1.dp
             ) {
                 Column {
-                    SectionHeader("Тема оформления")
-
-                    ThemeOption(
-                        icon = Icons.Default.Settings,
-                        title = "Системная",
-                        subtitle = "Как в настройках устройства",
-                        selected = currentThemeMode == ThemeMode.SYSTEM,
-                        onClick = { onThemeChanged(ThemeMode.SYSTEM) }
+                    SectionHeader("Внешний вид приложения")
+                    NavRow(
+                        icon = Icons.Default.Palette,
+                        title = "Настройка оформления",
+                        subtitle = "Тема и цветовая палитра",
+                        onClick = onAppearanceClick
                     )
-                    ThemeOption(
-                        icon = Icons.Default.LightMode,
-                        title = "Светлая",
-                        subtitle = "Всегда светлая тема",
-                        selected = currentThemeMode == ThemeMode.LIGHT,
-                        onClick = { onThemeChanged(ThemeMode.LIGHT) }
-                    )
-                    ThemeOption(
-                        icon = Icons.Default.DarkMode,
-                        title = "Тёмная",
-                        subtitle = "Всегда тёмная тема",
-                        selected = currentThemeMode == ThemeMode.DARK,
-                        onClick = { onThemeChanged(ThemeMode.DARK) }
-                    )
-
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 16.dp),
                         thickness = 0.4.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                     )
-
-                    AccentColorPicker(
-                        currentAccent = currentAccent,
-                        onAccentChanged = onAccentChanged
-                    )
-                }
-            }
-
-            // ── Фон чата ─────────────────────────────────────────────────────
-            Surface(
-                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
-                shape = SvoiShapes.Card,
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp
-            ) {
-                Column {
-                    SectionHeader("Внешний вид чата")
                     NavRow(
                         icon = Icons.Default.Wallpaper,
                         title = "Фон чата",
@@ -385,40 +340,6 @@ private fun SectionHeader(title: String) {
     )
 }
 
-// ── Строка темы (радио) ───────────────────────────────────────────────────────
-
-@Composable
-private fun ThemeOption(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val iconTint by animateColorAsState(
-            targetValue = if (selected) MaterialTheme.colorScheme.primary
-                          else MaterialTheme.colorScheme.onSurfaceVariant,
-            animationSpec = tween(220),
-            label = "themeIconTint"
-        )
-        Icon(icon, contentDescription = null, tint = iconTint,
-            modifier = Modifier.padding(end = 16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        RadioButton(selected = selected, onClick = onClick)
-    }
-}
 
 // ── Строка с переключателем (Switch) ─────────────────────────────────────────
 
@@ -680,81 +601,6 @@ private fun VersionChip(label: String, version: String, isNew: Boolean) {
     }
 }
 
-// ── Выбор акцент-цвета ───────────────────────────────────────────────────────
-
-private val accentLabels = mapOf(
-    SvoiAccent.BLUE   to "Синий",
-    SvoiAccent.ORANGE to "Оранжевый",
-    SvoiAccent.RED    to "Красный",
-    SvoiAccent.GREEN  to "Зелёный",
-    SvoiAccent.PINK   to "Розовый",
-    SvoiAccent.PURPLE to "Фиолетовый"
-)
-
-@Composable
-private fun AccentColorPicker(
-    currentAccent: SvoiAccent,
-    onAccentChanged: (SvoiAccent) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Цветовая палитра",
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Text(
-                text = accentLabels[currentAccent] ?: "",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            SvoiAccent.entries.forEach { accent ->
-                val palette = accentPalette(accent)
-                val isSelected = accent == currentAccent
-                val scale by animateFloatAsState(
-                    targetValue = if (isSelected) 1.15f else 1f,
-                    animationSpec = tween(200),
-                    label = "accentScale"
-                )
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .scale(scale)
-                        .clip(CircleShape)
-                        .background(palette.primary)
-                        .then(
-                            if (isSelected) Modifier.border(2.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f), CircleShape)
-                            else Modifier
-                        )
-                        .clickable { onAccentChanged(accent) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isSelected) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
 
 // ── Строка-ссылка (стрелка вправо) ───────────────────────────────────────────
 
