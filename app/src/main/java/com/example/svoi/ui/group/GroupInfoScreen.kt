@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Surface
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.components.Avatar
+import com.example.svoi.ui.media.AttachmentsPane
 import com.example.svoi.ui.theme.OnlineGreen
 import com.example.svoi.ui.theme.SvoiDimens
 import com.example.svoi.ui.theme.SvoiShapes
@@ -39,7 +41,6 @@ fun GroupInfoScreen(
     onBack: () -> Unit,
     onMemberClick: (String) -> Unit,
     onChatDeleted: () -> Unit,
-    onMediaClick: (chatId: String) -> Unit = {},
     viewModel: GroupInfoViewModel = viewModel()
 ) {
     LaunchedEffect(chatId) { viewModel.init(chatId) }
@@ -56,10 +57,9 @@ fun GroupInfoScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // If chat was deleted externally, navigate back to chat list
-    LaunchedEffect(chatDeleted) {
-        if (chatDeleted) onChatDeleted()
-    }
+    var selectedTab by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(chatDeleted) { if (chatDeleted) onChatDeleted() }
     LaunchedEffect(error) {
         error?.let { snackbarHostState.showSnackbar(it); viewModel.clearMessages() }
     }
@@ -93,166 +93,171 @@ fun GroupInfoScreen(
                 contentAlignment = Alignment.Center
             ) { CircularProgressIndicator() }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(bottom = 24.dp)
-            ) {
-                // Header: avatar + name + member count
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Avatar(
-                            emoji = (chat?.name ?: "Г").take(1),
-                            bgColor = groupAvatarColor(chatId),
-                            isGroup = true,
-                            letter = chat?.name ?: "Г",
-                            size = SvoiDimens.AvatarXLarge,
-                            fontSize = 44.sp
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                // ── Always-visible header ───────────────────────────────────────────
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Avatar(
+                        emoji = (chat?.name ?: "Г").take(1),
+                        bgColor = groupAvatarColor(chatId),
+                        isGroup = true,
+                        letter = chat?.name ?: "Г",
+                        size = SvoiDimens.AvatarXLarge,
+                        fontSize = 44.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = chat?.name ?: "Группа",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold
                         )
+                        if (isAdmin) {
+                            Spacer(Modifier.width(6.dp))
+                            IconButton(
+                                onClick = { showRenameDialog = true },
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Переименовать",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "${members.size} участников",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
-                        Spacer(Modifier.height(16.dp))
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                // ── Tab row ─────────────────────────────────────────────────────────
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    indicator = { tabPositions ->
+                        TabRowDefaults.SecondaryIndicator(
+                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = {
                             Text(
-                                text = chat?.name ?: "Группа",
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold
+                                "Участники",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (selectedTab == 0) FontWeight.SemiBold else FontWeight.Normal
                             )
+                        }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = {
+                            Text(
+                                "Вложения",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (selectedTab == 1) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        }
+                    )
+                }
+
+                // ── Tab content ─────────────────────────────────────────────────────
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    when (selectedTab) {
+                        0 -> LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 24.dp)
+                        ) {
+                            // Add member button (admin only)
                             if (isAdmin) {
-                                Spacer(Modifier.width(8.dp))
-                                IconButton(
-                                    onClick = { showRenameDialog = true },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Edit,
-                                        contentDescription = "Переименовать",
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                item {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { showAddMemberDialog = true }
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(46.dp)
+                                                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.PersonAdd,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                        Spacer(Modifier.width(12.dp))
+                                        Text(
+                                            "Добавить участника",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                                }
+                            }
+
+                            // Member list
+                            items(members, key = { it.member.userId }) { item ->
+                                val isSelf = item.member.userId == currentUserId
+                                val isOnline = item.presence?.isTrulyOnline() == true
+                                MemberRow(
+                                    item = item,
+                                    isOnline = isOnline,
+                                    isSelf = isSelf,
+                                    showRemove = isAdmin && !isSelf,
+                                    onClick = { if (!isSelf) onMemberClick(item.member.userId) },
+                                    onRemove = { viewModel.removeMember(item.member.userId) }
+                                )
+                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            }
+
+                            // Delete group button (admin only)
+                            if (isAdmin) {
+                                item {
+                                    Spacer(Modifier.height(16.dp))
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { showDeleteDialog = true }
+                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error)
+                                        Spacer(Modifier.width(12.dp))
+                                        Text(
+                                            "Удалить группу",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
                                 }
                             }
                         }
-
-                        Spacer(Modifier.height(4.dp))
-
-                        Text(
-                            text = "${members.size} участников",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        1 -> AttachmentsPane(
+                            chatId = chatId,
+                            modifier = Modifier.fillMaxSize()
                         )
-
-                        Spacer(Modifier.height(20.dp))
-
-                        // Media button
-                        Surface(
-                            onClick = { onMediaClick(chatId) },
-                            shape = MaterialTheme.shapes.medium,
-                            color = MaterialTheme.colorScheme.secondaryContainer,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PermMedia,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    "Вложения",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Add member button (admin only)
-                if (isAdmin) {
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showAddMemberDialog = true }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.primaryContainer,
-                                        CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.PersonAdd,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                "Добавить участника",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                    }
-                }
-
-                // Member list
-                items(members, key = { it.member.userId }) { item ->
-                    val isSelf = item.member.userId == currentUserId
-                    val isOnline = item.presence?.isTrulyOnline() == true
-                    MemberRow(
-                        item = item,
-                        isOnline = isOnline,
-                        isSelf = isSelf,
-                        showRemove = isAdmin && !isSelf,
-                        onClick = { if (!isSelf) onMemberClick(item.member.userId) },
-                        onRemove = { viewModel.removeMember(item.member.userId) }
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                }
-
-                // Delete group button (admin only)
-                if (isAdmin) {
-                    item {
-                        Spacer(Modifier.height(16.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showDeleteDialog = true }
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                "Удалить группу",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
                     }
                 }
             }

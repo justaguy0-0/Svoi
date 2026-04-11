@@ -28,7 +28,6 @@ import com.example.svoi.ui.auth.SetupStep3Screen
 import com.example.svoi.ui.chat.ChatScreen
 import com.example.svoi.ui.chatlist.ChatListScreen
 import com.example.svoi.ui.group.GroupInfoScreen
-import com.example.svoi.ui.media.ChatMediaScreen
 import com.example.svoi.ui.newchat.CreateGroupScreen
 import com.example.svoi.ui.newchat.UserSearchScreen
 import com.example.svoi.ui.profile.ProfileScreen
@@ -52,7 +51,6 @@ object Routes {
     const val USER_PROFILE = "user_profile/{userId}"
     const val GROUP_INFO = "group_info/{chatId}"
     const val GLOBAL_SEARCH = "global_search"
-    const val CHAT_MEDIA = "chat_media/{chatId}"
 
     fun setupStep1(inviteKey: String) = "setup_step1/$inviteKey"
     fun chat(chatId: String) = "chat/$chatId"
@@ -60,7 +58,6 @@ object Routes {
     fun chatNew(userId: String) = "chat_new/$userId"
     fun userProfile(userId: String) = "user_profile/$userId"
     fun groupInfo(chatId: String) = "group_info/$chatId"
-    fun chatMedia(chatId: String) = "chat_media/$chatId"
 }
 
 @Composable
@@ -219,9 +216,6 @@ fun NavGraph(
                         navController.navigate(Routes.CHAT_LIST) {
                             popUpTo(Routes.CHAT_LIST) { inclusive = false }
                         }
-                    },
-                    onMediaClick = { mediaId ->
-                        if (canNav()) navController.navigate(Routes.chatMedia(mediaId))
                     }
                 )
             }
@@ -238,21 +232,7 @@ fun NavGraph(
                         if (canNav()) navController.navigate(Routes.chat(chatId)) {
                             popUpTo(Routes.CHAT_LIST) { inclusive = false }
                         }
-                    },
-                    onMediaClick = { chatId ->
-                        if (canNav()) navController.navigate(Routes.chatMedia(chatId))
                     }
-                )
-            }
-
-            composable(
-                route = Routes.CHAT_MEDIA,
-                arguments = listOf(navArgument("chatId") { type = NavType.StringType })
-            ) { backStack ->
-                val chatId = backStack.arguments?.getString("chatId") ?: ""
-                ChatMediaScreen(
-                    chatId = chatId,
-                    onBack = { if (canNav()) navController.navigateUp() }
                 )
             }
 

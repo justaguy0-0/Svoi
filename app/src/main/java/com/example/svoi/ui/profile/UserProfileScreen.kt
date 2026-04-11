@@ -17,10 +17,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChatBubble
-import androidx.compose.material.icons.filled.PermMedia
+import com.example.svoi.ui.media.AttachmentsPane
 import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,7 +61,6 @@ fun UserProfileScreen(
     userId: String,
     onBack: () -> Unit,
     onOpenChat: (String) -> Unit,
-    onMediaClick: (chatId: String) -> Unit = {},
     viewModel: UserProfileViewModel = viewModel()
 ) {
     LaunchedEffect(userId) { viewModel.load(userId) }
@@ -111,124 +110,122 @@ fun UserProfileScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(horizontal = SvoiDimens.ScreenHorizontalPadding)
-                    .graphicsLayer { alpha = contentAlpha },
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .graphicsLayer { alpha = contentAlpha }
             ) {
-                Spacer(Modifier.height(32.dp))
-
-                // Large avatar with online dot
-                Box(
-                    contentAlignment = Alignment.BottomEnd,
-                    modifier = Modifier.scale(avatarScale)
-                ) {
-                    Avatar(
-                        emoji = profile?.emoji ?: "😊",
-                        bgColor = profile?.bgColor ?: "#5C6BC0",
-                        letter = profile?.displayName ?: "",
-                        size = SvoiDimens.AvatarXLarge,
-                        fontSize = 44.sp
-                    )
-                    val isOnline = presence?.isTrulyOnline() == true
-                    if (isOnline) {
-                        Box(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .background(OnlineGreen, CircleShape)
-                                .border(3.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(16.dp))
-
-                // Name
-                Text(
-                    text = profile?.displayName ?: "Пользователь",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(Modifier.height(4.dp))
-
-                // Online status
-                val isOnline = presence?.isTrulyOnline() == true
-                Text(
-                    text = if (isOnline) "в сети" else "не в сети",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isOnline) OnlineGreen else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // Status text
-                if (!profile?.statusText.isNullOrBlank()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = profile?.statusText ?: "",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
-                }
-
-                // Registration date chip
-                val regDate = profile?.createdAt?.toRegistrationDate()
-                if (!regDate.isNullOrBlank()) {
-                    Spacer(Modifier.height(12.dp))
-                    Surface(
-                        shape = SvoiShapes.Chip,
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Text(
-                            text = "В Свои с $regDate",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(32.dp))
-
-                // Write message button
-                Button(
-                    onClick = {
-                        scope.launch {
-                            val chatId = viewModel.getOrCreateChat(userId)
-                            if (chatId != null) onOpenChat(chatId)
-                        }
-                    },
-                    shape = SvoiShapes.Button,
+                // ── Profile section (centered, with horizontal padding) ──────────
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(SvoiDimens.ButtonHeight)
+                        .padding(horizontal = SvoiDimens.ScreenHorizontalPadding),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(
-                        Icons.Default.ChatBubble,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Написать", style = MaterialTheme.typography.titleSmall)
-                }
+                    Spacer(Modifier.height(32.dp))
 
-                // Media/attachments button — only shown when a personal chat exists
-                if (chatIdWithUser != null) {
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedButton(
-                        onClick = { onMediaClick(chatIdWithUser!!) },
+                    // Large avatar with online dot
+                    Box(
+                        contentAlignment = Alignment.BottomEnd,
+                        modifier = Modifier.scale(avatarScale)
+                    ) {
+                        Avatar(
+                            emoji = profile?.emoji ?: "😊",
+                            bgColor = profile?.bgColor ?: "#5C6BC0",
+                            letter = profile?.displayName ?: "",
+                            size = SvoiDimens.AvatarXLarge,
+                            fontSize = 44.sp
+                        )
+                        val isOnline = presence?.isTrulyOnline() == true
+                        if (isOnline) {
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .background(OnlineGreen, CircleShape)
+                                    .border(3.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Name
+                    Text(
+                        text = profile?.displayName ?: "Пользователь",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(Modifier.height(4.dp))
+
+                    // Online status
+                    val isOnline = presence?.isTrulyOnline() == true
+                    Text(
+                        text = if (isOnline) "в сети" else "не в сети",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isOnline) OnlineGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // Status text
+                    if (!profile?.statusText.isNullOrBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = profile?.statusText ?: "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    // Registration date chip
+                    val regDate = profile?.createdAt?.toRegistrationDate()
+                    if (!regDate.isNullOrBlank()) {
+                        Spacer(Modifier.height(12.dp))
+                        Surface(
+                            shape = SvoiShapes.Chip,
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = "В Свои с $regDate",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(24.dp))
+
+                    // Write message button
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val chatId = viewModel.getOrCreateChat(userId)
+                                if (chatId != null) onOpenChat(chatId)
+                            }
+                        },
                         shape = SvoiShapes.Button,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(SvoiDimens.ButtonHeight)
                     ) {
                         Icon(
-                            Icons.Default.PermMedia,
+                            Icons.Default.ChatBubble,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text("Вложения", style = MaterialTheme.typography.titleSmall)
+                        Text("Написать", style = MaterialTheme.typography.titleSmall)
                     }
+                }
+
+                // ── Attachments section (fills remaining space) ────────────────
+                if (chatIdWithUser != null) {
+                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider()
+                    AttachmentsPane(
+                        chatId = chatIdWithUser!!,
+                        modifier = Modifier.weight(1f).fillMaxWidth()
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
                 }
             }
         }
