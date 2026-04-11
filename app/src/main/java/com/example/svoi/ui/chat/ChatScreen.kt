@@ -209,6 +209,8 @@ import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
@@ -690,8 +692,30 @@ fun ChatScreen(
                 } catch (_: Exception) { /* best-effort scroll — chat must be revealed regardless */ }
             }
         }
-        // Reveal chat — unless we're waiting for a specific message to be positioned first
-        if (!isRevealingToMessage) chatReady = true
+        // Pre-load images from the last visible messages so they're already in cache
+        // when the loader fades out — prevents layout jumps and broken auto-scroll
+        if (!isRevealingToMessage) {
+            val imageUrls = currentDisplayEntries
+                .takeLast(25)
+                .filterIsInstance<ChatEntry.Msg>()
+                .flatMap { entry ->
+                    val msg = entry.item.message
+                    when (msg.type) {
+                        "photo" -> listOfNotNull(msg.fileUrl)
+                        "album" -> msg.photoUrls.orEmpty()
+                        else    -> emptyList()
+                    }
+                }
+            if (imageUrls.isNotEmpty()) {
+                val jobs = imageUrls.map { url ->
+                    context.imageLoader.enqueue(
+                        ImageRequest.Builder(context).data(url).build()
+                    )
+                }
+                withTimeoutOrNull(3_000L) { jobs.forEach { it.job.join() } }
+            }
+            chatReady = true
+        }
         // After initial scroll, allow markAsRead to fire when user reaches the bottom
         initialScrollDone = true
     }
