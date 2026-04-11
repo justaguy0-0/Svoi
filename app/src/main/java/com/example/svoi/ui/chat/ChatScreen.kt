@@ -525,15 +525,6 @@ fun ChatScreen(
         if (last >= 0) listState.animateScrollToItem(last)
     }
 
-    // Когда одиночное фото загружается и меняет высоту сообщения — скроллим вниз.
-    val imageRatioCacheSize = imageRatioCache.size
-    LaunchedEffect(imageRatioCacheSize) {
-        if (imageRatioCacheSize == 0 || !initialScrollDone) return@LaunchedEffect
-        if (!isNearBottom) return@LaunchedEffect
-        delay(150)
-        val last = currentDisplayEntries.size - 1
-        if (last >= 0) listState.animateScrollToItem(last)
-    }
 
     // Восстанавливаем позицию скролла после того как старые сообщения prepend'нуты вверх.
     // Восстанавливаем позицию только при обычной подгрузке (не при поиске закреплённого).
@@ -1150,8 +1141,26 @@ fun ChatScreen(
                                                     },
                                                     onVideoMuteToggle = { isVideoMuted = !isVideoMuted },
                                                     onImageRatioLoaded = { url, ratio ->
+                                                        if (imageRatioCache[url] != null) return@MessageItem
                                                         imageRatioCache[url] = ratio
+                                                        if (!initialScrollDone || !isNearBottom) return@MessageItem
+                                                        // Scroll only when the image belongs to one of the last messages
+                                                        val isRecentPhoto = currentDisplayEntries
+                                                            .takeLast(4)
+                                                            .filterIsInstance<ChatEntry.Msg>()
+                                                            .any { e ->
+                                                                e.item.message.fileUrl == url ||
+                                                                e.item.message.photoUrls?.contains(url) == true ||
+                                                                e.item.pendingLocalUris.contains(url)
+                                                            }
+                                                        if (!isRecentPhoto) return@MessageItem
+                                                        scope.launch {
+                                                            delay(150)
+                                                            val last = currentDisplayEntries.size - 1
+                                                            if (last >= 0) listState.animateScrollToItem(last)
+                                                        }
                                                     },
+                                                    imageRatioCache = imageRatioCache,
                                                     onVideoSizeDetected = { url, ratio ->
                                                         val prevRatio = videoAspectRatios[url] ?: (16f / 9f)
                                                         videoAspectRatios[url] = ratio
@@ -2257,7 +2266,8 @@ private fun PhotoGrid(
     onPhotoClick: (url: String, albumUrls: List<String>) -> Unit,
     onTap: () -> Unit,
     onLongClick: () -> Unit,
-    onImageRatioLoaded: (url: String, ratio: Float) -> Unit = { _, _ -> }
+    onImageRatioLoaded: (url: String, ratio: Float) -> Unit = { _, _ -> },
+    imageRatioCache: Map<String, Float> = emptyMap()
 ) {
     val count = urls.size
     val maxVisible = 4
@@ -2335,7 +2345,7 @@ private fun PhotoGrid(
             val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
                 Uri.parse(url) else url
             val progress = uploadProgresses.getOrNull(0)
-            var imageRatio by remember(url) { mutableStateOf<Float?>(null) }
+            var imageRatio by remember(url) { mutableStateOf(imageRatioCache[url]) }
             var loadError by remember(url) { mutableStateOf(false) }
             val clampedRatio = imageRatio?.coerceIn(0.5f, 2.0f)
             Box(
@@ -2615,6 +2625,7 @@ private fun MessageItem(
     onVideoMuteToggle: () -> Unit = {},
     onVideoSizeDetected: (url: String, ratio: Float) -> Unit = { _, _ -> },
     onImageRatioLoaded: (url: String, ratio: Float) -> Unit = { _, _ -> },
+    imageRatioCache: Map<String, Float> = emptyMap(),
     voicePlayState: VoicePlayState? = null,
     onVoicePlay: (msgId: String, url: String, durationSec: Int) -> Unit = { _, _, _ -> },
     onVoicePause: () -> Unit = {},
@@ -2955,7 +2966,8 @@ private fun MessageItem(
                                         },
                                         onTap = onTap,
                                         onLongClick = onLongClick,
-                                        onImageRatioLoaded = onImageRatioLoaded
+                                        onImageRatioLoaded = onImageRatioLoaded,
+                                        imageRatioCache = imageRatioCache
                                     )
                                     // Caption text (if present)
                                     if (!msg.content.isNullOrBlank()) {
