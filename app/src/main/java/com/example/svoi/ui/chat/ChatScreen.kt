@@ -1299,6 +1299,7 @@ fun ChatScreen(
                                             toolbarTitleColor = cropOnBarColor,
                                             toolbarBackButtonColor = cropOnBarColor,
                                             activityMenuIconColor = cropOnBarColor,
+                                            activityMenuTextColor = cropOnBarColor,
                                             activityBackgroundColor = cropBgColor,
                                             borderCornerColor = cropAccentColor,
                                             outputCompressQuality = 95
