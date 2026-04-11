@@ -83,6 +83,7 @@ import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Hearing
@@ -714,30 +715,18 @@ fun ChatScreen(
         editingMessage?.let { inputValue = TextFieldValue(it.content ?: "") }
     }
 
-    val cropLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
+    var cropEditIndex by remember { mutableStateOf(-1) }
+    val cropEditLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
         if (result.isSuccessful) {
-            result.uriContent?.let { uri -> viewModel.addStagedMedia(listOf(uri), context) }
+            result.uriContent?.let { uri ->
+                viewModel.replaceStagedMedia(cropEditIndex, uri, context)
+            }
         }
+        cropEditIndex = -1
     }
 
     val mediaPicker = rememberLauncherForActivityResult(GetMultipleMedia()) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
-        val single = uris.singleOrNull()
-        val mimeType = single?.let { context.contentResolver.getType(it) }
-        if (single != null && mimeType?.startsWith("image/") == true) {
-            cropLauncher.launch(
-                CropImageContractOptions(
-                    uri = single,
-                    cropImageOptions = CropImageOptions(
-                        toolbarColor = android.graphics.Color.parseColor("#1E88E5"),
-                        toolbarTitleColor = android.graphics.Color.WHITE,
-                        outputCompressQuality = 95
-                    )
-                )
-            )
-        } else {
-            viewModel.addStagedMedia(uris, context)
-        }
+        if (uris.isNotEmpty()) viewModel.addStagedMedia(uris, context)
     }
 
 
@@ -1293,7 +1282,21 @@ fun ChatScreen(
                     ) {
                         StagedMediaRow(
                             items = stagedMedia,
-                            onRemove = { viewModel.removeStagedMedia(it) }
+                            onRemove = { viewModel.removeStagedMedia(it) },
+                            onEdit = { idx ->
+                                val uri = stagedMedia.getOrNull(idx)?.uri ?: return@StagedMediaRow
+                                cropEditIndex = idx
+                                cropEditLauncher.launch(
+                                    CropImageContractOptions(
+                                        uri = uri,
+                                        cropImageOptions = CropImageOptions(
+                                            toolbarColor = android.graphics.Color.parseColor("#1E88E5"),
+                                            toolbarTitleColor = android.graphics.Color.WHITE,
+                                            outputCompressQuality = 95
+                                        )
+                                    )
+                                )
+                            }
                         )
                     }
 
@@ -2105,7 +2108,8 @@ private fun mimeTypeToEmoji(mimeType: String?, fileName: String?): String {
 @Composable
 private fun StagedMediaRow(
     items: List<StagedMedia>,
-    onRemove: (Int) -> Unit
+    onRemove: (Int) -> Unit,
+    onEdit: (Int) -> Unit
 ) {
     LazyRow(
         modifier = Modifier
@@ -2164,6 +2168,21 @@ private fun StagedMediaRow(
                 ) {
                     Icon(Icons.Default.Close, contentDescription = "Удалить",
                         tint = Color.White, modifier = Modifier.size(14.dp))
+                }
+                // Edit (crop) button — only for photos
+                if (!item.isVideo) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(0.6f))
+                            .clickable { onEdit(idx) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Crop, contentDescription = "Редактировать",
+                            tint = Color.White, modifier = Modifier.size(14.dp))
+                    }
                 }
             }
         }

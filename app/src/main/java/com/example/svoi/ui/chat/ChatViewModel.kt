@@ -1423,6 +1423,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _stagedMedia.value = _stagedMedia.value.filterIndexed { i, _ -> i != index }
     }
 
+    fun replaceStagedMedia(index: Int, uri: Uri, context: Context) {
+        val list = _stagedMedia.value.toMutableList()
+        if (index < 0 || index >= list.size) return
+        val mimeType = context.contentResolver.getType(uri)
+        list[index] = StagedMedia(uri, mimeType?.startsWith("video/") == true)
+        _stagedMedia.value = list
+    }
+
     fun clearStagedMedia() {
         _stagedMedia.value = emptyList()
         _uploadProgresses.value = emptyList()
