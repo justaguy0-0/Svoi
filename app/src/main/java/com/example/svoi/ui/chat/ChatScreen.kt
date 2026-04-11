@@ -114,6 +114,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -318,6 +321,7 @@ fun ChatScreen(
     LaunchedEffect(imeVisible) { if (imeVisible) showEmojiPicker = false }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val haptic = LocalHapticFeedback.current
@@ -748,6 +752,15 @@ fun ChatScreen(
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface
+                )
+            }
+        },
         topBar = {
             Column {
                 TopAppBar(
@@ -1959,6 +1972,7 @@ fun ChatScreen(
             },
             onSelect = { targetChatId ->
                 val fwdId = pendingForwardMessageId
+                val count = if (fwdId != null) 1 else selectedMessageIds.size
                 if (fwdId != null) {
                     viewModel.forwardSingleMessage(fwdId, targetChatId)
                 } else {
@@ -1966,6 +1980,10 @@ fun ChatScreen(
                 }
                 showForwardPicker = false
                 pendingForwardMessageId = null
+                val chatName = chatsForForward.find { it.chatId == targetChatId }?.displayName ?: ""
+                val msg = if (count > 1) "Переслано $count сообщений → $chatName"
+                          else "Переслано в $chatName"
+                scope.launch { snackbarHostState.showSnackbar(msg) }
             }
         )
     }
