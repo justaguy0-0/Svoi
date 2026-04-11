@@ -692,9 +692,8 @@ fun ChatScreen(
                 } catch (_: Exception) { /* best-effort scroll — chat must be revealed regardless */ }
             }
         }
-        // Pre-load images from the last visible messages so they're already in cache
-        // when the loader fades out — prevents layout jumps and broken auto-scroll
         if (!isRevealingToMessage) {
+            // Pre-load images so they're in Coil memory cache before the loader fades out
             val imageUrls = currentDisplayEntries
                 .takeLast(25)
                 .filterIsInstance<ChatEntry.Msg>()
@@ -712,9 +711,27 @@ fun ChatScreen(
                         ImageRequest.Builder(context).data(url).build()
                     )
                 }
-                withTimeoutOrNull(3_000L) { jobs.forEach { it.job.join() } }
+                withTimeoutOrNull(1_500L) { jobs.forEach { it.job.join() } }
             }
             chatReady = true
+
+            // Corrective snaps: images may still expand a few frames after reveal.
+            // Re-snap to the target position at increasing intervals until settled.
+            // Stop immediately if the user has started scrolling manually.
+            val snapUnreadIdx = currentDisplayEntries.indexOfFirst { it is ChatEntry.UnreadDivider }
+            val snapOffset = if (snapUnreadIdx >= 0) -(screenHeightPx / 2) else 0
+            launch {
+                for (delayMs in listOf(80L, 250L, 500L)) {
+                    delay(delayMs)
+                    if (listState.isScrollInProgress) break
+                    val snapTarget = if (snapUnreadIdx >= 0) snapUnreadIdx
+                                     else currentDisplayEntries.size - 1
+                    if (snapTarget >= 0) {
+                        try { listState.scrollToItem(snapTarget, scrollOffset = snapOffset) }
+                        catch (_: Exception) {}
+                    }
+                }
+            }
         }
         // After initial scroll, allow markAsRead to fire when user reaches the bottom
         initialScrollDone = true
