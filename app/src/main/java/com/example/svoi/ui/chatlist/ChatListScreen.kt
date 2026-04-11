@@ -128,8 +128,8 @@ fun ChatListScreen(
     var drafts by remember { mutableStateOf(app.draftManager.getAllDrafts()) }
     val isVictoryDay = remember {
         val cal = java.util.Calendar.getInstance()
-        cal.get(java.util.Calendar.MONTH) == java.util.Calendar.APRIL &&
-            cal.get(java.util.Calendar.DAY_OF_MONTH) == 11
+        cal.get(java.util.Calendar.MONTH) == java.util.Calendar.MAY &&
+            cal.get(java.util.Calendar.DAY_OF_MONTH) == 9
     }
     var bannerDismissed by remember { mutableStateOf(viewModel.victoryBannerDismissed) }
 
