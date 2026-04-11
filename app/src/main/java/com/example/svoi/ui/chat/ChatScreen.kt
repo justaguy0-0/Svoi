@@ -325,9 +325,10 @@ fun ChatScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val wallpaper by (context.applicationContext as SvoiApp).wallpaperManager.wallpaper.collectAsState()
-    val haptic = LocalHapticFeedback.current
     val app = context.applicationContext as SvoiApp
+    val wallpaper by app.wallpaperManager.wallpaper.collectAsState()
+    val wallpaperDim by app.wallpaperManager.dim.collectAsState()
+    val haptic = LocalHapticFeedback.current
     val globalVoiceState by app.globalVoicePlayer.state.collectAsState()
 
     // Draft: load saved draft when opening chat
@@ -1001,7 +1002,7 @@ fun ChatScreen(
                 .imePadding()
         ) {
         // Wallpaper background (rendered first, behind everything)
-        ChatWallpaperBackground(wallpaper)
+        ChatWallpaperBackground(wallpaper, dim = wallpaperDim)
         Column(modifier = Modifier.fillMaxSize()) {
 
             // Messages

@@ -3,6 +3,8 @@ package com.example.svoi.ui.settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.GetContent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -99,17 +101,23 @@ private fun presetBrush(id: Int): Brush = PRESET_BRUSHES.getOrElse(id - 1) { PRE
 @Composable
 internal fun ChatWallpaperBackground(
     wallpaper: ChatWallpaper,
+    dim: Float = 0f,
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     when (wallpaper) {
         is ChatWallpaper.None -> Unit
-        is ChatWallpaper.Preset -> Box(modifier = modifier.background(brush = presetBrush(wallpaper.id)))
-        is ChatWallpaper.Custom -> AsyncImage(
-            model = File(wallpaper.path),
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = ContentScale.Crop
-        )
+        is ChatWallpaper.Preset -> Box(modifier = modifier.background(brush = presetBrush(wallpaper.id))) {
+            if (dim > 0f) Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
+        }
+        is ChatWallpaper.Custom -> Box(modifier = modifier) {
+            AsyncImage(
+                model = File(wallpaper.path),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            if (dim > 0f) Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
+        }
     }
 }
 
@@ -121,6 +129,7 @@ fun WallpaperPickerScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val wallpaperManager = (context.applicationContext as SvoiApp).wallpaperManager
     val current by wallpaperManager.wallpaper.collectAsState()
+    val dim by wallpaperManager.dim.collectAsState()
     val scope = rememberCoroutineScope()
 
     val galleryLauncher = rememberLauncherForActivityResult(GetContent()) { uri ->
@@ -149,7 +158,7 @@ fun WallpaperPickerScreen(onBack: () -> Unit) {
                 if (current is ChatWallpaper.None) {
                     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
                 } else {
-                    ChatWallpaperBackground(current)
+                    ChatWallpaperBackground(current, dim = dim)
                 }
                 MockChatPreview(hasWallpaper = current !is ChatWallpaper.None)
             }
@@ -167,6 +176,37 @@ fun WallpaperPickerScreen(onBack: () -> Unit) {
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp)
                     )
+
+                    if (current !is ChatWallpaper.None) {
+                        Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Затемнение фона",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "${(dim * 100).toInt()}%",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Slider(
+                                value = dim,
+                                onValueChange = { wallpaperManager.setDim(it) },
+                                valueRange = 0f..0.75f,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        }
+                    }
 
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),

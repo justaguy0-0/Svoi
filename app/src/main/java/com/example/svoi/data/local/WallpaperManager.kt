@@ -16,6 +16,15 @@ class WallpaperManager(private val context: Context) {
     private val _wallpaper = MutableStateFlow(load())
     val wallpaper: StateFlow<ChatWallpaper> = _wallpaper.asStateFlow()
 
+    private val _dim = MutableStateFlow(prefs.getFloat("dim", 0f))
+    val dim: StateFlow<Float> = _dim.asStateFlow()
+
+    fun setDim(value: Float) {
+        val clamped = value.coerceIn(0f, 0.75f)
+        prefs.edit().putFloat("dim", clamped).apply()
+        _dim.value = clamped
+    }
+
     fun setNone() {
         prefs.edit().putString("type", "none").apply()
         _wallpaper.value = ChatWallpaper.None
