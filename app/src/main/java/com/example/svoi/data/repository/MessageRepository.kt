@@ -139,6 +139,23 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { emptyList() }
     }
 
+    /** Fetch all media messages (photo/album/video/voice) for a chat, newest first. */
+    suspend fun getMediaMessages(chatId: String): List<Message> {
+        return try {
+            supabase.from("messages")
+                .select {
+                    filter {
+                        eq("chat_id", chatId)
+                        eq("deleted_for_all", false)
+                        isIn("type", listOf("photo", "album", "video", "voice"))
+                    }
+                    order("created_at", Order.DESCENDING)
+                    limit(2000)
+                }
+                .decodeList<Message>()
+        } catch (e: Exception) { emptyList() }
+    }
+
     suspend fun getMessage(messageId: String): Message? {
         return try {
             supabase.from("messages")

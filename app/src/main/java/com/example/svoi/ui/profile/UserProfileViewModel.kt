@@ -27,6 +27,9 @@ class UserProfileViewModel(application: Application) : AndroidViewModel(applicat
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    private val _chatIdWithUser = MutableStateFlow<String?>(null)
+    val chatIdWithUser: StateFlow<String?> = _chatIdWithUser
+
     private var loadedUserId: String = ""
     private var pollJob: Job? = null
 
@@ -38,6 +41,7 @@ class UserProfileViewModel(application: Application) : AndroidViewModel(applicat
             _isLoading.value = true
             _profile.value = userRepo.getProfile(userId)
             _presence.value = userRepo.getPresence(userId)
+            _chatIdWithUser.value = chatRepo.findPersonalChat(userId)
             _isLoading.value = false
         }
         pollJob = viewModelScope.launch {

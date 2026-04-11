@@ -17,7 +17,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.PermMedia
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -59,6 +61,7 @@ fun UserProfileScreen(
     userId: String,
     onBack: () -> Unit,
     onOpenChat: (String) -> Unit,
+    onMediaClick: (chatId: String) -> Unit = {},
     viewModel: UserProfileViewModel = viewModel()
 ) {
     LaunchedEffect(userId) { viewModel.load(userId) }
@@ -66,6 +69,7 @@ fun UserProfileScreen(
     val profile by viewModel.profile.collectAsState()
     val presence by viewModel.presence.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val chatIdWithUser by viewModel.chatIdWithUser.collectAsState()
     val scope = rememberCoroutineScope()
 
     // Entrance animation
@@ -205,6 +209,26 @@ fun UserProfileScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text("Написать", style = MaterialTheme.typography.titleSmall)
+                }
+
+                // Media/attachments button — only shown when a personal chat exists
+                if (chatIdWithUser != null) {
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = { onMediaClick(chatIdWithUser!!) },
+                        shape = SvoiShapes.Button,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(SvoiDimens.ButtonHeight)
+                    ) {
+                        Icon(
+                            Icons.Default.PermMedia,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Вложения", style = MaterialTheme.typography.titleSmall)
+                    }
                 }
             }
         }

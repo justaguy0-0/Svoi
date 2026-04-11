@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.Surface
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,6 +39,7 @@ fun GroupInfoScreen(
     onBack: () -> Unit,
     onMemberClick: (String) -> Unit,
     onChatDeleted: () -> Unit,
+    onMediaClick: (chatId: String) -> Unit = {},
     viewModel: GroupInfoViewModel = viewModel()
 ) {
     LaunchedEffect(chatId) { viewModel.init(chatId) }
@@ -143,6 +145,36 @@ fun GroupInfoScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+
+                        Spacer(Modifier.height(20.dp))
+
+                        // Media button
+                        Surface(
+                            onClick = { onMediaClick(chatId) },
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PermMedia,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Вложения",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
                     }
                 }
 
