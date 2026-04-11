@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.NotificationsOff
@@ -67,17 +68,22 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.Image
+import com.example.svoi.R
 import com.example.svoi.SvoiApp
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.ui.components.Avatar
@@ -116,6 +122,12 @@ fun ChatListScreen(
     var selectedChat by remember { mutableStateOf<ChatListItem?>(null) }
     var showBottomSheet by remember { mutableStateOf(false) }
     var drafts by remember { mutableStateOf(app.draftManager.getAllDrafts()) }
+    val isVictoryDay = remember {
+        val cal = java.util.Calendar.getInstance()
+        cal.get(java.util.Calendar.MONTH) == java.util.Calendar.MAY &&
+            cal.get(java.util.Calendar.DAY_OF_MONTH) == 9
+    }
+    var bannerDismissed by remember { mutableStateOf(false) }
 
     // Refresh unread counts when user returns to this screen (e.g. after reading a chat)
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -188,6 +200,9 @@ fun ChatListScreen(
                 .padding(padding)
         ) {
             OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = isUpdating)
+            if (isVictoryDay && !bannerDismissed) {
+                VictoryDayBanner(onDismiss = { bannerDismissed = true })
+            }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -351,6 +366,61 @@ fun ChatListScreen(
                 TextButton(onClick = { showClearConfirm = false }) { Text("Отмена") }
             }
         )
+    }
+}
+
+@Composable
+private fun VictoryDayBanner(onDismiss: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(90.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+    ) {
+        // Фоновое изображение — положи victory_day_banner.jpg в res/drawable и раскомментируй:
+        // Image(
+        //     painter = painterResource(R.drawable.victory_day_banner),
+        //     contentDescription = null,
+        //     contentScale = ContentScale.Crop,
+        //     modifier = Modifier.matchParentSize()
+        // )
+        // Временный градиентный фон (убери когда добавишь фото):
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.horizontalGradient(
+                        colors = listOf(Color(0xFF7F0000), Color(0xFFB71C1C), Color(0xFF7F0000))
+                    )
+                )
+        )
+        // Тёмный overlay для читаемости (нужен только с фото — убери этот Box вместе с раскомментированием Image):
+        // Box(modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.45f)))
+        Row(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("🎖️", fontSize = 28.sp)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "С Днём Победы!",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Закрыть",
+                    tint = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
     }
 }
 
