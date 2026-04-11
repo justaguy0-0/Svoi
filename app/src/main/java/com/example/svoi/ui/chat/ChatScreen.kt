@@ -1294,7 +1294,6 @@ fun ChatScreen(
                                         uri = uri,
                                         cropImageOptions = CropImageOptions(
                                             toolbarColor = cropAccentColor,
-                                            statusBarColor = cropAccentColor,
                                             toolbarTitleColor = cropWhite,
                                             toolbarBackButtonColor = cropWhite,
                                             activityMenuIconColor = cropWhite,
