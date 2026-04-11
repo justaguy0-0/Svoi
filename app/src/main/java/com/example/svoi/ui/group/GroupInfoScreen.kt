@@ -1,5 +1,10 @@
 package com.example.svoi.ui.group
 
+import android.app.DownloadManager
+import android.content.Context
+import android.net.Uri
+import android.os.Environment
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,24 +22,35 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.example.svoi.data.model.isTrulyOnline
+import com.example.svoi.ui.chat.FullscreenVideoPlayer
 import com.example.svoi.ui.components.Avatar
-import com.example.svoi.ui.media.AttachmentsPane
+import com.example.svoi.ui.media.ChatMediaViewModel
+import com.example.svoi.ui.media.MediaImageLightbox
+import com.example.svoi.ui.media.MediaItem
+import com.example.svoi.ui.media.MediaTypeTabBar
+import com.example.svoi.ui.media.addPhotoSections
+import com.example.svoi.ui.media.addVideoSections
+import com.example.svoi.ui.media.addVoiceSections
 import com.example.svoi.ui.theme.OnlineGreen
 import com.example.svoi.ui.theme.SvoiDimens
 import com.example.svoi.ui.theme.SvoiShapes
 import com.example.svoi.ui.theme.groupAvatarColor
 import com.example.svoi.util.toLastSeen
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun GroupInfoScreen(
     chatId: String,
@@ -51,11 +67,11 @@ fun GroupInfoScreen(
     val isAdmin by viewModel.isAdmin.collectAsState()
     val currentUserId by viewModel.currentUserId.collectAsState()
     val chatDeleted by viewModel.chatDeleted.collectAsState()
-
     val error by viewModel.error.collectAsState()
     val successMessage by viewModel.successMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -70,6 +86,68 @@ fun GroupInfoScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showAddMemberDialog by remember { mutableStateOf(false) }
+
+    // ── Media state ───────────────────────────────────────────────────────────
+    val mediaViewModel: ChatMediaViewModel = viewModel()
+    LaunchedEffect(chatId) { if (chatId.isNotEmpty()) mediaViewModel.load(chatId) }
+    val photos by mediaViewModel.photos.collectAsState()
+    val videos by mediaViewModel.videos.collectAsState()
+    val voices by mediaViewModel.voices.collectAsState()
+    val totalPhotos by mediaViewModel.totalPhotos.collectAsState()
+    val totalVideos by mediaViewModel.totalVideos.collectAsState()
+    val totalVoices by mediaViewModel.totalVoices.collectAsState()
+    val isMediaLoading by mediaViewModel.isLoading.collectAsState()
+
+    var selectedMediaTab by remember { mutableIntStateOf(0) }
+    val allPhotoUrls = remember(photos) {
+        photos.flatMap { s -> s.items.filterIsInstance<MediaItem.Photo>().map { it.url } }
+    }
+    var lightboxIndex by remember { mutableStateOf<Int?>(null) }
+    var fullscreenVideoUrl by remember { mutableStateOf<String?>(null) }
+
+    // ── Voice player ──────────────────────────────────────────────────────────
+    val voicePlayer = remember { ExoPlayer.Builder(context).build() }
+    DisposableEffect(Unit) { onDispose { voicePlayer.release() } }
+    var playingVoiceUrl by remember { mutableStateOf<String?>(null) }
+    var voiceIsPlaying by remember { mutableStateOf(false) }
+    var voicePositionMs by remember { mutableStateOf(0L) }
+    var voiceDurationMs by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(playingVoiceUrl, voiceIsPlaying) {
+        if (voiceIsPlaying) {
+            while (true) {
+                voicePositionMs = voicePlayer.currentPosition
+                val dur = voicePlayer.duration
+                if (dur > 0) voiceDurationMs = dur
+                delay(100)
+            }
+        }
+    }
+    DisposableEffect(voicePlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    voiceIsPlaying = false
+                    voicePositionMs = 0
+                    voicePlayer.seekTo(0)
+                }
+            }
+            override fun onIsPlayingChanged(playing: Boolean) { voiceIsPlaying = playing }
+        }
+        voicePlayer.addListener(listener)
+        onDispose { voicePlayer.removeListener(listener) }
+    }
+    val onVoicePlay: (String) -> Unit = { url ->
+        if (playingVoiceUrl != url) {
+            voicePlayer.stop()
+            voicePlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(url))
+            voicePlayer.prepare()
+            voiceDurationMs = 0
+            voicePositionMs = 0
+        }
+        playingVoiceUrl = url
+        voicePlayer.play()
+    }
 
     Scaffold(
         topBar = {
@@ -93,178 +171,238 @@ fun GroupInfoScreen(
                 contentAlignment = Alignment.Center
             ) { CircularProgressIndicator() }
         } else {
-            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-                // ── Always-visible header ───────────────────────────────────────────
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Avatar(
-                        emoji = (chat?.name ?: "Г").take(1),
-                        bgColor = groupAvatarColor(chatId),
-                        isGroup = true,
-                        letter = chat?.name ?: "Г",
-                        size = SvoiDimens.AvatarXLarge,
-                        fontSize = 44.sp
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = chat?.name ?: "Группа",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                // ── Group header (scrolls away) ────────────────────────────────
+                item(key = "group_header") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Avatar(
+                            emoji = (chat?.name ?: "Г").take(1),
+                            bgColor = groupAvatarColor(chatId),
+                            isGroup = true,
+                            letter = chat?.name ?: "Г",
+                            size = SvoiDimens.AvatarXLarge,
+                            fontSize = 44.sp
                         )
-                        if (isAdmin) {
-                            Spacer(Modifier.width(6.dp))
-                            IconButton(
-                                onClick = { showRenameDialog = true },
-                                modifier = Modifier.size(30.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription = "Переименовать",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "${members.size} участников",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // ── Tab row ─────────────────────────────────────────────────────────
-                TabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    indicator = { tabPositions ->
-                        TabRowDefaults.SecondaryIndicator(
-                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                ) {
-                    Tab(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        text = {
+                        Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                "Участники",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (selectedTab == 0) FontWeight.SemiBold else FontWeight.Normal
+                                text = chat?.name ?: "Группа",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold
                             )
-                        }
-                    )
-                    Tab(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        text = {
-                            Text(
-                                "Вложения",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (selectedTab == 1) FontWeight.SemiBold else FontWeight.Normal
-                            )
-                        }
-                    )
-                }
-
-                // ── Tab content ─────────────────────────────────────────────────────
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    when (selectedTab) {
-                        0 -> LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 24.dp)
-                        ) {
-                            // Add member button (admin only)
                             if (isAdmin) {
-                                item {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { showAddMemberDialog = true }
-                                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(46.dp)
-                                                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                Icons.Default.PersonAdd,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
-                                        Spacer(Modifier.width(12.dp))
-                                        Text(
-                                            "Добавить участника",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                IconButton(
+                                    onClick = { showRenameDialog = true },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Edit,
+                                        contentDescription = "Переименовать",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "${members.size} участников",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
 
-                            // Member list
-                            items(members, key = { it.member.userId }) { item ->
-                                val isSelf = item.member.userId == currentUserId
-                                val isOnline = item.presence?.isTrulyOnline() == true
-                                MemberRow(
-                                    item = item,
-                                    isOnline = isOnline,
-                                    isSelf = isSelf,
-                                    showRemove = isAdmin && !isSelf,
-                                    onClick = { if (!isSelf) onMemberClick(item.member.userId) },
-                                    onRemove = { viewModel.removeMember(item.member.userId) }
+                // ── Sticky outer tabs (Участники / Вложения) ──────────────────
+                stickyHeader(key = "outer_tabs") {
+                    TabRow(
+                        selectedTabIndex = selectedTab,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                        indicator = { tabPositions ->
+                            TabRowDefaults.SecondaryIndicator(
+                                modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    ) {
+                        Tab(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            text = {
+                                Text(
+                                    "Участники",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (selectedTab == 0) FontWeight.SemiBold else FontWeight.Normal
                                 )
+                            }
+                        )
+                        Tab(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            text = {
+                                Text(
+                                    "Вложения",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (selectedTab == 1) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            }
+                        )
+                    }
+                }
+
+                when (selectedTab) {
+                    // ── Участники ──────────────────────────────────────────────
+                    0 -> {
+                        if (isAdmin) {
+                            item(key = "add_member_btn") {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { showAddMemberDialog = true }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.PersonAdd,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        "Добавить участника",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                             }
+                        }
 
-                            // Delete group button (admin only)
-                            if (isAdmin) {
-                                item {
-                                    Spacer(Modifier.height(16.dp))
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { showDeleteDialog = true }
-                                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.Delete, contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error)
-                                        Spacer(Modifier.width(12.dp))
-                                        Text(
-                                            "Удалить группу",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.error
-                                        )
-                                    }
+                        items(members, key = { it.member.userId }) { item ->
+                            val isSelf = item.member.userId == currentUserId
+                            val isOnline = item.presence?.isTrulyOnline() == true
+                            MemberRow(
+                                item = item,
+                                isOnline = isOnline,
+                                isSelf = isSelf,
+                                showRemove = isAdmin && !isSelf,
+                                onClick = { if (!isSelf) onMemberClick(item.member.userId) },
+                                onRemove = { viewModel.removeMember(item.member.userId) }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
+
+                        if (isAdmin) {
+                            item(key = "delete_group_btn") {
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { showDeleteDialog = true }
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        "Удалить группу",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
                                 }
                             }
                         }
-                        1 -> AttachmentsPane(
-                            chatId = chatId,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                    }
+
+                    // ── Вложения ───────────────────────────────────────────────
+                    1 -> {
+                        stickyHeader(key = "media_tab_bar") {
+                            MediaTypeTabBar(
+                                selectedTab = selectedMediaTab,
+                                onTabSelected = { selectedMediaTab = it },
+                                totalPhotos = totalPhotos,
+                                totalVideos = totalVideos,
+                                totalVoices = totalVoices
+                            )
+                        }
+
+                        if (isMediaLoading) {
+                            item(key = "media_loading") {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().height(200.dp),
+                                    contentAlignment = Alignment.Center
+                                ) { CircularProgressIndicator() }
+                            }
+                        } else {
+                            when (selectedMediaTab) {
+                                0 -> addPhotoSections(photos, allPhotoUrls) { lightboxIndex = it }
+                                1 -> addVideoSections(videos) { fullscreenVideoUrl = it }
+                                2 -> addVoiceSections(
+                                    sections = voices,
+                                    playingUrl = playingVoiceUrl,
+                                    isPlaying = voiceIsPlaying,
+                                    positionMs = voicePositionMs,
+                                    durationMs = voiceDurationMs,
+                                    onPlay = onVoicePlay,
+                                    onPause = { voicePlayer.pause() },
+                                    onSeek = { ms -> voicePlayer.seekTo(ms); voicePositionMs = ms }
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    // Rename dialog
+    // ── Overlays ───────────────────────────────────────────────────────────────
+    fullscreenVideoUrl?.let { url ->
+        FullscreenVideoPlayer(url = url, onDismiss = { fullscreenVideoUrl = null })
+    }
+    lightboxIndex?.let { startIdx ->
+        if (allPhotoUrls.isNotEmpty()) {
+            MediaImageLightbox(
+                urls = allPhotoUrls,
+                startIndex = startIdx.coerceIn(0, allPhotoUrls.lastIndex),
+                onDismiss = { lightboxIndex = null },
+                onDownload = { url ->
+                    val filename = "svoi_${System.currentTimeMillis()}.jpg"
+                    val request = DownloadManager.Request(Uri.parse(url))
+                        .setTitle(filename)
+                        .setDescription("Сохранение изображения")
+                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_PICTURES, "Svoi/$filename")
+                        .setMimeType("image/jpeg")
+                    val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    dm.enqueue(request)
+                }
+            )
+        }
+    }
+
+    // ── Dialogs ────────────────────────────────────────────────────────────────
     if (showRenameDialog) {
         RenameGroupDialog(
             currentName = chat?.name ?: "",
@@ -276,7 +414,6 @@ fun GroupInfoScreen(
         )
     }
 
-    // Delete dialog
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -293,14 +430,11 @@ fun GroupInfoScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Отмена")
-                }
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Отмена") }
             }
         )
     }
 
-    // Add member dialog
     if (showAddMemberDialog) {
         AddMemberDialog(
             existingMemberIds = members.map { it.member.userId }.toSet(),
@@ -326,7 +460,6 @@ private fun MemberRow(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Avatar with online dot
         Box(contentAlignment = Alignment.BottomEnd) {
             Avatar(
                 emoji = item.profile?.emoji ?: "😊",
@@ -524,7 +657,6 @@ private fun AddMemberDialog(
         }
     )
 
-    // History dialog — shown after selecting a user to add
     if (pendingUserId != null) {
         AlertDialog(
             onDismissRequest = { pendingUserId = null },

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -204,7 +205,7 @@ fun AttachmentsPane(
         // Tab row
         TabRow(
             selectedTabIndex = pagerState.currentPage,
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary,
             indicator = { tabPositions ->
                 TabRowDefaults.SecondaryIndicator(
@@ -571,7 +572,7 @@ private fun VoiceItem(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MediaImageLightbox(
+internal fun MediaImageLightbox(
     urls: List<String>,
     startIndex: Int,
     onDismiss: () -> Unit,
@@ -632,6 +633,165 @@ private fun MediaImageLightbox(
 
 // ── Shared composables ──────────────────────────────────────────────────────
 
+// ── Internal API for LazyColumn embedding ─────────────────────────────────
+
+@Composable
+internal fun MediaTypeTabBar(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    totalPhotos: Int,
+    totalVideos: Int,
+    totalVoices: Int
+) {
+    TabRow(
+        selectedTabIndex = selectedTab,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.primary,
+        indicator = { tabPositions ->
+            TabRowDefaults.SecondaryIndicator(
+                modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    ) {
+        listOf("Фото" to totalPhotos, "Видео" to totalVideos, "Голосовые" to totalVoices)
+            .forEachIndexed { index, (label, count) ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { onTabSelected(index) },
+                    text = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (selectedTab == index) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                            if (count > 0) {
+                                Text(
+                                    count.toString(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (selectedTab == index)
+                                        MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                )
+            }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+internal fun LazyListScope.addPhotoSections(
+    sections: List<MediaSection>,
+    allUrls: List<String>,
+    onPhotoClick: (Int) -> Unit
+) {
+    if (sections.isEmpty()) {
+        item(key = "photo_empty") {
+            MediaEmptyState("Нет фотографий", Modifier.fillMaxWidth().height(200.dp))
+        }
+        return
+    }
+    sections.forEach { section ->
+        stickyHeader(key = "photo_hdr_${section.yearLabel}_${section.monthLabel}") {
+            MonthHeader(section.monthLabel, section.yearLabel)
+        }
+        val rows = section.items.filterIsInstance<MediaItem.Photo>().chunked(3)
+        itemsIndexed(rows, key = { rowIdx, _ ->
+            "photo_row_${section.yearLabel}_${section.monthLabel}_$rowIdx"
+        }) { _, row ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PHOTO_GAP),
+                horizontalArrangement = Arrangement.spacedBy(PHOTO_GAP)
+            ) {
+                row.forEach { item ->
+                    val globalIdx = allUrls.indexOf(item.url)
+                    PhotoThumbnail(item.url, Modifier.weight(1f)) {
+                        if (globalIdx >= 0) onPhotoClick(globalIdx)
+                    }
+                }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+            Spacer(Modifier.height(PHOTO_GAP))
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+internal fun LazyListScope.addVideoSections(
+    sections: List<MediaSection>,
+    onVideoClick: (String) -> Unit
+) {
+    if (sections.isEmpty()) {
+        item(key = "video_empty") {
+            MediaEmptyState("Нет видеозаписей", Modifier.fillMaxWidth().height(200.dp))
+        }
+        return
+    }
+    sections.forEach { section ->
+        stickyHeader(key = "video_hdr_${section.yearLabel}_${section.monthLabel}") {
+            MonthHeader(section.monthLabel, section.yearLabel)
+        }
+        val rows = section.items.filterIsInstance<MediaItem.Video>().chunked(2)
+        itemsIndexed(rows, key = { rowIdx, _ ->
+            "video_row_${section.yearLabel}_${section.monthLabel}_$rowIdx"
+        }) { _, row ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = VIDEO_GAP),
+                horizontalArrangement = Arrangement.spacedBy(VIDEO_GAP)
+            ) {
+                row.forEach { item ->
+                    VideoThumbnail(item.url, item.duration, Modifier.weight(1f)) {
+                        onVideoClick(item.url)
+                    }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(VIDEO_GAP))
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+internal fun LazyListScope.addVoiceSections(
+    sections: List<MediaSection>,
+    playingUrl: String?,
+    isPlaying: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    onPlay: (String) -> Unit,
+    onPause: () -> Unit,
+    onSeek: (Long) -> Unit
+) {
+    if (sections.isEmpty()) {
+        item(key = "voice_empty") {
+            MediaEmptyState("Нет голосовых сообщений", Modifier.fillMaxWidth().height(200.dp))
+        }
+        return
+    }
+    sections.forEach { section ->
+        stickyHeader(key = "voice_hdr_${section.yearLabel}_${section.monthLabel}") {
+            MonthHeader(section.monthLabel, section.yearLabel)
+        }
+        val voices = section.items.filterIsInstance<MediaItem.Voice>()
+        itemsIndexed(voices, key = { _, item -> "voice_${item.messageId}" }) { _, item ->
+            VoiceItem(
+                item = item,
+                isPlaying = playingUrl == item.url && isPlaying,
+                positionMs = if (playingUrl == item.url) positionMs else 0L,
+                durationMs = if (playingUrl == item.url && durationMs > 0) durationMs
+                             else ((item.duration ?: 0) * 1000L).coerceAtLeast(1000L),
+                onPlay = { onPlay(item.url) },
+                onPause = onPause,
+                onSeek = onSeek
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 72.dp))
+        }
+    }
+}
+
 @Composable
 internal fun MonthHeader(monthLabel: String, yearLabel: String) {
     val currentYear = remember { java.time.LocalDate.now().year.toString() }
@@ -651,8 +811,8 @@ internal fun MonthHeader(monthLabel: String, yearLabel: String) {
 }
 
 @Composable
-private fun MediaEmptyState(text: String) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+private fun MediaEmptyState(text: String, modifier: Modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(Icons.Default.BrokenImage, null,
                 modifier = Modifier.size(48.dp),
