@@ -65,7 +65,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -132,7 +131,7 @@ fun ChatListScreen(
         cal.get(java.util.Calendar.MONTH) == java.util.Calendar.APRIL &&
             cal.get(java.util.Calendar.DAY_OF_MONTH) == 11
     }
-    var bannerDismissed by rememberSaveable { mutableStateOf(false) }
+    var bannerDismissed by remember { mutableStateOf(viewModel.victoryBannerDismissed) }
 
     // Refresh unread counts when user returns to this screen (e.g. after reading a chat)
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -215,7 +214,10 @@ fun ChatListScreen(
                     animationSpec = tween(380, easing = FastOutSlowInEasing)
                 )
             ) {
-                VictoryDayBanner(onDismiss = { bannerDismissed = true })
+                VictoryDayBanner(onDismiss = {
+                    bannerDismissed = true
+                    viewModel.dismissVictoryBanner()
+                })
             }
         Box(
             modifier = Modifier

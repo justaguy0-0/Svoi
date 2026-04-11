@@ -50,6 +50,12 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private val _currentProfile = MutableStateFlow<com.example.svoi.data.model.Profile?>(null)
     val currentProfile: StateFlow<com.example.svoi.data.model.Profile?> = _currentProfile
 
+    // Holiday banner — survives navigation (VM is alive while app is running)
+    var victoryBannerDismissed = false
+        private set
+
+    fun dismissVictoryBanner() { victoryBannerDismissed = true }
+
     // Track whether we need to show "Обновление..." on next refresh
     private var initialLoad = true
     private var wasOffline = false
