@@ -3,4 +3,10 @@
     <style name="Theme.Svoi" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/background_light</item>
     </style>
+
+    <!-- Theme for CropImageActivity: matches app light background -->
+    <style name="Theme.Svoi.Cropper" parent="Base.Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">@color/background_light</item>
+        <item name="android:colorBackground">@color/background_light</item>
+    </style>
 </resources>

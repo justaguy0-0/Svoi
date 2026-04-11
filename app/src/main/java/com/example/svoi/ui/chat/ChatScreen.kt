@@ -140,6 +140,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -715,6 +716,8 @@ fun ChatScreen(
         editingMessage?.let { inputValue = TextFieldValue(it.content ?: "") }
     }
 
+    val cropAccentColor = MaterialTheme.colorScheme.primary.toArgb()
+    val cropWhite = Color.White.toArgb()
     var cropEditIndex by remember { mutableStateOf(-1) }
     val cropEditLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
         if (result.isSuccessful) {
@@ -1290,8 +1293,12 @@ fun ChatScreen(
                                     CropImageContractOptions(
                                         uri = uri,
                                         cropImageOptions = CropImageOptions(
-                                            toolbarColor = android.graphics.Color.parseColor("#1E88E5"),
-                                            toolbarTitleColor = android.graphics.Color.WHITE,
+                                            toolbarColor = cropAccentColor,
+                                            statusBarColor = cropAccentColor,
+                                            toolbarTitleColor = cropWhite,
+                                            toolbarBackButtonColor = cropWhite,
+                                            activityMenuIconColor = cropWhite,
+                                            borderCornerColor = cropAccentColor,
                                             outputCompressQuality = 95
                                         )
                                     )
