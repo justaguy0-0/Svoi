@@ -3,6 +3,8 @@ package com.example.svoi.navigation
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -184,7 +186,19 @@ fun NavGraph(
                 arguments = listOf(
                     navArgument("chatId") { type = NavType.StringType },
                     navArgument("messageId") { type = NavType.StringType; nullable = true; defaultValue = null }
-                )
+                ),
+                enterTransition = {
+                    slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(320))
+                },
+                exitTransition = {
+                    slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(280))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(320))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(280))
+                }
             ) { backStack ->
                 val chatId = backStack.arguments?.getString("chatId") ?: ""
                 val messageId = backStack.arguments?.getString("messageId")?.takeIf { it.isNotEmpty() }
@@ -261,7 +275,19 @@ fun NavGraph(
 
             composable(
                 route = Routes.CHAT_NEW,
-                arguments = listOf(navArgument("userId") { type = NavType.StringType })
+                arguments = listOf(navArgument("userId") { type = NavType.StringType }),
+                enterTransition = {
+                    slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(320))
+                },
+                exitTransition = {
+                    slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(280))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(320))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(280))
+                }
             ) { backStack ->
                 val userId = backStack.arguments?.getString("userId") ?: ""
                 ChatScreen(
