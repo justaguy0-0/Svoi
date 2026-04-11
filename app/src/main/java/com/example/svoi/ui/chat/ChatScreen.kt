@@ -154,6 +154,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import com.example.svoi.SvoiApp
+import com.example.svoi.data.local.ChatWallpaper
 import com.example.svoi.ui.settings.ChatWallpaperBackground
 import com.example.svoi.ui.voice.GlobalVoiceMiniPlayer
 import com.example.svoi.ui.voice.GlobalVoicePlayer
@@ -372,6 +373,11 @@ fun ChatScreen(
     var isRevealingToMessage by remember { mutableStateOf(initialMessageId != null) }
     // True when the search loop is loading history for a pinned/searched message.
     var isScrollSearchLoading by remember { mutableStateOf(false) }
+    val loadingOverlayAlpha by animateFloatAsState(
+        targetValue = if (isLoading || !chatReady || isScrollSearchLoading) 1f else 0f,
+        animationSpec = tween(durationMillis = 300),
+        label = "loadingOverlayFade"
+    )
 
     // When opened from global search: scroll to the matched message once the chat is ready.
     // isRevealingToMessage keeps the overlay visible until we're positioned at the target.
@@ -1280,11 +1286,15 @@ fun ChatScreen(
                 MiniPlayerOverlay(state = globalVoiceState, player = app.globalVoicePlayer)
 
                 // Loading overlays — rendered last so they appear on top of the LazyColumn
-                if (isLoading || !chatReady || isScrollSearchLoading) {
+                if (loadingOverlayAlpha > 0f) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surface),
+                            .graphicsLayer { alpha = loadingOverlayAlpha }
+                            .then(
+                                if (wallpaper !is ChatWallpaper.None) Modifier
+                                else Modifier.background(MaterialTheme.colorScheme.surface)
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator()
