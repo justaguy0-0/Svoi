@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
@@ -100,6 +101,7 @@ fun SettingsScreen(
     onAccentChanged: (SvoiAccent) -> Unit = {},
     onNavigateToChats: () -> Unit,
     onNavigateToProfile: () -> Unit,
+    onWallpaperClick: () -> Unit = {},
     profileViewModel: ProfileViewModel = viewModel()
 ) {
     val currentProfile by profileViewModel.profile.collectAsState()
@@ -201,6 +203,24 @@ fun SettingsScreen(
                     AccentColorPicker(
                         currentAccent = currentAccent,
                         onAccentChanged = onAccentChanged
+                    )
+                }
+            }
+
+            // ── Фон чата ─────────────────────────────────────────────────────
+            Surface(
+                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
+                shape = SvoiShapes.Card,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
+            ) {
+                Column {
+                    SectionHeader("Внешний вид чата")
+                    NavRow(
+                        icon = Icons.Default.Wallpaper,
+                        title = "Фон чата",
+                        subtitle = "Установить фоновое изображение",
+                        onClick = onWallpaperClick
                     )
                 }
             }
@@ -733,6 +753,42 @@ private fun AccentColorPicker(
                 }
             }
         }
+    }
+}
+
+// ── Строка-ссылка (стрелка вправо) ───────────────────────────────────────────
+
+@Composable
+private fun NavRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(end = 16.dp)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 

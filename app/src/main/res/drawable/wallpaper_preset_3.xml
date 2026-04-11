@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder: forest-green gradient. Replace with wallpaper_preset_3.png if desired. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:startColor="#F1F8E9"
+        android:centerColor="#A5D6A7"
+        android:endColor="#388E3C"
+        android:angle="270" />
+</shape>

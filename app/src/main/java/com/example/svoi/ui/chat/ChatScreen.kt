@@ -154,6 +154,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import com.example.svoi.SvoiApp
+import com.example.svoi.ui.settings.ChatWallpaperBackground
 import com.example.svoi.ui.voice.GlobalVoiceMiniPlayer
 import com.example.svoi.ui.voice.GlobalVoicePlayer
 import com.example.svoi.ui.voice.GlobalVoiceState
@@ -324,6 +325,7 @@ fun ChatScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val wallpaper by (context.applicationContext as SvoiApp).wallpaperManager.wallpaper.collectAsState()
     val haptic = LocalHapticFeedback.current
     val app = context.applicationContext as SvoiApp
     val globalVoiceState by app.globalVoicePlayer.state.collectAsState()
@@ -998,6 +1000,8 @@ fun ChatScreen(
                 .padding(top = padding.calculateTopPadding())
                 .imePadding()
         ) {
+        // Wallpaper background (rendered first, behind everything)
+        ChatWallpaperBackground(wallpaper)
         Column(modifier = Modifier.fillMaxSize()) {
 
             // Messages

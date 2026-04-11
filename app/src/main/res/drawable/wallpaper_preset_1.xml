@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder: sky-blue gradient. Replace with wallpaper_preset_1.png if desired. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:startColor="#E3F2FD"
+        android:centerColor="#90CAF9"
+        android:endColor="#42A5F5"
+        android:angle="270" />
+</shape>

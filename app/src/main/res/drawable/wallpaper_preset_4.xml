@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder: deep-night gradient. Replace with wallpaper_preset_4.png if desired. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:startColor="#1A237E"
+        android:centerColor="#283593"
+        android:endColor="#4527A0"
+        android:angle="225" />
+</shape>

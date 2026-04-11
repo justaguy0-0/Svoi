@@ -11,6 +11,7 @@ import com.example.svoi.data.local.EncryptedPrefsManager
 import com.example.svoi.data.local.DraftManager
 import com.example.svoi.data.local.OutboxManager
 import com.example.svoi.data.local.ThemeManager
+import com.example.svoi.data.local.WallpaperManager
 import com.example.svoi.data.model.AppVersion
 import com.example.svoi.data.repository.AppUpdateRepository
 import com.example.svoi.data.repository.AuthRepository
@@ -104,6 +105,7 @@ class SvoiApp : Application() {
         SupabaseReachabilityChecker(BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY)
     }
     val themeManager by lazy { ThemeManager(this) }
+    val wallpaperManager by lazy { WallpaperManager(this) }
     val outboxManager by lazy { OutboxManager(this) }
     val draftManager by lazy { DraftManager(this) }
 
