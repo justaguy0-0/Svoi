@@ -1,5 +1,7 @@
 package com.example.svoi.ui.chatlist
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -7,6 +9,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -61,6 +65,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -127,7 +132,7 @@ fun ChatListScreen(
         cal.get(java.util.Calendar.MONTH) == java.util.Calendar.APRIL &&
             cal.get(java.util.Calendar.DAY_OF_MONTH) == 11
     }
-    var bannerDismissed by remember { mutableStateOf(false) }
+    var bannerDismissed by rememberSaveable { mutableStateOf(false) }
 
     // Refresh unread counts when user returns to this screen (e.g. after reading a chat)
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -200,7 +205,16 @@ fun ChatListScreen(
                 .padding(padding)
         ) {
             OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = isUpdating)
-            if (isVictoryDay && !bannerDismissed) {
+            AnimatedVisibility(
+                visible = isVictoryDay && !bannerDismissed,
+                exit = slideOutVertically(
+                    targetOffsetY = { -it },
+                    animationSpec = tween(380, easing = FastOutSlowInEasing)
+                ) + shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(380, easing = FastOutSlowInEasing)
+                )
+            ) {
                 VictoryDayBanner(onDismiss = { bannerDismissed = true })
             }
         Box(
@@ -395,8 +409,6 @@ private fun VictoryDayBanner(onDismiss: () -> Unit) {
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("🎖️", fontSize = 28.sp)
-            Spacer(Modifier.width(10.dp))
             Text(
                 "С Днём Победы!",
                 color = Color.White,
