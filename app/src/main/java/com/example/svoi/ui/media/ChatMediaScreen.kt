@@ -1,24 +1,28 @@
 package com.example.svoi.ui.media
 
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
+import android.app.DownloadManager
+import android.content.Context
+import android.net.Uri
+import android.os.Environment
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
@@ -29,7 +33,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.KeyboardVoice
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +44,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
@@ -46,6 +54,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,15 +67,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
-import com.example.svoi.util.toMessageTime
+import coil.compose.SubcomposeAsyncImage
+import coil.decode.VideoFrameDecoder
+import coil.request.ImageRequest
+import com.example.svoi.ui.chat.FullscreenVideoPlayer
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -95,9 +110,75 @@ fun ChatMediaScreen(
 
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(pageCount = { 3 })
+    val context = LocalContext.current
 
-    // Lightbox state for full-screen photo view
-    var lightboxUrl by remember { mutableStateOf<String?>(null) }
+    // ── Photo lightbox state (index into allPhotoUrls) ──────────────────────
+    val allPhotoUrls = remember(photos) {
+        photos.flatMap { section -> section.items.filterIsInstance<MediaItem.Photo>().map { it.url } }
+    }
+    var lightboxIndex by remember { mutableStateOf<Int?>(null) }
+
+    // ── Video fullscreen state ───────────────────────────────────────────────
+    var fullscreenVideoUrl by remember { mutableStateOf<String?>(null) }
+
+    // ── Voice player ─────────────────────────────────────────────────────────
+    val voicePlayer = remember { ExoPlayer.Builder(context).build() }
+    DisposableEffect(Unit) { onDispose { voicePlayer.release() } }
+    var playingVoiceUrl by remember { mutableStateOf<String?>(null) }
+    var voiceIsPlaying by remember { mutableStateOf(false) }
+    var voicePositionMs by remember { mutableStateOf(0L) }
+    var voiceDurationMs by remember { mutableStateOf(0L) }
+
+    // Progress polling while playing
+    LaunchedEffect(playingVoiceUrl, voiceIsPlaying) {
+        if (voiceIsPlaying) {
+            while (true) {
+                voicePositionMs = voicePlayer.currentPosition
+                val dur = voicePlayer.duration
+                if (dur > 0) voiceDurationMs = dur
+                delay(100)
+            }
+        }
+    }
+
+    // Detect playback ended → reset
+    DisposableEffect(voicePlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    voiceIsPlaying = false
+                    voicePositionMs = 0
+                    voicePlayer.seekTo(0)
+                }
+            }
+            override fun onIsPlayingChanged(playing: Boolean) {
+                voiceIsPlaying = playing
+            }
+        }
+        voicePlayer.addListener(listener)
+        onDispose { voicePlayer.removeListener(listener) }
+    }
+
+    val onVoicePlay: (String) -> Unit = { url ->
+        if (playingVoiceUrl != url) {
+            voicePlayer.stop()
+            voicePlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(url))
+            voicePlayer.prepare()
+            voiceDurationMs = 0
+            voicePositionMs = 0
+        }
+        playingVoiceUrl = url
+        voicePlayer.play()
+    }
+
+    val onVoicePause: () -> Unit = {
+        voicePlayer.pause()
+    }
+
+    val onVoiceSeek: (Long) -> Unit = { ms ->
+        voicePlayer.seekTo(ms)
+        voicePositionMs = ms
+    }
 
     Scaffold(
         topBar = {
@@ -170,48 +251,55 @@ fun ChatMediaScreen(
                 when (page) {
                     0 -> PhotosTab(
                         sections = photos,
-                        onPhotoClick = { url -> lightboxUrl = url }
+                        allUrls = allPhotoUrls,
+                        onPhotoClick = { idx -> lightboxIndex = idx }
                     )
-                    1 -> VideosTab(sections = videos)
-                    2 -> VoicesTab(sections = voices)
+                    1 -> VideosTab(
+                        sections = videos,
+                        onVideoClick = { url -> fullscreenVideoUrl = url }
+                    )
+                    2 -> VoicesTab(
+                        sections = voices,
+                        playingUrl = playingVoiceUrl,
+                        isPlaying = voiceIsPlaying,
+                        positionMs = voicePositionMs,
+                        durationMs = voiceDurationMs,
+                        onPlay = onVoicePlay,
+                        onPause = onVoicePause,
+                        onSeek = onVoiceSeek
+                    )
                 }
             }
         }
     }
 
-    // Full-screen photo lightbox
-    lightboxUrl?.let { url ->
-        Dialog(
-            onDismissRequest = { lightboxUrl = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-                    .clickable { lightboxUrl = null },
-                contentAlignment = Alignment.Center
-            ) {
-                AsyncImage(
-                    model = url,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
-                )
-                IconButton(
-                    onClick = { lightboxUrl = null },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = "Закрыть",
-                        tint = Color.White,
-                        modifier = Modifier.size(28.dp)
-                    )
+    // ── Fullscreen video ──────────────────────────────────────────────────────
+    fullscreenVideoUrl?.let { url ->
+        FullscreenVideoPlayer(
+            url = url,
+            onDismiss = { fullscreenVideoUrl = null }
+        )
+    }
+
+    // ── Photo lightbox (carousel over all photos) ─────────────────────────────
+    lightboxIndex?.let { startIdx ->
+        if (allPhotoUrls.isNotEmpty()) {
+            MediaImageLightbox(
+                urls = allPhotoUrls,
+                startIndex = startIdx.coerceIn(0, allPhotoUrls.lastIndex),
+                onDismiss = { lightboxIndex = null },
+                onDownload = { url ->
+                    val filename = "svoi_${System.currentTimeMillis()}.jpg"
+                    val request = DownloadManager.Request(Uri.parse(url))
+                        .setTitle(filename)
+                        .setDescription("Сохранение изображения")
+                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_PICTURES, "Svoi/$filename")
+                        .setMimeType("image/jpeg")
+                    val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    dm.enqueue(request)
                 }
-            }
+            )
         }
     }
 }
@@ -222,7 +310,8 @@ fun ChatMediaScreen(
 @Composable
 private fun PhotosTab(
     sections: List<MediaSection>,
-    onPhotoClick: (String) -> Unit
+    allUrls: List<String>,
+    onPhotoClick: (Int) -> Unit
 ) {
     if (sections.isEmpty()) {
         MediaEmptyState("Нет фотографий")
@@ -233,8 +322,8 @@ private fun PhotosTab(
             stickyHeader(key = "photo_hdr_${section.yearLabel}_${section.monthLabel}") {
                 MonthHeader(section.monthLabel, section.yearLabel)
             }
-            val photos = section.items.filterIsInstance<MediaItem.Photo>()
-            val rows = photos.chunked(3)
+            val sectionPhotos = section.items.filterIsInstance<MediaItem.Photo>()
+            val rows = sectionPhotos.chunked(3)
             itemsIndexed(
                 rows,
                 key = { rowIdx, _ ->
@@ -248,13 +337,13 @@ private fun PhotosTab(
                     horizontalArrangement = Arrangement.spacedBy(PHOTO_GAP)
                 ) {
                     row.forEach { item ->
+                        val globalIdx = allUrls.indexOf(item.url)
                         PhotoThumbnail(
                             url = item.url,
                             modifier = Modifier.weight(1f),
-                            onClick = { onPhotoClick(item.url) }
+                            onClick = { if (globalIdx >= 0) onPhotoClick(globalIdx) }
                         )
                     }
-                    // Fill empty cells in last row
                     repeat(3 - row.size) {
                         Spacer(modifier = Modifier.weight(1f))
                     }
@@ -291,7 +380,10 @@ private fun PhotoThumbnail(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun VideosTab(sections: List<MediaSection>) {
+private fun VideosTab(
+    sections: List<MediaSection>,
+    onVideoClick: (String) -> Unit
+) {
     if (sections.isEmpty()) {
         MediaEmptyState("Нет видеозаписей")
         return
@@ -301,8 +393,8 @@ private fun VideosTab(sections: List<MediaSection>) {
             stickyHeader(key = "video_hdr_${section.yearLabel}_${section.monthLabel}") {
                 MonthHeader(section.monthLabel, section.yearLabel)
             }
-            val videos = section.items.filterIsInstance<MediaItem.Video>()
-            val rows = videos.chunked(2)
+            val sectionVideos = section.items.filterIsInstance<MediaItem.Video>()
+            val rows = sectionVideos.chunked(2)
             itemsIndexed(
                 rows,
                 key = { rowIdx, _ ->
@@ -319,7 +411,8 @@ private fun VideosTab(sections: List<MediaSection>) {
                         VideoThumbnail(
                             url = item.url,
                             duration = item.duration,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            onClick = { onVideoClick(item.url) }
                         )
                     }
                     if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
@@ -335,16 +428,23 @@ private fun VideosTab(sections: List<MediaSection>) {
 private fun VideoThumbnail(
     url: String,
     duration: Int?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
 ) {
+    val context = LocalContext.current
     Box(
         modifier = modifier
             .aspectRatio(16f / 9f)
             .clip(RoundedCornerShape(6.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
     ) {
         AsyncImage(
-            model = url,
+            model = ImageRequest.Builder(context)
+                .data(url)
+                .decoderFactory(VideoFrameDecoder.Factory())
+                .crossfade(true)
+                .build(),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
@@ -370,7 +470,7 @@ private fun VideoThumbnail(
                 modifier = Modifier.size(24.dp)
             )
         }
-        // Duration
+        // Duration badge
         if (duration != null) {
             val mins = duration / 60
             val secs = duration % 60
@@ -392,7 +492,16 @@ private fun VideoThumbnail(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun VoicesTab(sections: List<MediaSection>) {
+private fun VoicesTab(
+    sections: List<MediaSection>,
+    playingUrl: String?,
+    isPlaying: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    onPlay: (String) -> Unit,
+    onPause: () -> Unit,
+    onSeek: (Long) -> Unit
+) {
     if (sections.isEmpty()) {
         MediaEmptyState("Нет голосовых сообщений")
         return
@@ -402,13 +511,24 @@ private fun VoicesTab(sections: List<MediaSection>) {
             stickyHeader(key = "voice_hdr_${section.yearLabel}_${section.monthLabel}") {
                 MonthHeader(section.monthLabel, section.yearLabel)
             }
-            val voices = section.items.filterIsInstance<MediaItem.Voice>()
+            val sectionVoices = section.items.filterIsInstance<MediaItem.Voice>()
             itemsIndexed(
-                voices,
+                sectionVoices,
                 key = { _, item -> "voice_${item.messageId}" }
             ) { _, item ->
-                VoiceItem(item)
-                HorizontalDivider(modifier = Modifier.padding(start = 64.dp))
+                val isThisPlaying = playingUrl == item.url && isPlaying
+                val isThisActive = playingUrl == item.url
+                VoiceItem(
+                    item = item,
+                    isPlaying = isThisPlaying,
+                    positionMs = if (isThisActive) positionMs else 0L,
+                    durationMs = if (isThisActive && durationMs > 0) durationMs
+                                 else ((item.duration ?: 0) * 1000L).coerceAtLeast(1000L),
+                    onPlay = { onPlay(item.url) },
+                    onPause = onPause,
+                    onSeek = onSeek
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 72.dp))
             }
         }
         item { Spacer(Modifier.height(16.dp)) }
@@ -416,59 +536,200 @@ private fun VoicesTab(sections: List<MediaSection>) {
 }
 
 @Composable
-private fun VoiceItem(item: MediaItem.Voice) {
-    val durationText = item.duration?.let { d ->
-        val m = d / 60; val s = d % 60; "$m:${s.toString().padStart(2, '0')}"
-    } ?: "—"
+private fun VoiceItem(
+    item: MediaItem.Voice,
+    isPlaying: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    onPlay: () -> Unit,
+    onPause: () -> Unit,
+    onSeek: (Long) -> Unit
+) {
+    val progress = (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+
+    val displaySec = if (isPlaying || positionMs > 0) (positionMs / 1000).toInt()
+                     else item.duration ?: 0
+    val timeStr = run {
+        val m = displaySec / 60; val s = displaySec % 60
+        "$m:${s.toString().padStart(2, '0')}"
+    }
 
     val dateText = runCatching {
         val instant = Instant.parse(item.createdAt)
         val zone = ZoneId.systemDefault()
-        val date = DateTimeFormatter.ofPattern("d MMMM", Locale("ru")).withZone(zone).format(instant)
-        val time = DateTimeFormatter.ofPattern("HH:mm").withZone(zone).format(instant)
-        "$date, $time"
+        DateTimeFormatter.ofPattern("d MMMM, HH:mm", Locale("ru")).withZone(zone).format(instant)
     }.getOrDefault("")
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Play/pause button
         Box(
             modifier = Modifier
                 .size(44.dp)
                 .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                Icons.Default.KeyboardVoice,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp)
-            )
+            IconButton(
+                onClick = { if (isPlaying) onPause() else onPlay() },
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "Пауза" else "Играть",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                "Голосовое сообщение",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Голосовое сообщение",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    timeStr,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+            Slider(
+                value = progress,
+                onValueChange = { onSeek((it * durationMs).toLong()) },
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .offset(y = (-2).dp)
             )
             Text(
                 dateText,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.offset(y = (-6).dp)
             )
         }
-        Text(
-            durationText,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 8.dp)
+    }
+}
+
+// ── Photo Lightbox (carousel) ──────────────────────────────────────────────
+
+@Composable
+private fun MediaImageLightbox(
+    urls: List<String>,
+    startIndex: Int,
+    onDismiss: () -> Unit,
+    onDownload: (String) -> Unit
+) {
+    val pagerState = rememberPagerState(
+        initialPage = startIndex,
+        pageCount = { urls.size }
+    )
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
         )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.95f))
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.systemBars)
+            ) { page ->
+                SubcomposeAsyncImage(
+                    model = urls[page],
+                    contentDescription = "Изображение",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                    loading = {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(48.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    },
+                    error = {
+                        Icon(
+                            Icons.Default.BrokenImage,
+                            contentDescription = null,
+                            tint = Color.White.copy(0.5f),
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(48.dp)
+                        )
+                    }
+                )
+            }
+
+            // Counter (for multiple photos)
+            if (urls.size > 1) {
+                Text(
+                    text = "${pagerState.currentPage + 1} / ${urls.size}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 20.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+            }
+
+            // Download + Close
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val currentUrl = urls.getOrElse(pagerState.currentPage) { urls.first() }
+                IconButton(onClick = { onDownload(currentUrl) }) {
+                    Icon(
+                        Icons.Default.Download,
+                        contentDescription = "Скачать",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Закрыть",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            }
+        }
     }
 }
 
