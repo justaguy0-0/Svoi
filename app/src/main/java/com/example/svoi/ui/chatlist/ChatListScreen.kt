@@ -124,8 +124,8 @@ fun ChatListScreen(
     var drafts by remember { mutableStateOf(app.draftManager.getAllDrafts()) }
     val isVictoryDay = remember {
         val cal = java.util.Calendar.getInstance()
-        cal.get(java.util.Calendar.MONTH) == java.util.Calendar.MAY &&
-            cal.get(java.util.Calendar.DAY_OF_MONTH) == 9
+        cal.get(java.util.Calendar.MONTH) == java.util.Calendar.APRIL &&
+            cal.get(java.util.Calendar.DAY_OF_MONTH) == 11
     }
     var bannerDismissed by remember { mutableStateOf(false) }
 
@@ -378,25 +378,17 @@ private fun VictoryDayBanner(onDismiss: () -> Unit) {
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .clip(RoundedCornerShape(12.dp))
     ) {
-        // Фоновое изображение — положи victory_day_banner.jpg в res/drawable и раскомментируй:
-        // Image(
-        //     painter = painterResource(R.drawable.victory_day_banner),
-        //     contentDescription = null,
-        //     contentScale = ContentScale.Crop,
-        //     modifier = Modifier.matchParentSize()
-        // )
-        // Временный градиентный фон (убери когда добавишь фото):
+        Image(
+            painter = painterResource(R.drawable.victory_day_banner),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.matchParentSize()
+        )
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .background(
-                    androidx.compose.ui.graphics.Brush.horizontalGradient(
-                        colors = listOf(Color(0xFF7F0000), Color(0xFFB71C1C), Color(0xFF7F0000))
-                    )
-                )
+                .background(Color.Black.copy(alpha = 0.45f))
         )
-        // Тёмный overlay для читаемости (нужен только с фото — убери этот Box вместе с раскомментированием Image):
-        // Box(modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.45f)))
         Row(
             modifier = Modifier
                 .matchParentSize()
