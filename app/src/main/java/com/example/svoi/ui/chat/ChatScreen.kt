@@ -729,12 +729,9 @@ fun ChatScreen(
                 CropImageContractOptions(
                     uri = single,
                     cropImageOptions = CropImageOptions(
-                        toolbarTitle = "Редактировать",
                         toolbarColor = android.graphics.Color.parseColor("#1E88E5"),
                         toolbarTitleColor = android.graphics.Color.WHITE,
-                        activityMenuCropTitle = "Готово",
-                        outputCompressQuality = 95,
-                        skipEditing = false
+                        outputCompressQuality = 95
                     )
                 )
             )
