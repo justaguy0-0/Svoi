@@ -2285,38 +2285,54 @@ private fun PhotoGrid(
 
     when (count) {
         1 -> {
-            // Single photo with loading state
+            // Single photo — adaptive aspect ratio
             val url = urls[0]
             val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
                 Uri.parse(url) else url
             val progress = uploadProgresses.getOrNull(0)
+            var imageRatio by remember(url) { mutableStateOf<Float?>(null) }
+            var loadError by remember(url) { mutableStateOf(false) }
+            val clampedRatio = imageRatio?.coerceIn(0.5f, 2.0f)
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .widthIn(min = 120.dp, max = 260.dp)
-                    .height(180.dp)
+                    .then(
+                        if (clampedRatio != null)
+                            Modifier.aspectRatio(clampedRatio)
+                        else
+                            Modifier.height(180.dp)
+                    )
                     .combinedClickable(onClick = { onPhotoClick(url, urls) }, onLongClick = onLongClick)
             ) {
-                SubcomposeAsyncImage(
+                AsyncImage(
                     model = model,
                     contentDescription = "Фото",
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    loading = {
-                        Box(Modifier.fillMaxSize(), Alignment.Center) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(28.dp),
-                                strokeWidth = 2.dp,
-                                color = if (isOwn) Color.White.copy(0.7f) else MaterialTheme.colorScheme.primary
-                            )
+                    contentScale = ContentScale.Fit,
+                    onSuccess = { state ->
+                        loadError = false
+                        val d = state.result.drawable
+                        if (d.intrinsicWidth > 0 && d.intrinsicHeight > 0) {
+                            imageRatio = d.intrinsicWidth.toFloat() / d.intrinsicHeight.toFloat()
                         }
                     },
-                    error = {
-                        Box(Modifier.fillMaxSize(), Alignment.Center) {
-                            Icon(Icons.Default.BrokenImage, null, tint = textColor.copy(0.5f), modifier = Modifier.size(32.dp))
-                        }
-                    }
+                    onError = { loadError = true }
                 )
+                if (imageRatio == null && !loadError) {
+                    Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 2.dp,
+                            color = if (isOwn) Color.White.copy(0.7f) else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                if (loadError) {
+                    Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        Icon(Icons.Default.BrokenImage, null, tint = textColor.copy(0.5f), modifier = Modifier.size(32.dp))
+                    }
+                }
                 if (isPending) {
                     Box(
                         modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)),
