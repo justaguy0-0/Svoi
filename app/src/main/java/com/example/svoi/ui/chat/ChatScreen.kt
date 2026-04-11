@@ -716,8 +716,10 @@ fun ChatScreen(
         editingMessage?.let { inputValue = TextFieldValue(it.content ?: "") }
     }
 
+    val cropBarColor = MaterialTheme.colorScheme.surfaceContainer.toArgb()
+    val cropOnBarColor = MaterialTheme.colorScheme.onSurface.toArgb()
+    val cropBgColor = MaterialTheme.colorScheme.surfaceContainerLow.toArgb()
     val cropAccentColor = MaterialTheme.colorScheme.primary.toArgb()
-    val cropWhite = Color.White.toArgb()
     var cropEditIndex by remember { mutableStateOf(-1) }
     val cropEditLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
         if (result.isSuccessful) {
@@ -1293,10 +1295,11 @@ fun ChatScreen(
                                     CropImageContractOptions(
                                         uri = uri,
                                         cropImageOptions = CropImageOptions(
-                                            toolbarColor = cropAccentColor,
-                                            toolbarTitleColor = cropWhite,
-                                            toolbarBackButtonColor = cropWhite,
-                                            activityMenuIconColor = cropWhite,
+                                            toolbarColor = cropBarColor,
+                                            toolbarTitleColor = cropOnBarColor,
+                                            toolbarBackButtonColor = cropOnBarColor,
+                                            activityMenuIconColor = cropOnBarColor,
+                                            activityBackgroundColor = cropBgColor,
                                             borderCornerColor = cropAccentColor,
                                             outputCompressQuality = 95
                                         )
