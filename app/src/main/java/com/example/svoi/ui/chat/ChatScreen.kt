@@ -4,6 +4,9 @@ import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.canhub.cropper.CropImageContract
+import com.canhub.cropper.CropImageContractOptions
+import com.canhub.cropper.CropImageOptions
 import android.os.Environment
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -711,8 +714,33 @@ fun ChatScreen(
         editingMessage?.let { inputValue = TextFieldValue(it.content ?: "") }
     }
 
+    val cropLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
+        if (result.isSuccessful) {
+            result.uriContent?.let { uri -> viewModel.addStagedMedia(listOf(uri), context) }
+        }
+    }
+
     val mediaPicker = rememberLauncherForActivityResult(GetMultipleMedia()) { uris ->
-        if (uris.isNotEmpty()) viewModel.addStagedMedia(uris, context)
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        val single = uris.singleOrNull()
+        val mimeType = single?.let { context.contentResolver.getType(it) }
+        if (single != null && mimeType?.startsWith("image/") == true) {
+            cropLauncher.launch(
+                CropImageContractOptions(
+                    uri = single,
+                    cropImageOptions = CropImageOptions(
+                        toolbarTitle = "Редактировать",
+                        toolbarColor = android.graphics.Color.parseColor("#1E88E5"),
+                        toolbarTitleColor = android.graphics.Color.WHITE,
+                        activityMenuCropTitle = "Готово",
+                        outputCompressQuality = 95,
+                        skipEditing = false
+                    )
+                )
+            )
+        } else {
+            viewModel.addStagedMedia(uris, context)
+        }
     }
 
 

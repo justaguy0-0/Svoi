@@ -104,6 +104,9 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
 
+    // Image editor (crop + rotate + flip)
+    implementation("com.vanniktech:android-image-cropper:4.6.0")
+
     // Security
     implementation(libs.security.crypto)
 
