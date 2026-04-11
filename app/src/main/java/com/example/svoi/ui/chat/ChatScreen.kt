@@ -425,6 +425,8 @@ fun ChatScreen(
     var fullscreenVideoUrl by remember { mutableStateOf<String?>(null) }
     // Cached aspect ratios per URL (populated on first play when real size is known)
     val videoAspectRatios = remember { mutableStateMapOf<String, Float>() }
+    // Cached photo aspect ratios — populated when single-image messages first load
+    val imageRatioCache = remember { mutableStateMapOf<String, Float>() }
 
     val screenHeightPx = with(LocalDensity.current) {
         LocalConfiguration.current.screenHeightDp.dp.roundToPx()
@@ -519,6 +521,16 @@ fun ChatScreen(
         if (ogCacheSize == 0 || !initialScrollDone) return@LaunchedEffect
         if (!isNearBottom) return@LaunchedEffect
         delay(150) // ждём пока LazyColumn пересчитает layout после появления карточки
+        val last = currentDisplayEntries.size - 1
+        if (last >= 0) listState.animateScrollToItem(last)
+    }
+
+    // Когда одиночное фото загружается и меняет высоту сообщения — скроллим вниз.
+    val imageRatioCacheSize = imageRatioCache.size
+    LaunchedEffect(imageRatioCacheSize) {
+        if (imageRatioCacheSize == 0 || !initialScrollDone) return@LaunchedEffect
+        if (!isNearBottom) return@LaunchedEffect
+        delay(150)
         val last = currentDisplayEntries.size - 1
         if (last >= 0) listState.animateScrollToItem(last)
     }
@@ -1137,6 +1149,9 @@ fun ChatScreen(
                                                         }
                                                     },
                                                     onVideoMuteToggle = { isVideoMuted = !isVideoMuted },
+                                                    onImageRatioLoaded = { url, ratio ->
+                                                        imageRatioCache[url] = ratio
+                                                    },
                                                     onVideoSizeDetected = { url, ratio ->
                                                         val prevRatio = videoAspectRatios[url] ?: (16f / 9f)
                                                         videoAspectRatios[url] = ratio
@@ -2241,7 +2256,8 @@ private fun PhotoGrid(
     textColor: Color,
     onPhotoClick: (url: String, albumUrls: List<String>) -> Unit,
     onTap: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onImageRatioLoaded: (url: String, ratio: Float) -> Unit = { _, _ -> }
 ) {
     val count = urls.size
     val maxVisible = 4
@@ -2343,7 +2359,9 @@ private fun PhotoGrid(
                         loadError = false
                         val d = state.result.drawable
                         if (d.intrinsicWidth > 0 && d.intrinsicHeight > 0) {
-                            imageRatio = d.intrinsicWidth.toFloat() / d.intrinsicHeight.toFloat()
+                            val ratio = d.intrinsicWidth.toFloat() / d.intrinsicHeight.toFloat()
+                            imageRatio = ratio
+                            onImageRatioLoaded(url, ratio)
                         }
                     },
                     onError = { loadError = true }
@@ -2596,6 +2614,7 @@ private fun MessageItem(
     onVideoTap: (String) -> Unit = {},
     onVideoMuteToggle: () -> Unit = {},
     onVideoSizeDetected: (url: String, ratio: Float) -> Unit = { _, _ -> },
+    onImageRatioLoaded: (url: String, ratio: Float) -> Unit = { _, _ -> },
     voicePlayState: VoicePlayState? = null,
     onVoicePlay: (msgId: String, url: String, durationSec: Int) -> Unit = { _, _, _ -> },
     onVoicePause: () -> Unit = {},
@@ -2935,7 +2954,8 @@ private fun MessageItem(
                                             if (!isSelectionMode) onPhotoClick(url, albumUrls) else onTap()
                                         },
                                         onTap = onTap,
-                                        onLongClick = onLongClick
+                                        onLongClick = onLongClick,
+                                        onImageRatioLoaded = onImageRatioLoaded
                                     )
                                     // Caption text (if present)
                                     if (!msg.content.isNullOrBlank()) {
