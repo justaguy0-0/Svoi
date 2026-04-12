@@ -1981,15 +1981,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val url = messageRepo.uploadFile(chatId, "voice_${System.currentTimeMillis()}.m4a", bytes)
                 if (url != null) {
                     messageRepo.sendVoiceMessage(chatId, url, durationSec, waveformData, replyId, silent)
+                    // Mark as sent but keep in list — realtime will replace in-place (same stableKey),
+                    // preventing a remove+insert that would trigger the entrance animation twice.
+                    _messages.value = _messages.value.map {
+                        if (it.message.id == pendingId) it.copy(isPending = false) else it
+                    }
                 } else {
+                    _messages.value = _messages.value.filter { it.message.id != pendingId }
                     _error.value = "Ошибка загрузки голосового"
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 Log.e("ChatVM", "sendVoiceRecording exception: ${e.message}", e)
-                _error.value = "Ошибка: ${e.message}"
-            } finally {
                 _messages.value = _messages.value.filter { it.message.id != pendingId }
+                _error.value = "Ошибка: ${e.message}"
             }
         }
     }

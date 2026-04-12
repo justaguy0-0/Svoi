@@ -1874,7 +1874,7 @@ fun ChatScreen(
                                         layoutDirection: LayoutDirection,
                                         popupContentSize: IntSize
                                     ): IntOffset {
-                                        val gapPx = with(density) { 88.dp.roundToPx() }
+                                        val gapPx = with(density) { 56.dp.roundToPx() }
                                         val endPadPx = with(density) { 12.dp.roundToPx() }
                                         return IntOffset(
                                             x = (anchorBounds.right - popupContentSize.width - endPadPx)
