@@ -21,7 +21,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.svoi.ui.components.SvoiLoader
+import com.example.svoi.ui.components.SvoiSpinner
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -86,7 +87,7 @@ fun CreateGroupScreen(
                         enabled = selected.isNotEmpty() && groupName.isNotBlank() && !isLoading
                     ) {
                         if (isLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            SvoiSpinner(size = 16.dp)
                         } else {
                             Text("Создать")
                         }
@@ -187,7 +188,7 @@ fun CreateGroupScreen(
             when {
                 contactsLoading -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                        SvoiLoader()
                     }
                 }
                 results.isEmpty() && !contactsLoading -> {

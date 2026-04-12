@@ -24,7 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.svoi.ui.components.SvoiLoader
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -186,7 +186,7 @@ fun UserProfileScreen(
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
-            ) { CircularProgressIndicator() }
+            ) { SvoiLoader() }
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -314,7 +314,7 @@ fun UserProfileScreen(
                             Box(
                                 modifier = Modifier.fillMaxWidth().height(200.dp),
                                 contentAlignment = Alignment.Center
-                            ) { CircularProgressIndicator() }
+                            ) { SvoiLoader() }
                         }
                     } else {
                         when (selectedMediaTab) {

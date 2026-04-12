@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Surface
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import com.example.svoi.ui.components.SvoiLoader
+import com.example.svoi.ui.components.SvoiSpinner
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -169,7 +171,7 @@ fun GroupInfoScreen(
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
-            ) { CircularProgressIndicator() }
+            ) { SvoiLoader() }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
@@ -353,7 +355,7 @@ fun GroupInfoScreen(
                                 Box(
                                     modifier = Modifier.fillMaxWidth().height(200.dp),
                                     contentAlignment = Alignment.Center
-                                ) { CircularProgressIndicator() }
+                                ) { SvoiLoader() }
                             }
                         } else {
                             when (selectedMediaTab) {
@@ -604,7 +606,7 @@ private fun AddMemberDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     trailingIcon = {
-                        if (isSearching) CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                        if (isSearching) SvoiSpinner(size = 18.dp)
                     }
                 )
 

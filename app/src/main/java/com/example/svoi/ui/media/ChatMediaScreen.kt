@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
+import com.example.svoi.ui.components.SvoiLoader
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -248,7 +249,7 @@ fun AttachmentsPane(
         // Content
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                SvoiLoader(modifier = Modifier.align(Alignment.Center))
             } else {
                 HorizontalPager(
                     state = pagerState,

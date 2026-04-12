@@ -18,7 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.svoi.ui.components.SvoiLoader
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -128,7 +128,7 @@ fun GlobalSearchScreen(
             when {
                 isSearching -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+                        SvoiLoader()
                     }
                 }
 

@@ -34,7 +34,7 @@ import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.svoi.ui.components.SvoiSpinner
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -656,8 +656,7 @@ private fun ActionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(end = 0.dp),
-                strokeWidth = 2.dp)
+            SvoiSpinner(size = 24.dp)
             Spacer(Modifier.width(16.dp))
         } else if (icon != null) {
             Icon(icon, contentDescription = null,

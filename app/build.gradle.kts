@@ -126,6 +126,9 @@ dependencies {
     // Emoji2 (bundled modern emoji rendering)
     implementation(libs.emoji2.bundled)
 
+    // Lottie animations
+    implementation(libs.lottie.compose)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

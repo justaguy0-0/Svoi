@@ -112,6 +112,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import com.example.svoi.ui.components.SvoiLoader
+import com.example.svoi.ui.components.SvoiSpinner
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -1087,11 +1089,9 @@ fun ChatScreen(
                                         .fillMaxWidth()
                                         .padding(vertical = 8.dp)
                                 ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier
-                                            .size(24.dp)
-                                            .align(Alignment.Center),
-                                        strokeWidth = 2.dp
+                                    SvoiSpinner(
+                                        modifier = Modifier.align(Alignment.Center),
+                                        size = 24.dp
                                     )
                                 }
                             }
@@ -1346,7 +1346,7 @@ fun ChatScreen(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator()
+                        SvoiLoader()
                     }
                 }
             }
@@ -2613,7 +2613,7 @@ private fun ForwardPickerDialog(
                         modifier = Modifier.fillMaxWidth().height(100.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 2.dp)
+                        SvoiSpinner(size = 32.dp)
                     }
                 } else {
                     LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {

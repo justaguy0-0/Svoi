@@ -45,7 +45,7 @@ import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.svoi.ui.components.SvoiLoader
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -225,7 +225,7 @@ fun ChatListScreen(
                 .fillMaxSize()
         ) {
             if (isLoading && chats.isEmpty()) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                SvoiLoader(modifier = Modifier.align(Alignment.Center))
             } else if (chats.isEmpty()) {
                 Column(
                     modifier = Modifier.align(Alignment.Center),

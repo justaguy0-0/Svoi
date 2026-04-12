@@ -26,6 +26,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import com.example.svoi.ui.components.SvoiLoader
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -150,7 +151,7 @@ fun ProfileScreen(
 
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                SvoiLoader()
             }
         } else {
         Column(
