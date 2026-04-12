@@ -87,7 +87,7 @@ fun CreateGroupScreen(
                         enabled = selected.isNotEmpty() && groupName.isNotBlank() && !isLoading
                     ) {
                         if (isLoading) {
-                            SvoiSpinner(size = 16.dp)
+                            SvoiSpinner(size = 32.dp)
                         } else {
                             Text("Создать")
                         }

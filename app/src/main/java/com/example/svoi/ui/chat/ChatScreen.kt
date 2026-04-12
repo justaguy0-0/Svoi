@@ -1091,7 +1091,7 @@ fun ChatScreen(
                                 ) {
                                     SvoiSpinner(
                                         modifier = Modifier.align(Alignment.Center),
-                                        size = 24.dp
+                                        size = 72.dp
                                     )
                                 }
                             }
@@ -2613,7 +2613,7 @@ private fun ForwardPickerDialog(
                         modifier = Modifier.fillMaxWidth().height(100.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        SvoiSpinner(size = 32.dp)
+                        SvoiSpinner(size = 80.dp)
                     }
                 } else {
                     LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {

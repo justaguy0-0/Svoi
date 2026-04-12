@@ -656,7 +656,7 @@ private fun ActionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (isLoading) {
-            SvoiSpinner(size = 24.dp)
+            SvoiSpinner(size = 72.dp)
             Spacer(Modifier.width(16.dp))
         } else if (icon != null) {
             Icon(icon, contentDescription = null,

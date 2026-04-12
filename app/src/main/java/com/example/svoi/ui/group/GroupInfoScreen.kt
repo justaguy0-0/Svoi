@@ -606,7 +606,7 @@ private fun AddMemberDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     trailingIcon = {
-                        if (isSearching) SvoiSpinner(size = 18.dp)
+                        if (isSearching) SvoiSpinner(size = 36.dp)
                     }
                 )
 
