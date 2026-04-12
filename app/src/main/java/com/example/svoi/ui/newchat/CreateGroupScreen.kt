@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.theme.GroupAvatarColors
+import com.example.svoi.ui.theme.SvoiDimens
 import com.example.svoi.ui.theme.SvoiShapes
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,7 +111,7 @@ fun CreateGroupScreen(
                 label = { Text("Название группы") },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 8.dp),
                 singleLine = true,
                 leadingIcon = {
                     if (groupName.isNotBlank()) {
@@ -132,7 +133,7 @@ fun CreateGroupScreen(
             error?.let { msg ->
                 Text(
                     text = msg,
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -140,7 +141,7 @@ fun CreateGroupScreen(
 
             // Selected users chips
             if (selected.isNotEmpty()) {
-                LazyRow(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                LazyRow(modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp)) {
                     items(selected, key = { it.id }) { profile ->
                         InputChip(
                             selected = true,
@@ -177,7 +178,7 @@ fun CreateGroupScreen(
                 onActiveChange = {},
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 8.dp),
                 windowInsets = WindowInsets(0),
                 placeholder = { Text("Поиск среди контактов") },
                 leadingIcon = { Icon(Icons.Default.Search, null) }

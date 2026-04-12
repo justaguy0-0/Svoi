@@ -131,7 +131,7 @@ fun SetupStep3Screen(
                             }.getOrDefault(Color.Gray)
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(36.dp)
                                     .clip(CircleShape)
                                     .background(color)
                                     .then(

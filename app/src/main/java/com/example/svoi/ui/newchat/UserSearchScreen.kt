@@ -91,7 +91,7 @@ fun UserSearchScreen(
                 onActiveChange = {},
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 8.dp),
                 windowInsets = WindowInsets(0),
                 placeholder = { Text("Поиск по имени") },
                 leadingIcon = { Icon(Icons.Default.Search, null) }
@@ -103,7 +103,7 @@ fun UserSearchScreen(
                     text = msg,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Center

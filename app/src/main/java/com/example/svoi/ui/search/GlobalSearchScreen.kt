@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.data.model.MessageSearchResult
 import com.example.svoi.ui.components.Avatar
+import com.example.svoi.ui.theme.SvoiDimens
 import com.example.svoi.ui.theme.groupAvatarColor
 import com.example.svoi.util.toChatListTime
 
@@ -181,7 +182,7 @@ private fun SearchResultItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = SvoiDimens.ItemVerticalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Group color is deterministic from chatId (same logic as chat list)

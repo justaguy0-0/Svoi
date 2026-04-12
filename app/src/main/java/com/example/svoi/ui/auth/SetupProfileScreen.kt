@@ -49,6 +49,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.EmojiPicker
 import com.example.svoi.ui.theme.AvatarColors
+import com.example.svoi.ui.theme.SvoiDimens
+import com.example.svoi.ui.theme.SvoiShapes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,7 +117,7 @@ fun SetupProfileScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                shape = MaterialTheme.shapes.medium
+                shape = SvoiShapes.TextField
             )
 
             // Email
@@ -129,7 +131,7 @@ fun SetupProfileScreen(
                     keyboardType = KeyboardType.Email,
                     imeAction = ImeAction.Next
                 ),
-                shape = MaterialTheme.shapes.medium
+                shape = SvoiShapes.TextField
             )
 
             // Password
@@ -144,7 +146,7 @@ fun SetupProfileScreen(
                     keyboardType = KeyboardType.Password,
                     imeAction = ImeAction.Next
                 ),
-                shape = MaterialTheme.shapes.medium
+                shape = SvoiShapes.TextField
             )
 
             OutlinedTextField(
@@ -158,7 +160,7 @@ fun SetupProfileScreen(
                     keyboardType = KeyboardType.Password,
                     imeAction = ImeAction.Done
                 ),
-                shape = MaterialTheme.shapes.medium
+                shape = SvoiShapes.TextField
             )
 
             // Emoji picker (same keyboard as in chat)
@@ -223,9 +225,9 @@ fun SetupProfileScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(SvoiDimens.ButtonHeight),
                 enabled = !isLoading,
-                shape = MaterialTheme.shapes.medium
+                shape = SvoiShapes.Button
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(
