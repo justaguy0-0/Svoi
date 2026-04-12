@@ -1862,43 +1862,57 @@ fun ChatScreen(
                                 }
                             }
                         }
-                        } // close outer Box
-                    }
-
-                    // Lock hint floating ABOVE the panel — zero height so it doesn't affect layout
-                    Box(modifier = Modifier.fillMaxWidth().height(0.dp)) {
+                        // Lock hint Popup — shown above mic button during active (non-locked) recording.
+                        // Popup renders outside layout hierarchy, so it never affects panel height.
                         if (isRecording && !isLocked) {
                             val lockHintAlpha = 1f - (-voiceDragOffsetY / with(density) { 70.dp.toPx() }).coerceIn(0f, 1f)
-                            Surface(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .offset(y = (-80).dp)
-                                    .padding(end = 12.dp)
-                                    .alpha(lockHintAlpha),
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                shadowElevation = 2.dp
+                            Popup(
+                                popupPositionProvider = object : PopupPositionProvider {
+                                    override fun calculatePosition(
+                                        anchorBounds: IntRect,
+                                        windowSize: IntSize,
+                                        layoutDirection: LayoutDirection,
+                                        popupContentSize: IntSize
+                                    ): IntOffset {
+                                        val gapPx = with(density) { 88.dp.roundToPx() }
+                                        val endPadPx = with(density) { 12.dp.roundToPx() }
+                                        return IntOffset(
+                                            x = (anchorBounds.right - popupContentSize.width - endPadPx)
+                                                .coerceAtLeast(endPadPx),
+                                            y = anchorBounds.top - gapPx - popupContentSize.height
+                                        )
+                                    }
+                                },
+                                properties = PopupProperties(focusable = false)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Surface(
+                                    modifier = Modifier.alpha(lockHintAlpha),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shadowElevation = 2.dp
                                 ) {
-                                    Icon(
-                                        Icons.Default.ArrowUpward,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(Modifier.width(3.dp))
-                                    Icon(
-                                        Icons.Default.Lock,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.ArrowUpward,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(Modifier.width(3.dp))
+                                        Icon(
+                                            Icons.Default.Lock,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
+                        } // close outer Box
                     }
                 }
             }
