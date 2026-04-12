@@ -1532,33 +1532,6 @@ fun ChatScreen(
                     val density = LocalDensity.current
                     var showSendMenu by remember { mutableStateOf(false) }
 
-                    // Lock hint — shown above mic button during active (non-locked) recording
-                    if (isRecording && !isLocked) {
-                        val lockHintAlpha = 1f - (-voiceDragOffsetY / with(density) { 70.dp.toPx() }).coerceIn(0f, 1f)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(end = 16.dp, bottom = 2.dp)
-                                .alpha(lockHintAlpha),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.ArrowUpward,
-                                contentDescription = null,
-                                modifier = Modifier.size(13.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.width(3.dp))
-                            Icon(
-                                Icons.Default.Lock,
-                                contentDescription = null,
-                                modifier = Modifier.size(13.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1890,6 +1863,42 @@ fun ChatScreen(
                             }
                         }
                         } // close outer Box
+                    }
+
+                    // Lock hint floating ABOVE the panel — zero height so it doesn't affect layout
+                    Box(modifier = Modifier.fillMaxWidth().height(0.dp)) {
+                        if (isRecording && !isLocked) {
+                            val lockHintAlpha = 1f - (-voiceDragOffsetY / with(density) { 70.dp.toPx() }).coerceIn(0f, 1f)
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(y = (-80).dp)
+                                    .padding(end = 12.dp)
+                                    .alpha(lockHintAlpha),
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shadowElevation = 2.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.ArrowUpward,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(Modifier.width(3.dp))
+                                    Icon(
+                                        Icons.Default.Lock,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
