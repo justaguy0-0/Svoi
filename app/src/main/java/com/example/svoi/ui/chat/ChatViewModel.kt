@@ -1957,7 +1957,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _voiceRecordState.value = VoiceRecordState.Idle
         _voiceElapsedMs.value = 0L
         val result = voiceRecorder.stop() ?: return
-        val (file, durationSec) = result
+        val (file, durationSec, amplitudeSamples) = result
+        val waveformData = amplitudeSamples.encodeWaveform()
         val replyId = _replyTo.value?.id
         _replyTo.value = null
         val myId = currentUserId
@@ -1979,7 +1980,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val bytes = file.readBytes(); file.delete()
                 val url = messageRepo.uploadFile(chatId, "voice_${System.currentTimeMillis()}.m4a", bytes)
                 if (url != null) {
-                    messageRepo.sendVoiceMessage(chatId, url, durationSec, replyId, silent)
+                    messageRepo.sendVoiceMessage(chatId, url, durationSec, waveformData, replyId, silent)
                 } else {
                     _error.value = "Ошибка загрузки голосового"
                 }
@@ -2057,4 +2058,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+}
+
+/**
+ * Encodes raw MediaRecorder amplitude samples into a compact 40-char string (digits 0–9).
+ * Used for waveform visualization in voice message bubbles.
+ * Returns empty string if input is empty or all-zero.
+ */
+private fun List<Int>.encodeWaveform(bars: Int = 40): String {
+    if (isEmpty()) return ""
+    val max = maxOrNull()?.takeIf { it > 0 } ?: return ""
+    val step = size.toFloat() / bars
+    return (0 until bars).joinToString("") { i ->
+        val idx = (i * step).toInt().coerceIn(0, size - 1)
+        ((this[idx].toFloat() / max) * 9).toInt().coerceIn(0, 9).toString()
+    }
 }

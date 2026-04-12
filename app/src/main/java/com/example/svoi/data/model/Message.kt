@@ -24,6 +24,7 @@ data class Message(
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("mime_type") val mimeType: String? = null,
     val duration: Int? = null, // voice message duration in seconds
+    @SerialName("waveform_data") val waveformData: String? = null,
     val silent: Boolean = false,
     @SerialName("mentioned_user_ids") val mentionedUserIds: List<String> = emptyList()
 )

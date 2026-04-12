@@ -282,6 +282,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
         val type: String,
         @SerialName("file_url") val fileUrl: String,
         val duration: Int,
+        @SerialName("waveform_data") val waveformData: String? = null,
         @SerialName("reply_to_id") val replyToId: String? = null,
         val silent: Boolean = false
     )
@@ -290,6 +291,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
         chatId: String,
         fileUrl: String,
         durationSec: Int,
+        waveformData: String? = null,
         replyToId: String? = null,
         silent: Boolean = false
     ) {
@@ -302,6 +304,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     type = "voice",
                     fileUrl = fileUrl,
                     duration = durationSec,
+                    waveformData = waveformData,
                     replyToId = replyToId,
                     silent = silent
                 )

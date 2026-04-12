@@ -69,8 +69,11 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.icons.Icons
@@ -3230,6 +3233,7 @@ private fun MessageItem(
                                             messageId = msg.id,
                                             url = url,
                                             durationSec = msg.duration ?: 0,
+                                            waveformData = msg.waveformData,
                                             isOwn = item.isOwn,
                                             isListened = item.isListened,
                                             voicePlayState = voicePlayState,
@@ -3566,6 +3570,7 @@ private fun VoiceMessageBubble(
     messageId: String,
     url: String,
     durationSec: Int,
+    waveformData: String?,
     isOwn: Boolean,
     isListened: Boolean,
     voicePlayState: VoicePlayState?,
@@ -3581,15 +3586,12 @@ private fun VoiceMessageBubble(
                      else (durationSec * 1000).coerceAtLeast(1000)
     val progress = (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
-    val sliderActiveColor = if (isOwn) Color.White else MaterialTheme.colorScheme.primary
-    val sliderInactiveColor = if (isOwn) Color.White.copy(0.4f) else MaterialTheme.colorScheme.onSurface.copy(0.2f)
+    val activeColor = if (isOwn) Color.White else MaterialTheme.colorScheme.primary
+    val inactiveColor = if (isOwn) Color.White.copy(0.35f) else MaterialTheme.colorScheme.onSurface.copy(0.2f)
 
     // Displayed time: current position if active, else total duration
     val displaySec = if (isThisActive) positionMs / 1000 else durationSec
     val timeStr = displaySec.toVoiceDuration()
-
-    // Dot color: white on own (blue) bubble
-    val dotColor = Color.White
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -3610,37 +3612,111 @@ private fun VoiceMessageBubble(
                 Icon(
                     imageVector = if (isThisPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = if (isThisPlaying) "Пауза" else "Играть",
-                    tint = if (isOwn) Color.White else MaterialTheme.colorScheme.primary,
+                    tint = activeColor,
                     modifier = Modifier.size(26.dp)
                 )
             }
-            // Unlistened dot badge — visible on own messages until the recipient listens
+            // Unlistened dot badge
             if (isOwn && !isListened) {
                 Box(
                     modifier = Modifier
                         .size(9.dp)
                         .clip(CircleShape)
-                        .background(dotColor)
+                        .background(Color.White)
                         .align(Alignment.BottomEnd)
                 )
             }
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Slider(
-                value = progress,
-                onValueChange = { onSeek((it * durationMs).toInt()) },
-                colors = SliderDefaults.colors(
-                    thumbColor = sliderActiveColor,
-                    activeTrackColor = sliderActiveColor,
-                    inactiveTrackColor = sliderInactiveColor
-                ),
-                modifier = Modifier.fillMaxWidth()
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            VoiceWaveform(
+                waveformData = waveformData,
+                messageId = messageId,
+                progress = progress,
+                activeColor = activeColor,
+                inactiveColor = inactiveColor,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(28.dp),
+                onSeek = { fraction -> onSeek((fraction * durationMs).toInt()) }
             )
             Text(
                 text = timeStr,
                 style = MaterialTheme.typography.labelSmall,
                 color = if (isOwn) Color.White.copy(0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp).offset(y = (-6).dp)
+                modifier = Modifier.padding(start = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun VoiceWaveform(
+    waveformData: String?,
+    messageId: String,
+    progress: Float,
+    activeColor: Color,
+    inactiveColor: Color,
+    modifier: Modifier = Modifier,
+    onSeek: (Float) -> Unit
+) {
+    val barCount = 40
+    // Decode real waveform or generate deterministic pseudo-random bars for old messages
+    val bars: List<Float> = remember(waveformData, messageId) {
+        if (!waveformData.isNullOrEmpty()) {
+            val decoded = waveformData.map { c -> (c.digitToIntOrNull() ?: 0) / 9f }
+            when {
+                decoded.size >= barCount -> decoded.take(barCount)
+                else -> decoded + List(barCount - decoded.size) { 0.3f }
+            }
+        } else {
+            val rng = kotlin.random.Random(messageId.hashCode())
+            List(barCount) { rng.nextFloat() * 0.75f + 0.25f }
+        }
+    }
+
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(100),
+        label = "waveformProgress"
+    )
+
+    Canvas(
+        modifier = modifier
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    onSeek((down.position.x / size.width).coerceIn(0f, 1f))
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) break
+                        onSeek((change.position.x / size.width).coerceIn(0f, 1f))
+                        change.consume()
+                    }
+                }
+            }
+    ) {
+        val totalGaps = (barCount - 1) * 2.dp.toPx()
+        val barWidth = ((size.width - totalGaps) / barCount).coerceAtLeast(1f)
+        val gap = 2.dp.toPx()
+        val minBarHeight = 4.dp.toPx()
+        val maxBarHeight = size.height
+        val cornerRadius = CornerRadius(barWidth / 2f)
+
+        bars.forEachIndexed { i, value ->
+            val barHeight = minBarHeight + value * (maxBarHeight - minBarHeight)
+            val x = i * (barWidth + gap)
+            val y = (size.height - barHeight) / 2f
+            val isActive = (i.toFloat() / barCount) < animatedProgress
+
+            drawRoundRect(
+                color = if (isActive) activeColor else inactiveColor,
+                topLeft = Offset(x, y),
+                size = Size(barWidth, barHeight),
+                cornerRadius = cornerRadius
             )
         }
     }
