@@ -69,7 +69,10 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -185,6 +188,8 @@ import android.content.pm.PackageManager
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Stop
@@ -1524,10 +1529,37 @@ fun ChatScreen(
                     val density = LocalDensity.current
                     var showSendMenu by remember { mutableStateOf(false) }
 
+                    // Lock hint — shown above mic button during active (non-locked) recording
+                    if (isRecording && !isLocked) {
+                        val lockHintAlpha = 1f - (-voiceDragOffsetY / with(density) { 70.dp.toPx() }).coerceIn(0f, 1f)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(end = 16.dp, bottom = 2.dp)
+                                .alpha(lockHintAlpha),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.ArrowUpward,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.width(3.dp))
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // ── Left side: recording overlay OR normal inputs ───────
@@ -1602,8 +1634,15 @@ fun ChatScreen(
                                         )
                                     }
                                     Spacer(Modifier.width(4.dp))
-                                    // Text field with emoji button inside as leading icon
-                                    TextField(
+                                    // Transparent text field — blends with panel, shows border when active
+                                    val showInputBorder = isTextFieldFocused || inputValue.text.isNotBlank()
+                                    val inputBorderColor by animateColorAsState(
+                                        targetValue = if (showInputBorder)
+                                            MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                        else Color.Transparent,
+                                        label = "inputBorder"
+                                    )
+                                    BasicTextField(
                                         value = inputValue,
                                         onValueChange = {
                                             inputValue = it
@@ -1613,35 +1652,53 @@ fun ChatScreen(
                                         modifier = Modifier
                                             .weight(1f)
                                             .clip(RoundedCornerShape(24.dp))
+                                            .border(1.dp, inputBorderColor, RoundedCornerShape(24.dp))
                                             .onFocusChanged {
                                                 isTextFieldFocused = it.isFocused
                                                 if (it.isFocused) showEmojiPicker = false
                                             },
-                                        placeholder = { Text("Сообщение...") },
+                                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        ),
                                         maxLines = 5,
-                                        leadingIcon = {
-                                            IconButton(
-                                                onClick = {
-                                                    showEmojiPicker = !showEmojiPicker
-                                                    if (showEmojiPicker) keyboardController?.hide()
-                                                },
-                                                modifier = Modifier.size(32.dp)
+                                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                        decorationBox = { innerTextField ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(min = 48.dp)
+                                                    .padding(end = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Icon(
-                                                    Icons.Default.EmojiEmotions,
-                                                    contentDescription = "Эмодзи",
-                                                    modifier = Modifier.size(18.dp),
-                                                    tint = if (showEmojiPicker) MaterialTheme.colorScheme.primary
-                                                           else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
+                                                IconButton(
+                                                    onClick = {
+                                                        showEmojiPicker = !showEmojiPicker
+                                                        if (showEmojiPicker) keyboardController?.hide()
+                                                    },
+                                                    modifier = Modifier.size(36.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.EmojiEmotions,
+                                                        contentDescription = "Эмодзи",
+                                                        modifier = Modifier.size(18.dp),
+                                                        tint = if (showEmojiPicker)
+                                                            MaterialTheme.colorScheme.primary
+                                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                Box(modifier = Modifier.weight(1f)) {
+                                                    if (inputValue.text.isEmpty()) {
+                                                        Text(
+                                                            "Сообщение...",
+                                                            style = MaterialTheme.typography.bodyLarge,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                .copy(alpha = 0.6f)
+                                                        )
+                                                    }
+                                                    innerTextField()
+                                                }
                                             }
-                                        },
-                                        colors = TextFieldDefaults.colors(
-                                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                            focusedIndicatorColor = Color.Transparent,
-                                            unfocusedIndicatorColor = Color.Transparent
-                                        )
+                                        }
                                     )
                                 }
                             }
