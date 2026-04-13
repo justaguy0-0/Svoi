@@ -343,6 +343,7 @@ fun ChatScreen(
     val wallpaperBlur by app.wallpaperManager.blur.collectAsState()
     val haptic = LocalHapticFeedback.current
     val globalVoiceState by app.globalVoicePlayer.state.collectAsState()
+    val cachedVoiceIds by app.globalVoicePlayer.cachedVoiceIds.collectAsState()
 
     // Draft: load saved draft when opening chat
     LaunchedEffect(chatId) {
@@ -1241,6 +1242,7 @@ fun ChatScreen(
                                                         }
                                                     },
                                                     voicePlayState = voicePlayState,
+                                                    cachedVoiceIds = cachedVoiceIds,
                                                     onVoicePlay = { msgId, url, dur -> viewModel.playVoice(msgId, url, dur) },
                                                     onVoicePause = { viewModel.pauseVoice() },
                                                     onVoiceResume = { viewModel.resumeVoice() },
@@ -2766,6 +2768,7 @@ private fun MessageItem(
     onImageRatioLoaded: (url: String, ratio: Float) -> Unit = { _, _ -> },
     imageRatioCache: Map<String, Float> = emptyMap(),
     voicePlayState: VoicePlayState? = null,
+    cachedVoiceIds: Set<String> = emptySet(),
     onVoicePlay: (msgId: String, url: String, durationSec: Int) -> Unit = { _, _, _ -> },
     onVoicePause: () -> Unit = {},
     onVoiceResume: () -> Unit = {},
@@ -3259,6 +3262,7 @@ private fun MessageItem(
                                             waveformData = msg.waveformData,
                                             isOwn = item.isOwn,
                                             isListened = item.isListened,
+                                            isCached = msg.id in cachedVoiceIds,
                                             voicePlayState = voicePlayState,
                                             onPlay = { onVoicePlay(msg.id, url, msg.duration ?: 0) },
                                             onPause = onVoicePause,
@@ -3596,6 +3600,7 @@ private fun VoiceMessageBubble(
     waveformData: String?,
     isOwn: Boolean,
     isListened: Boolean,
+    isCached: Boolean,
     voicePlayState: VoicePlayState?,
     onPlay: () -> Unit,
     onPause: () -> Unit,
@@ -3647,6 +3652,17 @@ private fun VoiceMessageBubble(
                         .clip(CircleShape)
                         .background(Color.White)
                         .align(Alignment.BottomEnd)
+                )
+            }
+            // Download indicator — shown when voice file is not yet cached locally
+            if (!isCached && !isThisActive) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = null,
+                    tint = activeColor.copy(alpha = 0.75f),
+                    modifier = Modifier
+                        .size(13.dp)
+                        .align(Alignment.TopEnd)
                 )
             }
         }

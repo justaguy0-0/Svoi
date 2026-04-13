@@ -35,9 +35,25 @@ class GlobalVoicePlayer(private val cacheDir: File) {
     private val _state = MutableStateFlow<GlobalVoiceState?>(null)
     val state: StateFlow<GlobalVoiceState?> = _state
 
+    // Set of messageIds whose voice files are cached locally
+    private val _cachedVoiceIds = MutableStateFlow<Set<String>>(emptySet())
+    val cachedVoiceIds: StateFlow<Set<String>> = _cachedVoiceIds
+
     private var mediaPlayer: MediaPlayer? = null
     private var progressJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    init {
+        // Scan existing cached files on startup
+        val existing = cacheDir.listFiles()
+            ?.filter { it.name.startsWith("voice_") && it.name.endsWith(".m4a") && !it.name.endsWith("_tmp.m4a") && it.length() > 0 }
+            ?.mapNotNull { f ->
+                val name = f.nameWithoutExtension // voice_<messageId>
+                if (name.length > 6) name.removePrefix("voice_") else null
+            }
+            ?.toSet() ?: emptySet()
+        _cachedVoiceIds.value = existing
+    }
 
     /** Called when playback finishes naturally (not on stop/pause). messageId of the finished message. */
     var onCompletion: ((messageId: String) -> Unit)? = null
@@ -139,6 +155,7 @@ class GlobalVoicePlayer(private val cacheDir: File) {
             }
             tmp.renameTo(file)
             Log.d("VoiceCache", "downloaded voice_$messageId.m4a (${file.length()} bytes)")
+            _cachedVoiceIds.value = _cachedVoiceIds.value + messageId
             file.absolutePath
         } catch (e: Exception) {
             Log.w("VoiceCache", "download failed for $messageId, will stream: ${e.message}")
