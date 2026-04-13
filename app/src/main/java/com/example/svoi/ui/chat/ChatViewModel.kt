@@ -45,6 +45,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 data class TypingInfo(val userId: String, val displayName: String, val status: String = "typing")
 data class StagedMedia(val uri: Uri, val isVideo: Boolean)
 
+@kotlinx.serialization.Serializable
 data class OgData(
     val title: String?,
     val description: String?,
@@ -251,7 +252,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         ogAttempted.add(url)
         viewModelScope.launch(Dispatchers.IO) {
             val data = fetchOgData(url)
-            if (data != null) withContext(Dispatchers.Main) { ogCache[url] = data }
+            if (data != null) {
+                withContext(Dispatchers.Main) { ogCache[url] = data }
+                cache.saveOgData(ogCache.toMap())
+            }
         }
     }
 
@@ -286,6 +290,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }.forEach { it.await() }
             }
         }
+        // Persist updated OG cache so previews render immediately on next visit
+        if (ogCache.isNotEmpty()) cache.saveOgData(ogCache.toMap())
     }
 
     private suspend fun fetchOgData(url: String): OgData? = withContext(Dispatchers.IO) {
@@ -425,10 +431,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 currentUserId = cache.loadOwnProfile()?.id ?: ""
                 Log.w("ChatVM", "init: currentUserId fallback from profile cache = '$currentUserId'")
             }
-            val cachedInfo     = cache.loadChatInfo(chatId)
-            val cachedMessages = cache.loadMessages(chatId)
-            val cachedProfiles = cache.loadProfileMap()
-            val cachedPinned   = cache.loadPinnedContent(chatId)
+            val cachedInfo         = cache.loadChatInfo(chatId)
+            val cachedMessages     = cache.loadMessages(chatId)
+            val cachedProfiles     = cache.loadProfileMap()
+            val cachedPinned       = cache.loadPinnedContent(chatId)
+            val cachedReactions    = cache.loadReactions(chatId) ?: emptyMap()
+            val cachedVoiceListens = cache.loadVoiceListens(chatId)
+            // Pre-populate OG cache from disk so link previews render immediately
+            cache.loadOgData()?.let { ogCache.putAll(it) }
 
             // Restore cached info for TopAppBar while loading
             if (cachedInfo != null) {
@@ -450,9 +460,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val revealMutex = Mutex()
             var revealDone = false
 
-            // Helper: reveal chat from cached messages
+            // Helper: reveal chat from cached messages (with pre-cached enrichment data)
             suspend fun revealFromCache() {
-                val items = buildUiItems(cachedMessages ?: emptyList())
+                val items = buildUiItems(
+                    cachedMessages ?: emptyList(),
+                    cachedReactions,
+                    cachedVoiceListens?.myListened ?: emptySet(),
+                    cachedVoiceListens?.otherListened ?: emptySet()
+                )
                 _messages.value = items
                 _lastSeenMsgCount.value = items.size
                 _firstUnreadIndex.value = -1
@@ -636,19 +651,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun buildUiItems(raw: List<Message>): List<MessageUiItem> {
+    private fun buildUiItems(
+        raw: List<Message>,
+        cachedReactions: Map<String, List<ReactionGroup>> = emptyMap(),
+        cachedMyListened: Set<String> = emptySet(),
+        cachedOtherListened: Set<String> = emptySet()
+    ): List<MessageUiItem> {
         val myId = currentUserId
         val messageMap = raw.associateBy { it.id }
         return raw.map { msg ->
             val replyMsg = msg.replyToId?.let { messageMap[it] }
+            val isOwn = msg.senderId == myId
+            val isListened = msg.type == "voice" && if (isOwn) {
+                msg.id in cachedOtherListened
+            } else {
+                msg.id in cachedMyListened
+            }
             MessageUiItem(
                 message = msg,
                 senderProfile = msg.senderId?.let { profileCache[it] },
-                isOwn = msg.senderId == myId,
+                isOwn = isOwn,
                 isRead = false,
+                isListened = isListened,
                 replyToMessage = replyMsg,
                 replyToSenderProfile = replyMsg?.senderId?.let { profileCache[it] },
-                forwardedFromProfile = msg.forwardedFromUserId?.let { profileCache[it] }
+                forwardedFromProfile = msg.forwardedFromUserId?.let { profileCache[it] },
+                reactions = cachedReactions[msg.id] ?: emptyList()
             )
         }
     }
@@ -850,6 +878,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val allReactions          = dReactions.await()
         val reactionsByMsg        = allReactions.groupBy { it.messageId }
 
+        // Pre-compute reaction groups per message (used for both UI and cache)
+        val allReactionGroups = raw.associate { msg ->
+            val msgReactions = reactionsByMsg[msg.id] ?: emptyList()
+            msg.id to msgReactions.groupBy { it.emoji }.map { (emoji, list) ->
+                ReactionGroup(emoji, list.size, list.any { it.userId == myId })
+            }.sortedByDescending { it.count }
+        }
+
+        // Persist reactions + voice listen state to disk (background, non-blocking)
+        viewModelScope.launch {
+            cache.saveReactions(chatId, allReactionGroups)
+            if (voiceIds.isNotEmpty()) {
+                cache.saveVoiceListens(chatId, myListenedVoiceIds, otherListenedVoiceIds)
+            }
+        }
+
         val messageMap = raw.associateBy { it.id }
         raw.map { msg ->
             val replyMsg = msg.replyToId?.let { messageMap[it] ?: messageRepo.getMessage(it) }
@@ -859,10 +903,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 msg.id in myListenedVoiceIds
             }
-            val msgReactions = reactionsByMsg[msg.id] ?: emptyList()
-            val groups = msgReactions.groupBy { it.emoji }.map { (emoji, list) ->
-                ReactionGroup(emoji, list.size, list.any { it.userId == myId })
-            }.sortedByDescending { it.count }
             MessageUiItem(
                 message = msg,
                 senderProfile = msg.senderId?.let { profileCache[it] },
@@ -872,7 +912,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 replyToMessage = replyMsg,
                 replyToSenderProfile = replyMsg?.senderId?.let { profileCache[it] },
                 forwardedFromProfile = msg.forwardedFromUserId?.let { profileCache[it] },
-                reactions = groups
+                reactions = allReactionGroups[msg.id] ?: emptyList()
             )
         }
     }

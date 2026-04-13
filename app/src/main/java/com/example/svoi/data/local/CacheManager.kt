@@ -6,6 +6,8 @@ import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.PinnedMessage
+import com.example.svoi.data.model.ReactionGroup
+import com.example.svoi.ui.chat.OgData
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -89,6 +91,47 @@ class CacheManager(context: Context) {
 
     fun loadOwnProfile(): Profile? = load("own_profile.json") {
         json.decodeFromString<Profile>(it)
+    }
+
+    // ── Reactions (per chat) ──────────────────────────────────────────────────
+
+    fun saveReactions(chatId: String, reactions: Map<String, List<ReactionGroup>>) {
+        if (reactions.values.all { it.isEmpty() }) return
+        save("reactions_$chatId.json", json.encodeToString(reactions))
+    }
+
+    fun loadReactions(chatId: String): Map<String, List<ReactionGroup>>? = load("reactions_$chatId.json") {
+        json.decodeFromString<Map<String, List<ReactionGroup>>>(it)
+    }
+
+    // ── OG preview cache (global, keyed by URL) ───────────────────────────────
+
+    fun saveOgData(data: Map<String, OgData>) {
+        if (data.isEmpty()) return
+        // Cap at 500 entries to prevent unbounded growth
+        val trimmed = if (data.size > 500) data.entries.toList().takeLast(500).associate { it.toPair() } else data
+        save("og_cache.json", json.encodeToString(trimmed))
+    }
+
+    fun loadOgData(): Map<String, OgData>? = load("og_cache.json") {
+        json.decodeFromString<Map<String, OgData>>(it)
+    }
+
+    // ── Voice listen state (per chat) ─────────────────────────────────────────
+
+    @Serializable
+    data class CachedVoiceListens(
+        val myListened: Set<String> = emptySet(),
+        val otherListened: Set<String> = emptySet()
+    )
+
+    fun saveVoiceListens(chatId: String, myListened: Set<String>, otherListened: Set<String>) {
+        if (myListened.isEmpty() && otherListened.isEmpty()) return
+        save("voice_listens_$chatId.json", json.encodeToString(CachedVoiceListens(myListened, otherListened)))
+    }
+
+    fun loadVoiceListens(chatId: String): CachedVoiceListens? = load("voice_listens_$chatId.json") {
+        json.decodeFromString<CachedVoiceListens>(it)
     }
 
     // ── Clear all ─────────────────────────────────────────────────────────────

@@ -51,6 +51,7 @@ data class MessageReaction(
 )
 
 /** Aggregated reaction for display: emoji + count + whether current user reacted */
+@Serializable
 @Immutable
 data class ReactionGroup(
     val emoji: String,
