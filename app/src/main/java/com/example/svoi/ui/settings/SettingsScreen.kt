@@ -51,12 +51,14 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import java.io.File
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -100,6 +102,21 @@ fun SettingsScreen(
 
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var isClearingCache by remember { mutableStateOf(false) }
+    var cacheSizeText by remember { mutableStateOf("") }
+
+    suspend fun calcCacheSize(): String = withContext(Dispatchers.IO) {
+        val jsonBytes = File(context.filesDir, "cache")
+            .walkTopDown().filter { it.isFile }.sumOf { it.length() }
+        val coilBytes = context.imageLoader.diskCache?.size ?: 0L
+        val total = jsonBytes + coilBytes
+        when {
+            total < 1024 -> "$total Б"
+            total < 1024 * 1024 -> "${total / 1024} КБ"
+            else -> "${"%.1f".format(total / (1024.0 * 1024.0))} МБ"
+        }
+    }
+
+    LaunchedEffect(Unit) { cacheSizeText = calcCacheSize() }
 
     val app = context.applicationContext as SvoiApp
     var globalNotifMuted by remember { mutableStateOf(app.themeManager.isNotificationsMuted()) }
@@ -242,7 +259,8 @@ fun SettingsScreen(
                         icon = if (isClearingCache) null else Icons.Default.DeleteSweep,
                         isLoading = isClearingCache,
                         title = "Очистить кэш",
-                        subtitle = "Удалить сохранённые сообщения, профили, превью",
+                        subtitle = if (cacheSizeText.isEmpty()) "Сообщения, профили, превью"
+                                   else "Сообщения, профили, превью · $cacheSizeText",
                         onClick = { showClearCacheDialog = true }
                     )
                 }
@@ -314,6 +332,7 @@ fun SettingsScreen(
                             context.imageLoader.diskCache?.clear()
                         }
                         isClearingCache = false
+                        cacheSizeText = calcCacheSize()
                         snackbarHostState.showSnackbar("Кэш очищен")
                     }
                 }) {
