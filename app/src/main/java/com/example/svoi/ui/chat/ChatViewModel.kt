@@ -437,6 +437,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val cachedPinned       = cache.loadPinnedContent(chatId)
             val cachedReactions    = cache.loadReactions(chatId) ?: emptyMap()
             val cachedVoiceListens = cache.loadVoiceListens(chatId)
+            val cachedReadIds      = cache.loadReadIds(chatId) ?: emptySet()
             // Pre-populate OG cache from disk so link previews render immediately
             cache.loadOgData()?.let { ogCache.putAll(it) }
 
@@ -466,7 +467,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     cachedMessages ?: emptyList(),
                     cachedReactions,
                     cachedVoiceListens?.myListened ?: emptySet(),
-                    cachedVoiceListens?.otherListened ?: emptySet()
+                    cachedVoiceListens?.otherListened ?: emptySet(),
+                    cachedReadIds
                 )
                 _messages.value = items
                 _lastSeenMsgCount.value = items.size
@@ -655,7 +657,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         raw: List<Message>,
         cachedReactions: Map<String, List<ReactionGroup>> = emptyMap(),
         cachedMyListened: Set<String> = emptySet(),
-        cachedOtherListened: Set<String> = emptySet()
+        cachedOtherListened: Set<String> = emptySet(),
+        cachedReadIds: Set<String> = emptySet()
     ): List<MessageUiItem> {
         val myId = currentUserId
         val messageMap = raw.associateBy { it.id }
@@ -671,7 +674,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 message = msg,
                 senderProfile = msg.senderId?.let { profileCache[it] },
                 isOwn = isOwn,
-                isRead = false,
+                isRead = isOwn && msg.id in cachedReadIds,
                 isListened = isListened,
                 replyToMessage = replyMsg,
                 replyToSenderProfile = replyMsg?.senderId?.let { profileCache[it] },
@@ -886,11 +889,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }.sortedByDescending { it.count }
         }
 
-        // Persist reactions + voice listen state to disk (background, non-blocking)
+        // Persist reactions, voice listen state and read IDs to disk (background, non-blocking)
         viewModelScope.launch {
             cache.saveReactions(chatId, allReactionGroups)
             if (voiceIds.isNotEmpty()) {
                 cache.saveVoiceListens(chatId, myListenedVoiceIds, otherListenedVoiceIds)
+            }
+            if (readIds.isNotEmpty()) {
+                cache.saveReadIds(chatId, readIds)
             }
         }
 
@@ -1091,6 +1097,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         _messages.value = _messages.value.toMutableList().also {
                             it[idx] = it[idx].copy(isRead = true)
                         }
+                        // Persist to disk so offline view reflects read status
+                        cache.saveReadIds(chatId, setOf(read.messageId))
                     }
                 }
             } catch (_: Exception) {
@@ -1104,6 +1112,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             _messages.value = _messages.value.map { item ->
                                 if (item.message.id in readIds) item.copy(isRead = true) else item
                             }
+                            cache.saveReadIds(chatId, readIds)
                         }
                     }
                 }

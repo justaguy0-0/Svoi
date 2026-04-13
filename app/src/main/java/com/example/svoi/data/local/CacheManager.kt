@@ -134,6 +134,20 @@ class CacheManager(context: Context) {
         json.decodeFromString<CachedVoiceListens>(it)
     }
 
+    // ── Read IDs (my outgoing messages read by recipient) ─────────────────────
+    //   Stored as a flat list of message IDs. Merged on save so old reads are preserved.
+
+    fun saveReadIds(chatId: String, readIds: Set<String>) {
+        if (readIds.isEmpty()) return
+        val existing = loadReadIds(chatId) ?: emptySet()
+        val merged = existing + readIds
+        save("read_ids_$chatId.json", json.encodeToString(merged.toList()))
+    }
+
+    fun loadReadIds(chatId: String): Set<String>? = load("read_ids_$chatId.json") {
+        json.decodeFromString<List<String>>(it).toSet()
+    }
+
     // ── Clear all ─────────────────────────────────────────────────────────────
 
     fun clearAll() {
