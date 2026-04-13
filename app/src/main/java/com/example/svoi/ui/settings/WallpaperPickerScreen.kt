@@ -215,8 +215,8 @@ fun WallpaperPickerScreen(onBack: () -> Unit) {
                             }
                         }
 
-                        // ── 5 presets ─────────────────────────────────────────
-                        items((1..5).toList(), key = { "preset_$it" }) { id ->
+                        // ── 8 presets ─────────────────────────────────────────
+                        items((1..8).toList(), key = { "preset_$it" }) { id ->
                             WallpaperOption(
                                 label = PRESET_LABELS.getOrElse(id - 1) { "Фон $id" },
                                 isSelected = current is ChatWallpaper.Preset &&
