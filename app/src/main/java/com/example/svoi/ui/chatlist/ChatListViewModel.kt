@@ -126,8 +126,9 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             val animate = showUpdating && (initialLoad || _chats.value.isEmpty())
             if (animate) _isUpdating.value = true
 
-            // 3. Guard: skip server fetch if Supabase is blocked (internet up but service blocked)
-            val supabaseReachable = app.supabaseChecker.checkNow()
+            // 3. Guard: skip server fetch if Supabase is blocked (internet up but service blocked).
+            // Use cached state (instant) instead of checkNow() which can block up to 4s on probe.
+            val supabaseReachable = app.supabaseChecker.isReachable.value
             if (!supabaseReachable) {
                 initialLoad = false
                 _isUpdating.value = false

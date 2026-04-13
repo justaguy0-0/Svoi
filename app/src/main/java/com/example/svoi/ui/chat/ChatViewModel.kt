@@ -463,18 +463,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             val hasCache = !cachedMessages.isNullOrEmpty()
 
-            // Early exit: if offline OR Supabase is blocked (internet up but service blocked)
-            // — show cache immediately without waiting for server timeout
-            val supabaseBlocked = !app.supabaseChecker.isReachable.value
-            if ((!isOnline.value || supabaseBlocked) && hasCache) {
+            // Show cache immediately if available — server will merge silently in background.
+            // This eliminates the spinner when navigating to a chat that has cached messages.
+            if (hasCache) {
                 revealFromCache()
             }
 
             // Server load (background coroutine)
+            // loadChatInfo + loadPinnedMessage are independent — run in parallel.
+            // loadMessages depends on historyFrom set by loadChatInfo, so runs after.
             val serverJob = launch {
                 try {
-                    loadChatInfo()
-                    loadPinnedMessage()
+                    coroutineScope {
+                        launch { loadChatInfo() }
+                        launch { loadPinnedMessage() }
+                    }
                     loadMessages(scrollAfter = false)
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
@@ -822,38 +825,33 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { prefetchOgForMessages(raw) }
     }
 
-    private suspend fun enrichMessages(raw: List<Message>): List<MessageUiItem> {
+    private suspend fun enrichMessages(raw: List<Message>): List<MessageUiItem> = coroutineScope {
         val senderIds = raw.mapNotNull { it.senderId }.distinct()
         val forwardedFromIds = raw.mapNotNull { it.forwardedFromUserId }.distinct()
         val allIds = (senderIds + forwardedFromIds).distinct()
         val missing = allIds.filter { it !in profileCache }
-        if (missing.isNotEmpty()) {
-            userRepo.getProfiles(missing).forEach { profileCache[it.id] = it }
-        }
 
         val myId = currentUserId
         val myMessageIds = raw.filter { it.senderId == myId }.map { it.id }
-        val readIds = messageRepo.getReadMessageIds(myMessageIds)
-
-        // Voice listen state
         val voiceIds = raw.filter { it.type == "voice" }.map { it.id }
-        val myListenedVoiceIds: Set<String>
-        val otherListenedVoiceIds: Set<String>
-        if (voiceIds.isNotEmpty()) {
-            myListenedVoiceIds = messageRepo.getMyListenedVoiceIds(voiceIds)
-            otherListenedVoiceIds = messageRepo.getOtherListenedVoiceIds(voiceIds)
-        } else {
-            myListenedVoiceIds = emptySet()
-            otherListenedVoiceIds = emptySet()
-        }
-
-        // Reactions
         val allMsgIds = raw.map { it.id }
-        val allReactions = messageRepo.getReactions(allMsgIds)
-        val reactionsByMsg = allReactions.groupBy { it.messageId }
+
+        // All 5 fetches are independent — run in parallel
+        val dProfiles     = async { if (missing.isNotEmpty()) userRepo.getProfiles(missing) else emptyList() }
+        val dRead         = async { messageRepo.getReadMessageIds(myMessageIds) }
+        val dMyListens    = async { if (voiceIds.isNotEmpty()) messageRepo.getMyListenedVoiceIds(voiceIds) else emptySet() }
+        val dOtherListens = async { if (voiceIds.isNotEmpty()) messageRepo.getOtherListenedVoiceIds(voiceIds) else emptySet() }
+        val dReactions    = async { messageRepo.getReactions(allMsgIds) }
+
+        dProfiles.await().forEach { profileCache[it.id] = it }
+        val readIds               = dRead.await()
+        val myListenedVoiceIds    = dMyListens.await()
+        val otherListenedVoiceIds = dOtherListens.await()
+        val allReactions          = dReactions.await()
+        val reactionsByMsg        = allReactions.groupBy { it.messageId }
 
         val messageMap = raw.associateBy { it.id }
-        return raw.map { msg ->
+        raw.map { msg ->
             val replyMsg = msg.replyToId?.let { messageMap[it] ?: messageRepo.getMessage(it) }
             val isOwn = msg.senderId == myId
             val isListened = msg.type == "voice" && if (isOwn) {
