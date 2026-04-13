@@ -58,7 +58,7 @@ import com.example.svoi.data.local.ChatWallpaper
 import kotlinx.coroutines.launch
 import java.io.File
 
-private val PRESET_LABELS = listOf("Фон 1", "Фон 2", "Фон 3", "Фон 4", "Фон 5")
+private val PRESET_LABELS = listOf("Фон 1", "Фон 2", "Фон 3", "Фон 4", "Фон 5", "Фон 6", "Фон 7", "Фон 8")
 
 private fun presetResId(id: Int): Int = when (id) {
     1 -> R.drawable.wallpaper_preset_1
@@ -66,6 +66,9 @@ private fun presetResId(id: Int): Int = when (id) {
     3 -> R.drawable.wallpaper_preset_3
     4 -> R.drawable.wallpaper_preset_4
     5 -> R.drawable.wallpaper_preset_5
+    6 -> R.drawable.wallpaper_preset_6
+    7 -> R.drawable.wallpaper_preset_7
+    8 -> R.drawable.wallpaper_preset_8
     else -> R.drawable.wallpaper_preset_1
 }
 

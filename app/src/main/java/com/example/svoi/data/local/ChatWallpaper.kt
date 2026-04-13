@@ -4,7 +4,7 @@ sealed class ChatWallpaper {
     /** No wallpaper — default chat background */
     object None : ChatWallpaper()
 
-    /** One of the 5 preset images bundled with the app (id = 1..5) */
+    /** One of the 8 preset images bundled with the app (id = 1..8) */
     data class Preset(val id: Int) : ChatWallpaper()
 
     /** User-picked photo copied to internal storage */
