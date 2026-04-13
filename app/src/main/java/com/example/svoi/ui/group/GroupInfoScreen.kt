@@ -19,7 +19,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import com.example.svoi.ui.components.SvoiLoader
-import com.example.svoi.ui.components.SvoiSpinner
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -606,7 +605,7 @@ private fun AddMemberDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     trailingIcon = {
-                        if (isSearching) SvoiSpinner(size = 36.dp)
+                        if (isSearching) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     }
                 )
 

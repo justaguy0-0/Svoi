@@ -113,7 +113,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import com.example.svoi.ui.components.SvoiLoader
-import com.example.svoi.ui.components.SvoiSpinner
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -1089,9 +1088,9 @@ fun ChatScreen(
                                         .fillMaxWidth()
                                         .padding(vertical = 8.dp)
                                 ) {
-                                    SvoiSpinner(
-                                        modifier = Modifier.align(Alignment.Center),
-                                        size = 72.dp
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.align(Alignment.Center).size(32.dp),
+                                        strokeWidth = 3.dp
                                     )
                                 }
                             }
@@ -2613,7 +2612,7 @@ private fun ForwardPickerDialog(
                         modifier = Modifier.fillMaxWidth().height(100.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        SvoiSpinner(size = 80.dp)
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 3.dp)
                     }
                 } else {
                     LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {

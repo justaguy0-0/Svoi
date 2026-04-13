@@ -24,16 +24,3 @@ fun SvoiLoader(modifier: Modifier = Modifier, size: Dp = 120.dp) {
         modifier = modifier.size(size)
     )
 }
-
-/**
- * Маленький лоадер-спиннер — для вспомогательных мест (пагинация, поиск, диалоги).
- */
-@Composable
-fun SvoiSpinner(modifier: Modifier = Modifier, size: Dp = 72.dp) {
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.spinner_loader))
-    LottieAnimation(
-        composition = composition,
-        iterations = LottieConstants.IterateForever,
-        modifier = modifier.size(size)
-    )
-}
