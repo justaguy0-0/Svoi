@@ -1,6 +1,7 @@
 package com.example.svoi.ui.voice
 
 import android.media.MediaPlayer
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.net.URL
 
 data class GlobalVoiceState(
     val messageId: String,
@@ -23,8 +26,11 @@ data class GlobalVoiceState(
 /**
  * Singleton voice player that lives on SvoiApp.
  * Survives ViewModel lifecycle — allows playback to continue when navigating away from chat.
+ *
+ * Voice files are cached locally in [cacheDir] as voice_<messageId>.m4a.
+ * On first play the file is downloaded; subsequent plays (including offline) use the local copy.
  */
-class GlobalVoicePlayer {
+class GlobalVoicePlayer(private val cacheDir: File) {
 
     private val _state = MutableStateFlow<GlobalVoiceState?>(null)
     val state: StateFlow<GlobalVoiceState?> = _state
@@ -48,7 +54,12 @@ class GlobalVoicePlayer {
         _state.value = GlobalVoiceState(messageId, title, false, 0, durationSec * 1000)
         scope.launch(Dispatchers.IO) {
             try {
-                player.setDataSource(url)
+                val localPath = resolveLocalFile(messageId, url)
+                if (localPath != null) {
+                    player.setDataSource(localPath)
+                } else {
+                    player.setDataSource(url)
+                }
                 player.prepare()
                 val dur = player.duration.takeIf { it > 0 } ?: (durationSec * 1000)
                 withContext(Dispatchers.Main) {
@@ -109,6 +120,29 @@ class GlobalVoicePlayer {
                 )
                 delay(100)
             }
+        }
+    }
+
+    /**
+     * Returns the absolute path of a locally cached voice file for [messageId].
+     * If the file doesn't exist yet, downloads it from [url] and caches it.
+     * Returns null if offline and no local copy exists (caller falls back to streaming).
+     */
+    private fun resolveLocalFile(messageId: String, url: String): String? {
+        val file = File(cacheDir, "voice_$messageId.m4a")
+        if (file.exists() && file.length() > 0) return file.absolutePath
+        return try {
+            cacheDir.mkdirs()
+            val tmp = File(cacheDir, "voice_${messageId}_tmp.m4a")
+            URL(url).openStream().use { input ->
+                tmp.outputStream().use { output -> input.copyTo(output) }
+            }
+            tmp.renameTo(file)
+            Log.d("VoiceCache", "downloaded voice_$messageId.m4a (${file.length()} bytes)")
+            file.absolutePath
+        } catch (e: Exception) {
+            Log.w("VoiceCache", "download failed for $messageId, will stream: ${e.message}")
+            null  // no local copy — caller uses URL as fallback
         }
     }
 }

@@ -137,7 +137,7 @@ class CacheManager(context: Context) {
     // ── Clear all ─────────────────────────────────────────────────────────────
 
     fun clearAll() {
-        dir.listFiles()?.forEach { it.delete() }
+        dir.walkBottomUp().forEach { if (it != dir) it.delete() }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

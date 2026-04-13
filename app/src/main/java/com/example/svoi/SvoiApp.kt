@@ -115,7 +115,7 @@ class SvoiApp : Application() {
     val messageRepository by lazy { MessageRepository(supabase) }
     val pushTokenRepository by lazy { PushTokenRepository(supabase) }
     val appUpdateRepository by lazy { AppUpdateRepository(supabase) }
-    val globalVoicePlayer by lazy { GlobalVoicePlayer() }
+    val globalVoicePlayer by lazy { GlobalVoicePlayer(java.io.File(filesDir, "cache")) }
 
     // Результат проверки обновления — null пока не проверено / нет обновления
     private val _updateAvailable = MutableStateFlow<AppVersion?>(null)
