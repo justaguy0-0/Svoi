@@ -19,10 +19,18 @@ class WallpaperManager(private val context: Context) {
     private val _dim = MutableStateFlow(prefs.getFloat("dim", 0f))
     val dim: StateFlow<Float> = _dim.asStateFlow()
 
+    private val _blur = MutableStateFlow(prefs.getBoolean("blur", false))
+    val blur: StateFlow<Boolean> = _blur.asStateFlow()
+
     fun setDim(value: Float) {
         val clamped = value.coerceIn(0f, 0.75f)
         prefs.edit().putFloat("dim", clamped).apply()
         _dim.value = clamped
+    }
+
+    fun setBlur(enabled: Boolean) {
+        prefs.edit().putBoolean("blur", enabled).apply()
+        _blur.value = enabled
     }
 
     fun setNone() {

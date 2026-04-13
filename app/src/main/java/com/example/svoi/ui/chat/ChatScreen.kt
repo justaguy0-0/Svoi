@@ -340,6 +340,7 @@ fun ChatScreen(
     val app = context.applicationContext as SvoiApp
     val wallpaper by app.wallpaperManager.wallpaper.collectAsState()
     val wallpaperDim by app.wallpaperManager.dim.collectAsState()
+    val wallpaperBlur by app.wallpaperManager.blur.collectAsState()
     val haptic = LocalHapticFeedback.current
     val globalVoiceState by app.globalVoicePlayer.state.collectAsState()
 
@@ -1058,7 +1059,7 @@ fun ChatScreen(
                 .imePadding()
         ) {
         // Wallpaper background (rendered first, behind everything)
-        ChatWallpaperBackground(wallpaper, dim = wallpaperDim)
+        ChatWallpaperBackground(wallpaper, dim = wallpaperDim, blur = wallpaperBlur)
         Column(modifier = Modifier.fillMaxSize()) {
 
             // Messages

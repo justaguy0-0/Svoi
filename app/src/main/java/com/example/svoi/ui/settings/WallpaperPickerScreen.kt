@@ -30,11 +30,13 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -44,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -78,15 +81,19 @@ private fun presetResId(id: Int): Int = when (id) {
 internal fun ChatWallpaperBackground(
     wallpaper: ChatWallpaper,
     dim: Float = 0f,
+    blur: Boolean = false,
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
+    val imageModifier = Modifier.fillMaxSize()
+        .then(if (blur) Modifier.blur(20.dp) else Modifier)
+
     when (wallpaper) {
         is ChatWallpaper.None -> Unit
         is ChatWallpaper.Preset -> Box(modifier = modifier) {
             AsyncImage(
                 model = presetResId(wallpaper.id),
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
+                modifier = imageModifier,
                 contentScale = ContentScale.Crop
             )
             if (dim > 0f) Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
@@ -95,7 +102,7 @@ internal fun ChatWallpaperBackground(
             AsyncImage(
                 model = File(wallpaper.path),
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
+                modifier = imageModifier,
                 contentScale = ContentScale.Crop
             )
             if (dim > 0f) Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
@@ -112,6 +119,7 @@ fun WallpaperPickerScreen(onBack: () -> Unit) {
     val wallpaperManager = (context.applicationContext as SvoiApp).wallpaperManager
     val current by wallpaperManager.wallpaper.collectAsState()
     val dim by wallpaperManager.dim.collectAsState()
+    val blur by wallpaperManager.blur.collectAsState()
     val scope = rememberCoroutineScope()
 
     val galleryLauncher = rememberLauncherForActivityResult(GetContent()) { uri ->
@@ -140,7 +148,7 @@ fun WallpaperPickerScreen(onBack: () -> Unit) {
                 if (current is ChatWallpaper.None) {
                     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
                 } else {
-                    ChatWallpaperBackground(current, dim = dim)
+                    ChatWallpaperBackground(current, dim = dim, blur = blur)
                 }
                 MockChatPreview(hasWallpaper = current !is ChatWallpaper.None)
             }
@@ -187,6 +195,24 @@ fun WallpaperPickerScreen(onBack: () -> Unit) {
                                     activeTrackColor = MaterialTheme.colorScheme.primary
                                 )
                             )
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Размытие фона",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Switch(
+                                    checked = blur,
+                                    onCheckedChange = { wallpaperManager.setBlur(it) }
+                                )
+                            }
                         }
                     }
 
