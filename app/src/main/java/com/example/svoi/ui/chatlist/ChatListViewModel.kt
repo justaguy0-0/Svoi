@@ -59,6 +59,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     // Track whether we need to show "Обновление..." on next refresh
     private var initialLoad = true
     private var wasOffline = false
+    private var wasSupabaseBlocked = false
 
     // Mutex ensures only one getChatsForUser() runs at a time — prevents partial/stale overwrites
     private val refreshMutex = Mutex()
@@ -66,26 +67,31 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private var loadJob: Job? = null
 
     init {
-        // Watch for going offline so we show "Обновление..." when reconnecting.
-        // On reconnect, also wait for Supabase to become reachable before fetching.
+        // Watch for OS-level network changes.
+        // On reconnect: probe Supabase immediately and reload if reachable.
+        // If probe fails, wasSupabaseBlocked observer below handles reload when reachable.
         viewModelScope.launch {
             isOnline.collect { online ->
-                if (!online) wasOffline = true
-                else if (wasOffline) {
+                if (!online) {
+                    wasOffline = true
+                } else if (wasOffline) {
                     wasOffline = false
-                    // Probe Supabase — only reload if it's actually reachable
                     val reachable = app.supabaseChecker.checkNow(force = true)
                     if (reachable) loadChats(showUpdating = true)
-                    // If still blocked: cache is already shown; isReachable observer below
-                    // will trigger loadChats once connectivity is fully restored
+                    // If still blocked: wasSupabaseBlocked is set by the isReachable observer
+                    // and reload fires automatically when the probe eventually succeeds
                 }
             }
         }
-        // Reload automatically when Supabase transitions from blocked → reachable
+        // Reload whenever Supabase transitions from unreachable → reachable, regardless of
+        // whether the OS was also offline. Covers slow-internet startup and VPN-blocked scenarios
+        // where the OS sees a network but Supabase specifically is unreachable.
         viewModelScope.launch {
             app.supabaseChecker.isReachable.collect { reachable ->
-                if (reachable && wasOffline) {
-                    wasOffline = false
+                if (!reachable) {
+                    wasSupabaseBlocked = true
+                } else if (wasSupabaseBlocked) {
+                    wasSupabaseBlocked = false
                     loadChats(showUpdating = true)
                 }
             }
@@ -142,6 +148,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 if (fresh.isNotEmpty()) {
                     _chats.value = fresh
                     cache.saveChatList(fresh)
+                    app.supabaseChecker.markReachable()
                 }
             }
 
@@ -163,6 +170,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 if (fresh.isNotEmpty()) {
                     _chats.value = fresh
                     cache.saveChatList(fresh)
+                    app.supabaseChecker.markReachable()
                 }
             } finally {
                 refreshMutex.unlock()
