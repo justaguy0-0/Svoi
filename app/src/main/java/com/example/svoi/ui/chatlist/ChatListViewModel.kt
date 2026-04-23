@@ -92,7 +92,11 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                     wasSupabaseBlocked = true
                 } else if (wasSupabaseBlocked) {
                     wasSupabaseBlocked = false
-                    loadChats(showUpdating = true)
+                    // Only reload if no load is currently running — avoids cancelling a
+                    // successful in-progress fetch that triggered the markReachable() transition.
+                    if (loadJob?.isActive != true) {
+                        loadChats(showUpdating = true)
+                    }
                 }
             }
         }

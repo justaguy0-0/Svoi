@@ -38,6 +38,9 @@ class SupabaseReachabilityChecker(
     val isReachable: StateFlow<Boolean> = _isReachable
 
     @Volatile private var lastProbeTime = 0L
+    // Last time a real Supabase API call confirmed reachability (not the probe).
+    // Used to ignore probe failures that arrive AFTER API calls already succeeded.
+    @Volatile private var lastApiSuccessTime = 0L
 
     /**
      * Returns current reachability, running a fresh probe if the cached result is stale
@@ -67,6 +70,7 @@ class SupabaseReachabilityChecker(
     fun markReachable() {
         _isReachable.value = true
         lastProbeTime = System.currentTimeMillis()
+        lastApiSuccessTime = System.currentTimeMillis()
         Log.d(TAG, "markReachable: isReachable = true (server confirmed)")
     }
 
@@ -101,8 +105,15 @@ class SupabaseReachabilityChecker(
             Log.d(TAG, "probe: HTTP $code → reachable=$reachable")
             reachable
         } catch (e: Exception) {
-            _isReachable.value = false
             lastProbeTime = System.currentTimeMillis()
+            // If a real API call confirmed reachability within the last 30s, the probe result
+            // is stale (probe runs slower than actual requests on congested links). Trust the API.
+            val sinceApiSuccess = System.currentTimeMillis() - lastApiSuccessTime
+            if (sinceApiSuccess < 30_000L) {
+                Log.d(TAG, "probe: failed but API confirmed reachable ${sinceApiSuccess}ms ago — ignoring probe failure")
+                return@withContext true
+            }
+            _isReachable.value = false
             Log.w(TAG, "probe: failed (${e.javaClass.simpleName}: ${e.message}) → blocked")
             false
         }
