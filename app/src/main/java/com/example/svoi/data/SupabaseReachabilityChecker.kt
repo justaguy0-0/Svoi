@@ -70,6 +70,18 @@ class SupabaseReachabilityChecker(
         Log.d(TAG, "markReachable: isReachable = true (server confirmed)")
     }
 
+    /**
+     * Called when a Supabase API request times out. The probe may have reported reachable
+     * (CDN/edge responds quickly), but the actual backend is too slow — mark as unreachable
+     * and reset the cooldown so the next checkNow() runs a fresh probe immediately.
+     */
+    fun notifyTimeout() {
+        if (!_isReachable.value) return  // already unreachable, avoid log spam
+        _isReachable.value = false
+        lastProbeTime = 0L  // force re-probe on next checkNow()
+        Log.w(TAG, "notifyTimeout: API request timed out — marking unreachable, will re-probe on next check")
+    }
+
     private suspend fun probe(): Boolean = withContext(Dispatchers.IO) {
         Log.d(TAG, "probe: checking $supabaseUrl/rest/v1/ ...")
         try {

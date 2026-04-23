@@ -13,15 +13,17 @@ class PushTokenRepository(private val supabase: SupabaseClient) {
     @Serializable
     private data class PushToken(val user_id: String, val token: String)
 
-    suspend fun saveToken(userId: String, token: String) {
-        try {
+    suspend fun saveToken(userId: String, token: String): Boolean {
+        return try {
             supabase.postgrest.rpc(
                 "save_push_token",
                 buildJsonObject { put("p_token", token) }
             )
             Log.d("PushToken", "saveToken OK for userId=$userId")
+            true
         } catch (e: Exception) {
             Log.e("PushToken", "saveToken failed: ${e.message}")
+            false
         }
     }
 

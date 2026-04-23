@@ -1,11 +1,13 @@
 package com.example.svoi.data.repository
 
 import android.util.Log
+import com.example.svoi.data.SupabaseReachabilityChecker
 import com.example.svoi.data.model.ChatMember
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.UserPresence
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import io.github.jan.supabase.realtime.PostgresAction
@@ -31,7 +33,10 @@ private data class PresenceUpdate(
     @SerialName("last_seen") val lastSeen: String? = null
 )
 
-class UserRepository(private val supabase: SupabaseClient) {
+class UserRepository(
+    private val supabase: SupabaseClient,
+    private val checker: SupabaseReachabilityChecker
+) {
 
     suspend fun getProfile(userId: String): Profile? {
         return try {
@@ -193,6 +198,10 @@ class UserRepository(private val supabase: SupabaseClient) {
     }
 
     suspend fun setOnline(online: Boolean) {
+        if (!checker.isReachable.value) {
+            Log.d("Presence", "setOnline($online): skipped — Supabase unreachable")
+            return
+        }
         val userId = supabase.auth.currentUserOrNull()?.id
         if (userId == null) {
             Log.w("Presence", "setOnline($online): no authenticated user")
@@ -208,7 +217,11 @@ class UserRepository(private val supabase: SupabaseClient) {
                 lastSeen = java.time.Instant.now().toString()
             )
             supabase.from("user_presence").upsert(data)
+            if (online) checker.markReachable()
             Log.d("Presence", "setOnline($online) SUCCESS")
+        } catch (e: HttpRequestTimeoutException) {
+            Log.e("Presence", "setOnline($online) TIMEOUT — notifying checker")
+            checker.notifyTimeout()
         } catch (e: Exception) {
             Log.e("Presence", "setOnline($online) FAILED: ${e.message}", e)
         }

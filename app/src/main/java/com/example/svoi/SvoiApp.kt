@@ -34,8 +34,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 
 class SvoiApp : Application() {
 
@@ -110,8 +112,8 @@ class SvoiApp : Application() {
     val draftManager by lazy { DraftManager(this) }
 
     val authRepository by lazy { AuthRepository(supabase, prefs) }
-    val userRepository by lazy { UserRepository(supabase) }
-    val chatRepository by lazy { ChatRepository(supabase) }
+    val userRepository by lazy { UserRepository(supabase, supabaseChecker) }
+    val chatRepository by lazy { ChatRepository(supabase, supabaseChecker) }
     val messageRepository by lazy { MessageRepository(supabase) }
     val pushTokenRepository by lazy { PushTokenRepository(supabase) }
     val appUpdateRepository by lazy { AppUpdateRepository(supabase) }
@@ -140,7 +142,7 @@ class SvoiApp : Application() {
         heartbeatJob?.cancel()
         heartbeatJob = heartbeatScope.launch {
             while (true) {
-                if (authRepository.isLoggedIn()) {
+                if (authRepository.isLoggedIn() && supabaseChecker.isReachable.value) {
                     userRepository.setOnline(true)
                 }
                 delay(3_000L)
@@ -157,7 +159,19 @@ class SvoiApp : Application() {
         val userId = authRepository.currentUserId() ?: return
         try {
             val token = FirebaseMessaging.getInstance().token.await()
-            pushTokenRepository.saveToken(userId, token)
+            val saved = pushTokenRepository.saveToken(userId, token)
+            if (!saved) {
+                // Save failed (likely timeout/no connection) — retry once when reachable
+                heartbeatScope.launch {
+                    val became = withTimeoutOrNull(120_000L) {
+                        supabaseChecker.isReachable.first { it }
+                    }
+                    if (became == true && authRepository.currentUserId() != null) {
+                        Log.d("FCM", "Retrying FCM token registration after reachability restored")
+                        pushTokenRepository.saveToken(userId, token)
+                    }
+                }
+            }
         } catch (e: Exception) {
             Log.e("FCM", "registerFcmToken: ${e.message}")
         }

@@ -1,8 +1,10 @@
 package com.example.svoi.data.repository
 
+import com.example.svoi.data.SupabaseReachabilityChecker
 import com.example.svoi.data.model.Chat
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.ChatMember
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -30,7 +32,10 @@ private data class ChatMemberInsert(
     @SerialName("history_from") val historyFrom: String? = null
 )
 
-class ChatRepository(private val supabase: SupabaseClient) {
+class ChatRepository(
+    private val supabase: SupabaseClient,
+    private val checker: SupabaseReachabilityChecker
+) {
 
     private fun currentUserId() = supabase.auth.currentUserOrNull()?.id ?: ""
 
@@ -51,6 +56,10 @@ class ChatRepository(private val supabase: SupabaseClient) {
                 .filter { it.leftAt == null }
         } catch (e: CancellationException) {
             throw e
+        } catch (e: HttpRequestTimeoutException) {
+            Log.e("ChatRepo", "getChatsForUser: memberships timed out")
+            checker.notifyTimeout()
+            return emptyList()
         } catch (e: Exception) {
             Log.e("ChatRepo", "getChatsForUser: failed to load memberships", e)
             return emptyList()

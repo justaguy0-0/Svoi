@@ -281,6 +281,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             while (true) {
                 delay(3_000L)
+                if (!app.supabaseChecker.isReachable.value) continue
                 val chats = _chats.value
                 if (chats.isNotEmpty()) {
                     val chatIds = chats.map { it.chatId }
