@@ -7,6 +7,7 @@ import com.example.svoi.data.model.ChatMember
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.PinnedMessage
@@ -97,6 +98,7 @@ class ChatRepository(
                         .select {
                             filter { isIn("chat_id", chatIds); eq("deleted_for_all", false) }
                             order("created_at", Order.DESCENDING)
+                            limit(500)
                         }
                         .decodeList<Message>()
                 } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
@@ -146,13 +148,20 @@ class ChatRepository(
                 } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap<String, UserPresence>() }
             }
             val readsDeferred = async {
-                if (allOtherIds.isEmpty()) emptySet()
-                else try {
-                    supabase.from("message_reads")
-                        .select { filter { isIn("message_id", allOtherIds); eq("user_id", userId) } }
-                        .decodeList<com.example.svoi.data.model.MessageRead>()
-                        .map { it.messageId }.toSet()
-                } catch (e: CancellationException) { throw e } catch (_: Exception) { emptySet<String>() }
+                if (allOtherIds.isEmpty()) emptySet<String>()
+                else coroutineScope {
+                    allOtherIds.chunked(50).map { chunk ->
+                        async {
+                            try {
+                                supabase.from("message_reads")
+                                    .select { filter { isIn("message_id", chunk); eq("user_id", userId) } }
+                                    .decodeList<com.example.svoi.data.model.MessageRead>()
+                                    .map { it.messageId }
+                            } catch (e: CancellationException) { throw e }
+                            catch (_: Exception) { emptyList<String>() }
+                        }
+                    }.awaitAll().flatten().toSet()
+                }
             }
             val myOwnReadsDeferred = async {
                 if (myOwnLastMessageIds.isEmpty()) emptySet()
