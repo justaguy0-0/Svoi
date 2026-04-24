@@ -152,6 +152,10 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 if (fresh.isNotEmpty()) {
                     _chats.value = fresh
                     cache.saveChatList(fresh)
+                    // Clear wasSupabaseBlocked BEFORE markReachable() so the isReachable
+                    // collector doesn't see it as a blocked→reachable transition and fire
+                    // a redundant reload after this job completes.
+                    wasSupabaseBlocked = false
                     app.supabaseChecker.markReachable()
                 }
             }
@@ -174,6 +178,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 if (fresh.isNotEmpty()) {
                     _chats.value = fresh
                     cache.saveChatList(fresh)
+                    wasSupabaseBlocked = false
                     app.supabaseChecker.markReachable()
                 }
             } finally {

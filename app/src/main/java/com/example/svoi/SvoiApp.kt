@@ -82,7 +82,9 @@ class SvoiApp : Application() {
         }
         heartbeatScope.launch {
             while (true) {
-                delay(60_000L)
+                // Probe every 10s when blocked (PROBE_COOLDOWN_MS=30s suppresses actual
+                // HTTP calls when reachable, so effectively ~30s max when online).
+                delay(10_000L)
                 supabaseChecker.checkNow()
             }
         }

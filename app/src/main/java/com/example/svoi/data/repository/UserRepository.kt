@@ -220,8 +220,9 @@ class UserRepository(
             if (online) checker.markReachable()
             Log.d("Presence", "setOnline($online) SUCCESS")
         } catch (e: HttpRequestTimeoutException) {
-            Log.e("Presence", "setOnline($online) TIMEOUT — notifying checker")
-            checker.notifyTimeout()
+            // Presence is a background heartbeat — a timeout here doesn't mean the main
+            // Supabase API is down. The periodic probe handles reachability detection.
+            Log.w("Presence", "setOnline($online) TIMEOUT")
         } catch (e: Exception) {
             Log.e("Presence", "setOnline($online) FAILED: ${e.message}", e)
         }
