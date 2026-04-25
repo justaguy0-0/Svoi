@@ -1241,6 +1241,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         typingJob = viewModelScope.launch {
+            delay(300L) // debounce: don't spam server on every keystroke
             val displayName = profileCache[currentUserId]?.displayName ?: ""
             messageRepo.setTyping(chatId, currentUserId, displayName)
             delay(4_000L)

@@ -246,6 +246,7 @@ import com.example.svoi.util.toReadableSize
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -1066,307 +1067,44 @@ fun ChatScreen(
         Column(modifier = Modifier.fillMaxSize()) {
 
             // Messages
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                if (!isLoading && chatReady && messages.isEmpty()) {
-                    Text(
-                        text = "Начните общение сегодня",
-                        modifier = Modifier.align(Alignment.Center),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (!isLoading) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 8.dp)
-                            .graphicsLayer { alpha = chatAlpha },
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        // Спиннер загрузки истории (вверху списка)
-                        if (isLoadingMore) {
-                            item(key = "loading_more") {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp)
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.align(Alignment.Center).size(32.dp),
-                                        strokeWidth = 3.dp
-                                    )
-                                }
-                            }
-                        }
-                        // Метка «Начало переписки» когда вся история загружена
-                        if (!hasMoreMessages && !isLoadingMore && messages.isNotEmpty()) {
-                            item(key = "start_of_chat") {
-                                Text(
-                                    text = "Начало переписки",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 12.dp),
-                                    textAlign = TextAlign.Center,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        items(
-                            displayEntries,
-                            key = { entry ->
-                                when (entry) {
-                                    is ChatEntry.Msg -> entry.item.stableKey
-                                    is ChatEntry.DateDivider -> "date_${entry.triggerMsgId}"
-                                    ChatEntry.UnreadDivider -> "unread_divider"
-                                }
-                            }
-                        ) { entry ->
-                            val isNew = entry is ChatEntry.Msg &&
-                                entry.item.message.id in animatingMessageIds
-
-                            // Full-width tap zone: makes selection easier on short messages.
-                            // Inner MessageItem clickables (photo, video, etc.) still win
-                            // because Compose routes events to the innermost handler first.
-                            val rowMessageId = (entry as? ChatEntry.Msg)
-                                ?.takeIf { it.item.message.type != "system" }
-                                ?.item?.message?.id
-                            Box(
-                                modifier = Modifier
-                                    .animateItem(
-                                        fadeInSpec = null,
-                                        placementSpec = if (isSelectionMode) null else spring(
-                                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        ),
-                                        fadeOutSpec = null
-                                    )
-                                    .fillMaxWidth()
-                                    .then(
-                                        if (rowMessageId != null) Modifier.combinedClickable(
-                                            onClick = {
-                                                if (isSelectionMode) viewModel.toggleSelection(rowMessageId)
-                                            },
-                                            onLongClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                viewModel.toggleSelection(rowMessageId)
-                                            }
-                                        ) else Modifier
-                                    )
-                            ) {
-                                NewMessageAnimation(isNew = isNew) {
-                                    when (entry) {
-                                        is ChatEntry.Msg -> {
-                                            val msg = entry.item.message
-                                            if (msg.type == "system") {
-                                                SystemMessageItem(
-                                                    item = entry.item,
-                                                    onClick = {
-                                                        msg.replyToId?.let { viewModel.scrollToMessage(it) }
-                                                    }
-                                                )
-                                            } else {
-                                                MessageItem(
-                                                    state = MessageItemState(
-                                                        item = entry.item,
-                                                        isGroup = isGroup,
-                                                        isHighlighted = entry.item.message.id == highlightedMessageId,
-                                                        isSelected = entry.item.message.id in selectedMessageIds,
-                                                        isSelectionMode = isSelectionMode,
-                                                        uploadProgresses = if (entry.item.isPending) uploadProgresses else emptyList(),
-                                                        activeVideoUrl = activeVideoUrl,
-                                                        isMuted = isVideoMuted,
-                                                        videoAspectRatio = entry.item.message.fileUrl
-                                                            ?.let { videoAspectRatios[it] } ?: (16f / 9f),
-                                                        imageRatio = entry.item.message.let { m ->
-                                                            val u = when {
-                                                                entry.item.isPending || entry.item.isFailed -> entry.item.pendingLocalUris.firstOrNull()
-                                                                m.type == "album" -> m.photoUrls?.firstOrNull()
-                                                                m.fileUrl != null -> m.fileUrl
-                                                                else -> null
-                                                            }
-                                                            u?.let { imageRatioCache[it] }
-                                                        },
-                                                        voicePlayState = voicePlayState,
-                                                        cachedVoiceIds = cachedVoiceIds,
-                                                        ogData = entry.item.message.content
-                                                            ?.let { URL_REGEX.find(it)?.value }
-                                                            ?.let { viewModel.ogCache[it] },
-                                                    ),
-                                                    modifier = Modifier,
-                                                    exoPlayer = exoPlayer,
-                                                    onLongClick = {
-                                                        viewModel.toggleSelection(entry.item.message.id)
-                                                    },
-                                                    onTap = {
-                                                        if (isSelectionMode) {
-                                                            viewModel.toggleSelection(entry.item.message.id)
-                                                        } else {
-                                                            selectedMessage = entry.item
-                                                        }
-                                                    },
-                                                    onReply = {
-                                                        viewModel.setReplyTo(entry.item.message)
-                                                    },
-                                                    onPhotoClick = { url, albumUrls ->
-                                                        lightboxState = LightboxState(albumUrls, albumUrls.indexOf(url).coerceAtLeast(0))
-                                                    },
-                                                    onUserClick = { userId -> onUserClick(userId) },
-                                                    onVideoTap = { url ->
-                                                        if (!isSelectionMode) {
-                                                            exoPlayer.pause()
-                                                            fullscreenVideoUrl = url
-                                                        }
-                                                    },
-                                                    onVideoMuteToggle = { isVideoMuted = !isVideoMuted },
-                                                    onImageRatioLoaded = { url, ratio ->
-                                                        if (imageRatioCache[url] != null) return@MessageItem
-                                                        imageRatioCache[url] = ratio
-                                                        if (!initialScrollDone || !isNearBottom) return@MessageItem
-                                                        // Scroll only when the image belongs to one of the last messages
-                                                        val isRecentPhoto = currentDisplayEntries
-                                                            .takeLast(4)
-                                                            .filterIsInstance<ChatEntry.Msg>()
-                                                            .any { e ->
-                                                                e.item.message.fileUrl == url ||
-                                                                e.item.message.photoUrls?.contains(url) == true ||
-                                                                e.item.pendingLocalUris.contains(url)
-                                                            }
-                                                        if (!isRecentPhoto) return@MessageItem
-                                                        scope.launch {
-                                                            delay(150)
-                                                            val last = currentDisplayEntries.size - 1
-                                                            if (last >= 0) listState.animateScrollToItem(last)
-                                                        }
-                                                    },
-                                                    onVideoSizeDetected = { url, ratio ->
-                                                        val prevRatio = videoAspectRatios[url] ?: (16f / 9f)
-                                                        videoAspectRatios[url] = ratio
-                                                        // Когда вертикальное видео начинает воспроизводиться,
-                                                        // пузырёк анимируется из 16:9 в портрет (tween 300ms).
-                                                        // Скроллим ПОСЛЕ анимации, иначе скролл уходит на
-                                                        // "старое" дно до того, как пузырёк успел вырасти.
-                                                        if (ratio < 1f && prevRatio >= 1f) {
-                                                            scope.launch {
-                                                                delay(350L) // ждём окончания анимации роста
-                                                                val total = currentDisplayEntries.size
-                                                                val lastVisible = listState.layoutInfo
-                                                                    .visibleItemsInfo.lastOrNull()?.index ?: -1
-                                                                if (total > 0 && lastVisible >= total - 4) {
-                                                                    listState.animateScrollToItem(total - 1)
-                                                                }
-                                                            }
-                                                        }
-                                                    },
-                                                    onVoicePlay = { msgId, url, dur -> viewModel.playVoice(msgId, url, dur) },
-                                                    onVoicePause = { viewModel.pauseVoice() },
-                                                    onVoiceResume = { viewModel.resumeVoice() },
-                                                    onVoiceSeek = { viewModel.seekVoice(it) },
-                                                    onReactionToggle = { msgId, emoji -> viewModel.toggleReaction(msgId, emoji) },
-                                                    onFetchOg = viewModel::ensureOgFetched
-                                                )
-                                            }
-                                        }
-                                        is ChatEntry.DateDivider -> DateSeparator(date = entry.date)
-                                        ChatEntry.UnreadDivider -> UnreadMessagesDivider()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Scroll to bottom button
-                // Показываем кнопку только если прокручено более ~200dp от конца списка.
-                // Это убирает: (1) мигание при новом сообщении, (2) кнопку когда автоскролл
-                // недобирает пару пикселей до конца.
-                val density = LocalDensity.current
-                val scrollHideThresholdPx = with(density) { 200.dp.toPx() }
-                val rawCanScrollFar by remember(scrollHideThresholdPx) {
-                    derivedStateOf {
-                        if (!listState.canScrollForward) return@derivedStateOf false
-                        val info = listState.layoutInfo
-                        val lastVisible = info.visibleItemsInfo.lastOrNull()
-                            ?: return@derivedStateOf false
-                        val lastIndex = info.totalItemsCount - 1
-                        if (lastVisible.index < lastIndex) return@derivedStateOf true
-                        // Последний элемент частично за нижней границей вьюпорта
-                        (lastVisible.offset + lastVisible.size) - info.viewportEndOffset > scrollHideThresholdPx
-                    }
-                }
-                var showScrollToBottom by remember { mutableStateOf(false) }
-                LaunchedEffect(rawCanScrollFar) {
-                    if (rawCanScrollFar) {
-                        delay(100) // пропускаем кратковременные layout-фреймы
-                        showScrollToBottom = true
-                    } else {
-                        showScrollToBottom = false
-                    }
-                }
-                // Входящие сообщения, которые ещё не помечены прочитанными.
-                // Используем реальные read receipts, а не позиционный счётчик.
-                val unreadBadgeCount = messages.count { !it.isOwn && it.message.id !in myReadMessageIds }
-                if (showScrollToBottom && !isSelectionMode) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = 12.dp, bottom = 12.dp)
-                    ) {
-                        FloatingActionButton(
-                            onClick = {
-                                scope.launch { listState.smoothScrollToItem(displayEntries.size - 1) }
-                            },
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Вниз",
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                        if (unreadBadgeCount > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .offset(x = 4.dp, y = (-4).dp)
-                                    .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
-                                    .background(MaterialTheme.colorScheme.primary, CircleShape)
-                                    .padding(horizontal = 3.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = if (unreadBadgeCount > 99) "99+" else unreadBadgeCount.toString(),
-                                    color = Color.White,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Mini-player overlay: floats under top bar, doesn't shift messages
-                MiniPlayerOverlay(state = globalVoiceState, player = app.globalVoicePlayer)
-
-                // Loading overlays — rendered last so they appear on top of the LazyColumn
-                if (loadingOverlayAlpha > 0f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer { alpha = loadingOverlayAlpha }
-                            .then(
-                                if (wallpaper !is ChatWallpaper.None) Modifier
-                                else Modifier.background(MaterialTheme.colorScheme.surface)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        SvoiLoader()
-                    }
-                }
-            }
+            ChatMessageBox(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                listState = listState,
+                displayEntries = displayEntries,
+                currentDisplayEntries = currentDisplayEntries,
+                isLoading = isLoading,
+                chatReady = chatReady,
+                isLoadingMore = isLoadingMore,
+                hasMoreMessages = hasMoreMessages,
+                chatAlpha = chatAlpha,
+                loadingOverlayAlpha = loadingOverlayAlpha,
+                isSelectionMode = isSelectionMode,
+                selectedMessageIds = selectedMessageIds,
+                animatingMessageIds = animatingMessageIds,
+                uploadProgresses = uploadProgresses,
+                activeVideoUrl = activeVideoUrl,
+                isVideoMuted = isVideoMuted,
+                videoAspectRatios = videoAspectRatios,
+                imageRatioCache = imageRatioCache,
+                initialScrollDone = initialScrollDone,
+                isNearBottom = isNearBottom,
+                highlightedMessageId = highlightedMessageId,
+                isGroup = isGroup,
+                voicePlayState = voicePlayState,
+                cachedVoiceIds = cachedVoiceIds,
+                messages = messages,
+                myReadMessageIds = myReadMessageIds,
+                wallpaper = wallpaper,
+                exoPlayer = exoPlayer,
+                globalVoiceState = globalVoiceState,
+                scope = scope,
+                onShowLightbox = { lightboxState = it },
+                onShowFullscreenVideo = { fullscreenVideoUrl = it },
+                onSelectMessage = { selectedMessage = it },
+                onVideoMuteToggle = { isVideoMuted = !isVideoMuted },
+                onUserClick = onUserClick,
+                viewModel = viewModel
+            )
 
             // Input area or Selection action bar
             if (isSelectionMode) {
@@ -2212,6 +1950,334 @@ fun ChatScreen(
         )
     }
 
+}
+
+// ── Message list + overlays ──────────────────────────────────────────────────
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ChatMessageBox(
+    modifier: Modifier,
+    listState: LazyListState,
+    displayEntries: List<ChatEntry>,
+    currentDisplayEntries: List<ChatEntry>,
+    isLoading: Boolean,
+    chatReady: Boolean,
+    isLoadingMore: Boolean,
+    hasMoreMessages: Boolean,
+    chatAlpha: Float,
+    loadingOverlayAlpha: Float,
+    isSelectionMode: Boolean,
+    selectedMessageIds: Set<String>,
+    animatingMessageIds: Set<String>,
+    uploadProgresses: List<Float>,
+    activeVideoUrl: String?,
+    isVideoMuted: Boolean,
+    videoAspectRatios: MutableMap<String, Float>,
+    imageRatioCache: MutableMap<String, Float>,
+    initialScrollDone: Boolean,
+    isNearBottom: Boolean,
+    highlightedMessageId: String?,
+    isGroup: Boolean,
+    voicePlayState: VoicePlayState?,
+    cachedVoiceIds: Set<String>,
+    messages: List<MessageUiItem>,
+    myReadMessageIds: Set<String>,
+    wallpaper: ChatWallpaper,
+    exoPlayer: ExoPlayer,
+    globalVoiceState: GlobalVoiceState?,
+    scope: CoroutineScope,
+    onShowLightbox: (LightboxState) -> Unit,
+    onShowFullscreenVideo: (String) -> Unit,
+    onSelectMessage: (MessageUiItem) -> Unit,
+    onVideoMuteToggle: () -> Unit,
+    onUserClick: (String) -> Unit,
+    viewModel: ChatViewModel
+) {
+    val app = LocalContext.current.applicationContext as SvoiApp
+    val haptic = LocalHapticFeedback.current
+    Box(modifier = modifier) {
+        if (!isLoading && chatReady && messages.isEmpty()) {
+            Text(
+                text = "Начните общение сегодня",
+                modifier = Modifier.align(Alignment.Center),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (!isLoading) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp)
+                    .graphicsLayer { alpha = chatAlpha },
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                if (isLoadingMore) {
+                    item(key = "loading_more") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.align(Alignment.Center).size(32.dp),
+                                strokeWidth = 3.dp
+                            )
+                        }
+                    }
+                }
+                if (!hasMoreMessages && !isLoadingMore && messages.isNotEmpty()) {
+                    item(key = "start_of_chat") {
+                        Text(
+                            text = "Начало переписки",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                items(
+                    displayEntries,
+                    key = { entry ->
+                        when (entry) {
+                            is ChatEntry.Msg -> entry.item.stableKey
+                            is ChatEntry.DateDivider -> "date_${entry.triggerMsgId}"
+                            ChatEntry.UnreadDivider -> "unread_divider"
+                        }
+                    }
+                ) { entry ->
+                    val isNew = entry is ChatEntry.Msg &&
+                        entry.item.message.id in animatingMessageIds
+                    val rowMessageId = (entry as? ChatEntry.Msg)
+                        ?.takeIf { it.item.message.type != "system" }
+                        ?.item?.message?.id
+                    Box(
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = null,
+                                placementSpec = if (isSelectionMode) null else spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                ),
+                                fadeOutSpec = null
+                            )
+                            .fillMaxWidth()
+                            .then(
+                                if (rowMessageId != null) Modifier.combinedClickable(
+                                    onClick = {
+                                        if (isSelectionMode) viewModel.toggleSelection(rowMessageId)
+                                    },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        viewModel.toggleSelection(rowMessageId)
+                                    }
+                                ) else Modifier
+                            )
+                    ) {
+                        NewMessageAnimation(isNew = isNew) {
+                            when (entry) {
+                                is ChatEntry.Msg -> {
+                                    val msg = entry.item.message
+                                    if (msg.type == "system") {
+                                        SystemMessageItem(
+                                            item = entry.item,
+                                            onClick = {
+                                                msg.replyToId?.let { viewModel.scrollToMessage(it) }
+                                            }
+                                        )
+                                    } else {
+                                        MessageItem(
+                                            state = MessageItemState(
+                                                item = entry.item,
+                                                isGroup = isGroup,
+                                                isHighlighted = entry.item.message.id == highlightedMessageId,
+                                                isSelected = entry.item.message.id in selectedMessageIds,
+                                                isSelectionMode = isSelectionMode,
+                                                uploadProgresses = if (entry.item.isPending) uploadProgresses else emptyList(),
+                                                activeVideoUrl = activeVideoUrl,
+                                                isMuted = isVideoMuted,
+                                                videoAspectRatio = entry.item.message.fileUrl
+                                                    ?.let { videoAspectRatios[it] } ?: (16f / 9f),
+                                                imageRatio = entry.item.message.let { m ->
+                                                    val u = when {
+                                                        entry.item.isPending || entry.item.isFailed -> entry.item.pendingLocalUris.firstOrNull()
+                                                        m.type == "album" -> m.photoUrls?.firstOrNull()
+                                                        m.fileUrl != null -> m.fileUrl
+                                                        else -> null
+                                                    }
+                                                    u?.let { imageRatioCache[it] }
+                                                },
+                                                voicePlayState = voicePlayState,
+                                                cachedVoiceIds = cachedVoiceIds,
+                                                ogData = entry.item.message.content
+                                                    ?.let { URL_REGEX.find(it)?.value }
+                                                    ?.let { viewModel.ogCache[it] },
+                                            ),
+                                            modifier = Modifier,
+                                            exoPlayer = exoPlayer,
+                                            onLongClick = {
+                                                viewModel.toggleSelection(entry.item.message.id)
+                                            },
+                                            onTap = {
+                                                if (isSelectionMode) {
+                                                    viewModel.toggleSelection(entry.item.message.id)
+                                                } else {
+                                                    onSelectMessage(entry.item)
+                                                }
+                                            },
+                                            onReply = {
+                                                viewModel.setReplyTo(entry.item.message)
+                                            },
+                                            onPhotoClick = { url, albumUrls ->
+                                                onShowLightbox(LightboxState(albumUrls, albumUrls.indexOf(url).coerceAtLeast(0)))
+                                            },
+                                            onUserClick = { userId -> onUserClick(userId) },
+                                            onVideoTap = { url ->
+                                                if (!isSelectionMode) {
+                                                    exoPlayer.pause()
+                                                    onShowFullscreenVideo(url)
+                                                }
+                                            },
+                                            onVideoMuteToggle = onVideoMuteToggle,
+                                            onImageRatioLoaded = { url, ratio ->
+                                                if (imageRatioCache[url] != null) return@MessageItem
+                                                imageRatioCache[url] = ratio
+                                                if (!initialScrollDone || !isNearBottom) return@MessageItem
+                                                val isRecentPhoto = currentDisplayEntries
+                                                    .takeLast(4)
+                                                    .filterIsInstance<ChatEntry.Msg>()
+                                                    .any { e ->
+                                                        e.item.message.fileUrl == url ||
+                                                        e.item.message.photoUrls?.contains(url) == true ||
+                                                        e.item.pendingLocalUris.contains(url)
+                                                    }
+                                                if (!isRecentPhoto) return@MessageItem
+                                                scope.launch {
+                                                    delay(150)
+                                                    val last = currentDisplayEntries.size - 1
+                                                    if (last >= 0) listState.animateScrollToItem(last)
+                                                }
+                                            },
+                                            onVideoSizeDetected = { url, ratio ->
+                                                val prevRatio = videoAspectRatios[url] ?: (16f / 9f)
+                                                videoAspectRatios[url] = ratio
+                                                if (ratio < 1f && prevRatio >= 1f) {
+                                                    scope.launch {
+                                                        delay(350L)
+                                                        val total = currentDisplayEntries.size
+                                                        val lastVisible = listState.layoutInfo
+                                                            .visibleItemsInfo.lastOrNull()?.index ?: -1
+                                                        if (total > 0 && lastVisible >= total - 4) {
+                                                            listState.animateScrollToItem(total - 1)
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            onVoicePlay = { msgId, url, dur -> viewModel.playVoice(msgId, url, dur) },
+                                            onVoicePause = { viewModel.pauseVoice() },
+                                            onVoiceResume = { viewModel.resumeVoice() },
+                                            onVoiceSeek = { viewModel.seekVoice(it) },
+                                            onReactionToggle = { msgId, emoji -> viewModel.toggleReaction(msgId, emoji) },
+                                            onFetchOg = viewModel::ensureOgFetched
+                                        )
+                                    }
+                                }
+                                is ChatEntry.DateDivider -> DateSeparator(date = entry.date)
+                                ChatEntry.UnreadDivider -> UnreadMessagesDivider()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Scroll to bottom button
+        val density = LocalDensity.current
+        val scrollHideThresholdPx = with(density) { 200.dp.toPx() }
+        val rawCanScrollFar by remember(scrollHideThresholdPx) {
+            derivedStateOf {
+                if (!listState.canScrollForward) return@derivedStateOf false
+                val info = listState.layoutInfo
+                val lastVisible = info.visibleItemsInfo.lastOrNull()
+                    ?: return@derivedStateOf false
+                val lastIndex = info.totalItemsCount - 1
+                if (lastVisible.index < lastIndex) return@derivedStateOf true
+                (lastVisible.offset + lastVisible.size) - info.viewportEndOffset > scrollHideThresholdPx
+            }
+        }
+        var showScrollToBottom by remember { mutableStateOf(false) }
+        LaunchedEffect(rawCanScrollFar) {
+            if (rawCanScrollFar) {
+                delay(100)
+                showScrollToBottom = true
+            } else {
+                showScrollToBottom = false
+            }
+        }
+        val unreadBadgeCount = messages.count { !it.isOwn && it.message.id !in myReadMessageIds }
+        if (showScrollToBottom && !isSelectionMode) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = 12.dp)
+            ) {
+                FloatingActionButton(
+                    onClick = {
+                        scope.launch { listState.smoothScrollToItem(displayEntries.size - 1) }
+                    },
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Вниз",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                if (unreadBadgeCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 4.dp, y = (-4).dp)
+                            .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape)
+                            .padding(horizontal = 3.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (unreadBadgeCount > 99) "99+" else unreadBadgeCount.toString(),
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        MiniPlayerOverlay(state = globalVoiceState, player = app.globalVoicePlayer)
+
+        if (loadingOverlayAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = loadingOverlayAlpha }
+                    .then(
+                        if (wallpaper !is ChatWallpaper.None) Modifier
+                        else Modifier.background(MaterialTheme.colorScheme.surface)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                SvoiLoader()
+            }
+        }
+    }
 }
 
 // ── Bottom sheet action row ──────────────────────────────────────────────────
