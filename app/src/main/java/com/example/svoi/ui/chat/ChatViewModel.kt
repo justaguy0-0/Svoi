@@ -63,7 +63,8 @@ data class VoicePlayState(
     val messageId: String,
     val isPlaying: Boolean,
     val positionMs: Int,
-    val durationMs: Int
+    val durationMs: Int,
+    val downloadProgress: Float = -1f
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -380,7 +381,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // ── Voice playback — delegated to GlobalVoicePlayer (survives navigation) ─
     val voicePlayState: StateFlow<VoicePlayState?> = app.globalVoicePlayer.state
-        .map { gs -> gs?.let { VoicePlayState(it.messageId, it.isPlaying, it.positionMs, it.durationMs) } }
+        .map { gs -> gs?.let { VoicePlayState(it.messageId, it.isPlaying, it.positionMs, it.durationMs, it.downloadProgress) } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private fun dismissChatNotification(chatId: String) {

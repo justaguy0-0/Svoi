@@ -6,6 +6,7 @@ import androidx.emoji2.bundled.BundledEmojiCompatConfig
 import androidx.emoji2.text.EmojiCompat
 import coil.Coil
 import coil.ImageLoader
+import com.example.svoi.data.ImageProgressInterceptor
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 import com.example.svoi.data.NetworkMonitor
@@ -48,13 +49,14 @@ class SvoiApp : Application() {
     override fun onCreate() {
         super.onCreate()
         EmojiCompat.init(BundledEmojiCompatConfig(this))
-        // Coil: увеличенный таймаут для загрузки медиафайлов через прокси/медленный интернет
+        // Coil: увеличенный таймаут + перехватчик прогресса загрузки для медленного прокси
         Coil.setImageLoader(
             ImageLoader.Builder(this)
                 .okHttpClient(
                     OkHttpClient.Builder()
                         .connectTimeout(30, TimeUnit.SECONDS)
-                        .readTimeout(60, TimeUnit.SECONDS)
+                        .readTimeout(120, TimeUnit.SECONDS)
+                        .addNetworkInterceptor(ImageProgressInterceptor())
                         .build()
                 )
                 .build()

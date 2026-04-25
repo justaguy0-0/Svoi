@@ -21,7 +21,8 @@ data class GlobalVoiceState(
     val title: String,
     val isPlaying: Boolean,
     val positionMs: Int,
-    val durationMs: Int
+    val durationMs: Int,
+    val downloadProgress: Float = -1f  // 0-1 while downloading, -1 when done/cached
 )
 
 /**
@@ -68,12 +69,21 @@ class GlobalVoicePlayer(private val cacheDir: File) {
         stopInternal()
         val player = MediaPlayer()
         mediaPlayer = player
-        _state.value = GlobalVoiceState(messageId, title, false, 0, durationSec * 1000)
+        val isCached = File(cacheDir, "voice_$messageId.m4a").let { it.exists() && it.length() > 0 }
+        _state.value = GlobalVoiceState(
+            messageId, title, false, 0, durationSec * 1000,
+            downloadProgress = if (isCached) -1f else 0f
+        )
         scope.launch(Dispatchers.IO) {
             try {
-                val localPath = resolveLocalFile(messageId, url)
+                val localPath = resolveLocalFile(messageId, url) { progress ->
+                    if (mediaPlayer === player) {
+                        _state.value = _state.value?.copy(downloadProgress = progress)
+                    }
+                }
                 // Race condition guard: another play() may have released this player already
                 if (mediaPlayer !== player) return@launch
+                _state.value = _state.value?.copy(downloadProgress = -1f)
                 if (localPath != null) {
                     player.setDataSource(localPath)
                 } else {
@@ -125,7 +135,8 @@ class GlobalVoicePlayer(private val cacheDir: File) {
 
     private fun stopInternal() {
         progressJob?.cancel()
-        try { mediaPlayer?.stop(); mediaPlayer?.release() } catch (_: Exception) {}
+        try { mediaPlayer?.stop() } catch (_: Exception) {}
+        try { mediaPlayer?.release() } catch (_: Exception) {}
         mediaPlayer = null
         _state.value = null
     }
@@ -147,7 +158,11 @@ class GlobalVoicePlayer(private val cacheDir: File) {
      * If the file doesn't exist yet, downloads it from [url] and caches it.
      * Returns null if offline and no local copy exists (caller falls back to streaming).
      */
-    private fun resolveLocalFile(messageId: String, url: String): String? {
+    private fun resolveLocalFile(
+        messageId: String,
+        url: String,
+        onProgress: (Float) -> Unit = {}
+    ): String? {
         val file = File(cacheDir, "voice_$messageId.m4a")
         if (file.exists() && file.length() > 0) return file.absolutePath
         return try {
@@ -155,10 +170,24 @@ class GlobalVoicePlayer(private val cacheDir: File) {
             val tmp = File(cacheDir, "voice_${messageId}_tmp.m4a")
             val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 30_000
-                readTimeout = 60_000
+                readTimeout = 120_000
             }
+            conn.connect()
+            val contentLength = conn.contentLength.toLong()
             conn.inputStream.use { input ->
-                tmp.outputStream().use { output -> input.copyTo(output) }
+                tmp.outputStream().use { output ->
+                    val buf = ByteArray(8192)
+                    var totalBytes = 0L
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n == -1) break
+                        output.write(buf, 0, n)
+                        totalBytes += n
+                        if (contentLength > 0L) {
+                            onProgress((totalBytes.toFloat() / contentLength).coerceIn(0f, 1f))
+                        }
+                    }
+                }
             }
             tmp.renameTo(file)
             Log.d("VoiceCache", "downloaded voice_$messageId.m4a (${file.length()} bytes)")

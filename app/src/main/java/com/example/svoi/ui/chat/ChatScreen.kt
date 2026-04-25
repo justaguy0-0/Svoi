@@ -112,6 +112,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import com.example.svoi.data.ImageDownloadProgress
 import com.example.svoi.ui.components.SvoiLoader
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -2435,12 +2437,24 @@ private fun PhotoGrid(
                     onLongClick = onLongClick
                 )
         ) {
-            AsyncImage(
+            SubcomposeAsyncImage(
                 model = model,
                 contentDescription = "Фото",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
-            )
+            ) {
+                when (painter.state) {
+                    is AsyncImagePainter.State.Loading -> Box(
+                        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                        Alignment.Center
+                    ) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
+                    is AsyncImagePainter.State.Error -> Box(
+                        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                        Alignment.Center
+                    ) { Icon(Icons.Default.BrokenImage, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.5f), modifier = Modifier.size(24.dp)) }
+                    else -> SubcomposeAsyncImageContent()
+                }
+            }
             if (isPending) {
                 Box(
                     modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)),
@@ -2489,6 +2503,8 @@ private fun PhotoGrid(
             var imageRatio by remember(url) { mutableStateOf(imageRatioCache[url]) }
             var loadError by remember(url) { mutableStateOf(false) }
             val clampedRatio = imageRatio?.coerceIn(0.5f, 2.0f)
+            val dlProgress by remember(url) { ImageDownloadProgress.flowFor(url) }.collectAsState()
+            DisposableEffect(url) { onDispose { ImageDownloadProgress.release(url) } }
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -2518,12 +2534,33 @@ private fun PhotoGrid(
                     onError = { loadError = true }
                 )
                 if (imageRatio == null && !loadError) {
+                    val indicatorColor = if (isOwn) Color.White.copy(0.7f) else MaterialTheme.colorScheme.primary
                     Box(Modifier.fillMaxSize(), Alignment.Center) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(28.dp),
-                            strokeWidth = 2.dp,
-                            color = if (isOwn) Color.White.copy(0.7f) else MaterialTheme.colorScheme.primary
-                        )
+                        if (dlProgress > 0f) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            ) {
+                                LinearProgressIndicator(
+                                    progress = { dlProgress },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = indicatorColor,
+                                    trackColor = indicatorColor.copy(alpha = 0.3f)
+                                )
+                                Text(
+                                    text = "${(dlProgress * 100).toInt()}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = indicatorColor
+                                )
+                            }
+                        } else {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(28.dp),
+                                strokeWidth = 2.dp,
+                                color = indicatorColor
+                            )
+                        }
                     }
                 }
                 if (loadError) {
@@ -3613,6 +3650,8 @@ private fun VoiceMessageBubble(
     val durationMs = if (isThisActive && voicePlayState!!.durationMs > 0) voicePlayState.durationMs
                      else (durationSec * 1000).coerceAtLeast(1000)
     val progress = (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+    val downloadProgress = if (isThisActive) voicePlayState!!.downloadProgress else -1f
+    val isDownloading = isThisActive && downloadProgress >= 0f
 
     val activeColor = if (isOwn) Color.White else MaterialTheme.colorScheme.primary
     val inactiveColor = if (isOwn) Color.White.copy(0.35f) else MaterialTheme.colorScheme.onSurface.copy(0.2f)
@@ -3670,23 +3709,38 @@ private fun VoiceMessageBubble(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            VoiceWaveform(
-                waveformData = waveformData,
-                messageId = messageId,
-                progress = progress,
-                activeColor = activeColor,
-                inactiveColor = inactiveColor,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(28.dp),
-                onSeek = { fraction -> onSeek((fraction * durationMs).toInt()) }
-            )
-            Text(
-                text = timeStr,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isOwn) Color.White.copy(0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp)
-            )
+            if (isDownloading) {
+                LinearProgressIndicator(
+                    progress = { downloadProgress },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    color = activeColor,
+                    trackColor = inactiveColor
+                )
+                Text(
+                    text = "${(downloadProgress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isOwn) Color.White.copy(0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            } else {
+                VoiceWaveform(
+                    waveformData = waveformData,
+                    messageId = messageId,
+                    progress = progress,
+                    activeColor = activeColor,
+                    inactiveColor = inactiveColor,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(28.dp),
+                    onSeek = { fraction -> onSeek((fraction * durationMs).toInt()) }
+                )
+                Text(
+                    text = timeStr,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isOwn) Color.White.copy(0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
         }
     }
 }
@@ -3848,32 +3902,59 @@ private fun ImageLightbox(
                 val url = state.urls[page]
                 val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
                     Uri.parse(url) else url
+                val dlProgress by remember(url) { ImageDownloadProgress.flowFor(url) }.collectAsState()
+                DisposableEffect(url) { onDispose { ImageDownloadProgress.release(url) } }
                 SubcomposeAsyncImage(
                     model = model,
                     contentDescription = "Изображение",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
-                    loading = {
-                        Box(
+                ) {
+                    when (painter.state) {
+                        is AsyncImagePainter.State.Loading -> Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(48.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
+                            if (dlProgress > 0f) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.padding(horizontal = 48.dp)
+                                ) {
+                                    LinearProgressIndicator(
+                                        progress = { dlProgress },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = Color.White,
+                                        trackColor = Color.White.copy(alpha = 0.3f)
+                                    )
+                                    Text(
+                                        text = "${(dlProgress * 100).toInt()}%",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            } else {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(48.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                        }
+                        is AsyncImagePainter.State.Error -> Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.BrokenImage,
+                                contentDescription = null,
+                                tint = Color.White.copy(0.5f),
+                                modifier = Modifier.size(48.dp)
                             )
                         }
-                    },
-                    error = {
-                        Icon(
-                            Icons.Default.BrokenImage,
-                            contentDescription = null,
-                            tint = Color.White.copy(0.5f),
-                            modifier = Modifier.align(Alignment.Center).size(48.dp)
-                        )
+                        else -> SubcomposeAsyncImageContent()
                     }
-                )
+                }
             }
 
             // Page indicator (only for albums)
