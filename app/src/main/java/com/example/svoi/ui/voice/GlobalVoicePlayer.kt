@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.io.IOException
 
 data class GlobalVoiceState(
     val messageId: String,
@@ -74,35 +75,51 @@ class GlobalVoicePlayer(private val cacheDir: File) {
             messageId, title, false, 0, durationSec * 1000,
             downloadProgress = if (isCached) -1f else 0f
         )
+        Log.d("VoicePlayer", "play: start messageId=$messageId isCached=$isCached url=${url.takeLast(60)}")
         scope.launch(Dispatchers.IO) {
             try {
+                var lastLoggedPct = -1
                 val localPath = resolveLocalFile(messageId, url) { progress ->
                     if (mediaPlayer === player) {
                         _state.value = _state.value?.copy(downloadProgress = progress)
+                        val pct = (progress * 100).toInt()
+                        if (pct / 10 > lastLoggedPct / 10) {
+                            lastLoggedPct = pct
+                            Log.d("VoicePlayer", "download progress: $pct% for $messageId")
+                        }
                     }
                 }
                 // Race condition guard: another play() may have released this player already
-                if (mediaPlayer !== player) return@launch
+                if (mediaPlayer !== player) {
+                    Log.d("VoicePlayer", "play: player replaced, aborting for $messageId")
+                    return@launch
+                }
                 _state.value = _state.value?.copy(downloadProgress = -1f)
                 if (localPath != null) {
+                    Log.d("VoicePlayer", "play: setDataSource LOCAL $localPath")
                     player.setDataSource(localPath)
                 } else {
+                    Log.d("VoicePlayer", "play: setDataSource STREAM ${url.takeLast(60)}")
                     player.setDataSource(url)
                 }
+                Log.d("VoicePlayer", "play: calling prepare() for $messageId")
                 player.prepare()
                 val dur = player.duration.takeIf { it > 0 } ?: (durationSec * 1000)
+                Log.d("VoicePlayer", "play: prepared OK, duration=${dur}ms for $messageId")
                 withContext(Dispatchers.Main) {
                     _state.value = GlobalVoiceState(messageId, title, true, 0, dur)
                     player.start()
                     startProgressUpdates()
                     player.setOnCompletionListener {
                         val finishedId = _state.value?.messageId
+                        Log.d("VoicePlayer", "play: completed $finishedId")
                         stopInternal()
                         if (finishedId != null) onCompletion?.invoke(finishedId)
                     }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                Log.e("VoicePlayer", "play: error for $messageId — ${e::class.simpleName}: ${e.message}")
                 withContext(Dispatchers.Main) {
                     _state.value = null
                     mediaPlayer = null
@@ -135,7 +152,6 @@ class GlobalVoicePlayer(private val cacheDir: File) {
 
     private fun stopInternal() {
         progressJob?.cancel()
-        try { mediaPlayer?.stop() } catch (_: Exception) {}
         try { mediaPlayer?.release() } catch (_: Exception) {}
         mediaPlayer = null
         _state.value = null
@@ -170,10 +186,14 @@ class GlobalVoicePlayer(private val cacheDir: File) {
             val tmp = File(cacheDir, "voice_${messageId}_tmp.m4a")
             val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 30_000
-                readTimeout = 120_000
+                // Per-read timeout: 30s without any data → stall detection
+                readTimeout = 30_000
             }
+            Log.d("VoiceCache", "download: connecting for $messageId url=${url.takeLast(60)}")
             conn.connect()
             val contentLength = conn.contentLength.toLong()
+            Log.d("VoiceCache", "download: connected, contentLength=${contentLength}B for $messageId")
+            val downloadStart = System.currentTimeMillis()
             conn.inputStream.use { input ->
                 tmp.outputStream().use { output ->
                     val buf = ByteArray(8192)
@@ -186,15 +206,21 @@ class GlobalVoicePlayer(private val cacheDir: File) {
                         if (contentLength > 0L) {
                             onProgress((totalBytes.toFloat() / contentLength).coerceIn(0f, 1f))
                         }
+                        val elapsed = System.currentTimeMillis() - downloadStart
+                        if (elapsed > 180_000L) {
+                            Log.w("VoiceCache", "download: total timeout (${elapsed}ms) for $messageId after ${totalBytes}B")
+                            throw IOException("voice download total timeout after ${elapsed}ms")
+                        }
                     }
                 }
             }
+            val elapsed = System.currentTimeMillis() - downloadStart
             tmp.renameTo(file)
-            Log.d("VoiceCache", "downloaded voice_$messageId.m4a (${file.length()} bytes)")
+            Log.d("VoiceCache", "download: done voice_$messageId.m4a (${file.length()}B) in ${elapsed}ms")
             _cachedVoiceIds.value = _cachedVoiceIds.value + messageId
             file.absolutePath
         } catch (e: Exception) {
-            Log.w("VoiceCache", "download failed for $messageId, will stream: ${e.message}")
+            Log.w("VoiceCache", "download failed for $messageId, will stream: ${e::class.simpleName}: ${e.message}")
             null  // no local copy — caller uses URL as fallback
         }
     }

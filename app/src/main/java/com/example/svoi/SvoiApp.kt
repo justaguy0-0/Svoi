@@ -7,6 +7,7 @@ import androidx.emoji2.text.EmojiCompat
 import coil.Coil
 import coil.ImageLoader
 import com.example.svoi.data.ImageProgressInterceptor
+import com.example.svoi.data.RetryInterceptor
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 import com.example.svoi.data.NetworkMonitor
@@ -56,6 +57,7 @@ class SvoiApp : Application() {
                     OkHttpClient.Builder()
                         .connectTimeout(30, TimeUnit.SECONDS)
                         .readTimeout(120, TimeUnit.SECONDS)
+                        .addInterceptor(RetryInterceptor(maxRetries = 2))
                         .addNetworkInterceptor(ImageProgressInterceptor())
                         .build()
                 )
