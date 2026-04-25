@@ -1,0 +1,12 @@
+HSPLcom/example/svoi/ui/chat/ChatScreenKt;
+HSPLcom/example/svoi/ui/chat/ChatViewModel;
+HSPLcom/example/svoi/ui/chatlist/ChatListScreenKt;
+HSPLcom/example/svoi/ui/chatlist/ChatListViewModel;
+HSPLcom/example/svoi/ui/voice/GlobalVoicePlayer;
+HSPLcom/example/svoi/data/repository/MessageRepository;
+HSPLcom/example/svoi/data/repository/ChatRepository;
+HSPLcom/example/svoi/data/model/MessageUiItem;
+HSPLcom/example/svoi/data/model/Message;
+HSPLcom/example/svoi/SvoiApp;
+HSPLcom/example/svoi/MainActivity;
+HSPLcom/example/svoi/navigation/NavGraphKt;

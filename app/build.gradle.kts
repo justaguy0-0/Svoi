@@ -132,6 +132,9 @@ dependencies {
     // Lottie animations
     implementation(libs.lottie.compose)
 
+    // Baseline Profile installer (AOT compilation hints for Release builds)
+    implementation(libs.androidx.profileinstaller)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

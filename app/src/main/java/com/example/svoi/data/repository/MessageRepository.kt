@@ -18,6 +18,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import io.github.jan.supabase.storage.storage
@@ -43,6 +44,9 @@ private data class MessageReadInsert(
     @SerialName("message_id") val messageId: String,
     @SerialName("user_id") val userId: String
 )
+
+@Serializable
+private data class MessageId(val id: String)
 
 @Serializable
 private data class TextMessageInsert(
@@ -521,21 +525,21 @@ class MessageRepository(private val supabase: SupabaseClient) {
             return
         }
         try {
-            val messages = supabase.from("messages")
-                .select {
+            val messageIds = supabase.from("messages")
+                .select(columns = Columns.list("id")) {
                     filter {
                         eq("chat_id", chatId)
                         neq("sender_id", userId)
                         eq("deleted_for_all", false)
                     }
                 }
-                .decodeList<Message>()
+                .decodeList<MessageId>()
 
-            Log.d("ReadReceipts", "markMessagesAsRead: chatId=$chatId, found ${messages.size} messages to mark, userId=$userId")
-            if (messages.isEmpty()) return
+            Log.d("ReadReceipts", "markMessagesAsRead: chatId=$chatId, found ${messageIds.size} messages to mark")
+            if (messageIds.isEmpty()) return
 
-            val reads = messages.map { MessageReadInsert(messageId = it.id, userId = userId) }
-            supabase.from("message_reads").upsert(reads)
+            val reads = messageIds.map { MessageReadInsert(messageId = it.id, userId = userId) }
+            supabase.from("message_reads").upsert(reads) { ignoreDuplicates = true }
             Log.d("ReadReceipts", "markMessagesAsRead: upsert SUCCESS for ${reads.size} rows")
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e  // never swallow CancellationException
@@ -553,7 +557,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     filter { isIn("message_id", messageIds) }
                 }
                 .decodeList<MessageRead>()
-            Log.d("ReadReceipts", "getReadMessageIds(${messageIds.size} ids) → ${rows.size} rows: $rows")
+            Log.d("ReadReceipts", "getReadMessageIds(${messageIds.size} ids) → ${rows.size} rows")
             rows.map { it.messageId }.toSet()
         } catch (e: Exception) {
             Log.e("ReadReceipts", "getReadMessageIds FAILED: ${e.message}", e)
