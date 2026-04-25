@@ -926,7 +926,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Server-side only: sends read receipts without updating the badge counter */
     private fun sendReadReceipts() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             withContext(NonCancellable) {
                 messageRepo.markMessagesAsRead(chatId)
             }

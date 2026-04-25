@@ -1178,7 +1178,8 @@ fun ChatScreen(
                                                     activeVideoUrl = activeVideoUrl,
                                                     exoPlayer = exoPlayer,
                                                     isMuted = isVideoMuted,
-                                                    videoAspectRatios = videoAspectRatios,
+                                                    videoAspectRatio = entry.item.message.fileUrl
+                                                        ?.let { videoAspectRatios[it] } ?: (16f / 9f),
                                                     onLongClick = {
                                                         viewModel.toggleSelection(entry.item.message.id)
                                                     },
@@ -1250,7 +1251,9 @@ fun ChatScreen(
                                                     onVoiceResume = { viewModel.resumeVoice() },
                                                     onVoiceSeek = { viewModel.seekVoice(it) },
                                                     onReactionToggle = { msgId, emoji -> viewModel.toggleReaction(msgId, emoji) },
-                                                    ogCache = viewModel.ogCache,
+                                                    ogData = entry.item.message.content
+                                                        ?.let { URL_REGEX.find(it)?.value }
+                                                        ?.let { viewModel.ogCache[it] },
                                                     onFetchOg = viewModel::ensureOgFetched
                                                 )
                                             }
@@ -2793,7 +2796,7 @@ private fun MessageItem(
     activeVideoUrl: String? = null,
     exoPlayer: ExoPlayer? = null,
     isMuted: Boolean = true,
-    videoAspectRatios: Map<String, Float> = emptyMap(),
+    videoAspectRatio: Float = 16f / 9f,
     onLongClick: () -> Unit,
     onTap: () -> Unit = {},
     onReply: () -> Unit = {},
@@ -2811,7 +2814,7 @@ private fun MessageItem(
     onVoiceResume: () -> Unit = {},
     onVoiceSeek: (Int) -> Unit = {},
     onReactionToggle: (messageId: String, emoji: String) -> Unit = { _, _ -> },
-    ogCache: Map<String, OgData> = emptyMap(),
+    ogData: OgData? = null,
     onFetchOg: (String) -> Unit = {}
 ) {
     val msg = item.message
@@ -3171,7 +3174,7 @@ private fun MessageItem(
                                             isActive = activeVideoUrl == msg.fileUrl,
                                             exoPlayer = exoPlayer,
                                             isMuted = isMuted,
-                                            aspectRatio = videoAspectRatios[msg.fileUrl] ?: (16f / 9f),
+                                            aspectRatio = videoAspectRatio,
                                             onTap = { onVideoTap(msg.fileUrl) },
                                             onMuteToggle = onVideoMuteToggle,
                                             onVideoSizeDetected = { ratio -> onVideoSizeDetected(msg.fileUrl, ratio) }
@@ -3324,7 +3327,6 @@ private fun MessageItem(
                                 LaunchedEffect(firstUrl) {
                                     firstUrl?.let { onFetchOg(it) }
                                 }
-                                val ogData = firstUrl?.let { ogCache[it] }
                                 if (ogData != null) {
                                     OgPreviewCard(
                                         ogData = ogData,
