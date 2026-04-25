@@ -1168,18 +1168,34 @@ fun ChatScreen(
                                                 )
                                             } else {
                                                 MessageItem(
-                                                    item = entry.item,
-                                                    isGroup = isGroup,
-                                                    isHighlighted = entry.item.message.id == highlightedMessageId,
-                                                    isSelected = entry.item.message.id in selectedMessageIds,
-                                                    isSelectionMode = isSelectionMode,
-                                                    uploadProgresses = if (entry.item.isPending) uploadProgresses else emptyList(),
+                                                    state = MessageItemState(
+                                                        item = entry.item,
+                                                        isGroup = isGroup,
+                                                        isHighlighted = entry.item.message.id == highlightedMessageId,
+                                                        isSelected = entry.item.message.id in selectedMessageIds,
+                                                        isSelectionMode = isSelectionMode,
+                                                        uploadProgresses = if (entry.item.isPending) uploadProgresses else emptyList(),
+                                                        activeVideoUrl = activeVideoUrl,
+                                                        isMuted = isVideoMuted,
+                                                        videoAspectRatio = entry.item.message.fileUrl
+                                                            ?.let { videoAspectRatios[it] } ?: (16f / 9f),
+                                                        imageRatio = entry.item.message.let { m ->
+                                                            val u = when {
+                                                                entry.item.isPending || entry.item.isFailed -> entry.item.pendingLocalUris.firstOrNull()
+                                                                m.type == "album" -> m.photoUrls?.firstOrNull()
+                                                                m.fileUrl != null -> m.fileUrl
+                                                                else -> null
+                                                            }
+                                                            u?.let { imageRatioCache[it] }
+                                                        },
+                                                        voicePlayState = voicePlayState,
+                                                        cachedVoiceIds = cachedVoiceIds,
+                                                        ogData = entry.item.message.content
+                                                            ?.let { URL_REGEX.find(it)?.value }
+                                                            ?.let { viewModel.ogCache[it] },
+                                                    ),
                                                     modifier = Modifier,
-                                                    activeVideoUrl = activeVideoUrl,
                                                     exoPlayer = exoPlayer,
-                                                    isMuted = isVideoMuted,
-                                                    videoAspectRatio = entry.item.message.fileUrl
-                                                        ?.let { videoAspectRatios[it] } ?: (16f / 9f),
                                                     onLongClick = {
                                                         viewModel.toggleSelection(entry.item.message.id)
                                                     },
@@ -1224,7 +1240,6 @@ fun ChatScreen(
                                                             if (last >= 0) listState.animateScrollToItem(last)
                                                         }
                                                     },
-                                                    imageRatioCache = imageRatioCache,
                                                     onVideoSizeDetected = { url, ratio ->
                                                         val prevRatio = videoAspectRatios[url] ?: (16f / 9f)
                                                         videoAspectRatios[url] = ratio
@@ -1244,16 +1259,11 @@ fun ChatScreen(
                                                             }
                                                         }
                                                     },
-                                                    voicePlayState = voicePlayState,
-                                                    cachedVoiceIds = cachedVoiceIds,
                                                     onVoicePlay = { msgId, url, dur -> viewModel.playVoice(msgId, url, dur) },
                                                     onVoicePause = { viewModel.pauseVoice() },
                                                     onVoiceResume = { viewModel.resumeVoice() },
                                                     onVoiceSeek = { viewModel.seekVoice(it) },
                                                     onReactionToggle = { msgId, emoji -> viewModel.toggleReaction(msgId, emoji) },
-                                                    ogData = entry.item.message.content
-                                                        ?.let { URL_REGEX.find(it)?.value }
-                                                        ?.let { viewModel.ogCache[it] },
                                                     onFetchOg = viewModel::ensureOgFetched
                                                 )
                                             }
@@ -2413,7 +2423,7 @@ private fun PhotoGrid(
     onTap: () -> Unit,
     onLongClick: () -> Unit,
     onImageRatioLoaded: (url: String, ratio: Float) -> Unit = { _, _ -> },
-    imageRatioCache: Map<String, Float> = emptyMap()
+    cachedImageRatio: Float? = null
 ) {
     val count = urls.size
     val maxVisible = 4
@@ -2503,7 +2513,7 @@ private fun PhotoGrid(
             val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
                 Uri.parse(url) else url
             val progress = uploadProgresses.getOrNull(0)
-            var imageRatio by remember(url) { mutableStateOf(imageRatioCache[url]) }
+            var imageRatio by remember(url) { mutableStateOf(cachedImageRatio) }
             var loadError by remember(url) { mutableStateOf(false) }
             val clampedRatio = imageRatio?.coerceIn(0.5f, 2.0f)
             val dlProgress by remember(url) { ImageDownloadProgress.flowFor(url) }.collectAsState()
@@ -2786,17 +2796,9 @@ private fun UnreadMessagesDivider() {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageItem(
-    item: MessageUiItem,
-    isGroup: Boolean,
-    isHighlighted: Boolean,
-    isSelected: Boolean = false,
-    isSelectionMode: Boolean = false,
-    uploadProgresses: List<Float> = emptyList(),
+    state: MessageItemState,
     modifier: Modifier = Modifier,
-    activeVideoUrl: String? = null,
     exoPlayer: ExoPlayer? = null,
-    isMuted: Boolean = true,
-    videoAspectRatio: Float = 16f / 9f,
     onLongClick: () -> Unit,
     onTap: () -> Unit = {},
     onReply: () -> Unit = {},
@@ -2806,17 +2808,25 @@ private fun MessageItem(
     onVideoMuteToggle: () -> Unit = {},
     onVideoSizeDetected: (url: String, ratio: Float) -> Unit = { _, _ -> },
     onImageRatioLoaded: (url: String, ratio: Float) -> Unit = { _, _ -> },
-    imageRatioCache: Map<String, Float> = emptyMap(),
-    voicePlayState: VoicePlayState? = null,
-    cachedVoiceIds: Set<String> = emptySet(),
     onVoicePlay: (msgId: String, url: String, durationSec: Int) -> Unit = { _, _, _ -> },
     onVoicePause: () -> Unit = {},
     onVoiceResume: () -> Unit = {},
     onVoiceSeek: (Int) -> Unit = {},
     onReactionToggle: (messageId: String, emoji: String) -> Unit = { _, _ -> },
-    ogData: OgData? = null,
     onFetchOg: (String) -> Unit = {}
 ) {
+    val item = state.item
+    val isGroup = state.isGroup
+    val isHighlighted = state.isHighlighted
+    val isSelected = state.isSelected
+    val isSelectionMode = state.isSelectionMode
+    val uploadProgresses = state.uploadProgresses
+    val activeVideoUrl = state.activeVideoUrl
+    val isMuted = state.isMuted
+    val videoAspectRatio = state.videoAspectRatio
+    val voicePlayState = state.voicePlayState
+    val cachedVoiceIds = state.cachedVoiceIds
+    val ogData = state.ogData
     val msg = item.message
     if (msg.deletedForAll) {
         Text(
@@ -3149,7 +3159,7 @@ private fun MessageItem(
                                         onTap = onTap,
                                         onLongClick = onLongClick,
                                         onImageRatioLoaded = onImageRatioLoaded,
-                                        imageRatioCache = imageRatioCache
+                                        cachedImageRatio = state.imageRatio
                                     )
                                     // Caption text (if present)
                                     if (!msg.content.isNullOrBlank()) {

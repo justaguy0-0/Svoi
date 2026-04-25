@@ -18,6 +18,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -431,16 +432,8 @@ private fun VictoryDayBanner(onDismiss: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ChatListItem(
-    item: ChatListItem,
-    typingText: String?,
-    draftText: String? = null,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit
-) {
-    // Online dot pulse animation
+private fun BoxScope.OnlineDot() {
     val infiniteTransition = rememberInfiniteTransition(label = "online_pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -451,7 +444,25 @@ private fun ChatListItem(
         ),
         label = "pulse"
     )
+    Box(
+        modifier = Modifier
+            .size(14.dp)
+            .scale(pulseScale)
+            .align(Alignment.BottomEnd)
+            .background(OnlineGreen, CircleShape)
+            .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+    )
+}
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ChatListItem(
+    item: ChatListItem,
+    typingText: String?,
+    draftText: String? = null,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -470,14 +481,7 @@ private fun ChatListItem(
                 fontSize = 24.sp
             )
             if (!item.isGroup && item.isOtherOnline) {
-                Box(
-                    modifier = Modifier
-                        .size(14.dp)
-                        .scale(pulseScale)
-                        .align(Alignment.BottomEnd)
-                        .background(OnlineGreen, CircleShape)
-                        .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                )
+                OnlineDot()
             }
         }
 
