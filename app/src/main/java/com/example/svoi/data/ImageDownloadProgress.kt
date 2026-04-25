@@ -27,7 +27,31 @@ object ImageDownloadProgress {
     }
 }
 
-/** Application-level interceptor: retries failed requests up to [maxRetries] times. */
+/**
+ * Application-level interceptor: forces proxy/CDN to revalidate instead of returning
+ * a 304 with no body. The nginx proxy at api.svoilink.ru caches files and sometimes
+ * returns 304 without a prior conditional GET from the client, which OkHttp cannot
+ * handle (no cached body to serve). Cache-Control: no-cache tells the proxy to always
+ * return the full response.
+ */
+class NoCacheInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request().newBuilder()
+            .header("Cache-Control", "no-cache")
+            .header("Pragma", "no-cache")
+            .build()
+        return chain.proceed(request)
+    }
+}
+
+/**
+ * Application-level interceptor: retries failed requests up to [maxRetries] times.
+ * Does NOT retry:
+ *  - 304 Not Modified (valid cache response — OkHttp handles it)
+ *  - 4xx client errors (retrying won't help)
+ *  - IOException with message "Canceled" (Coil intentionally cancelled the request)
+ * Only retries: 5xx server errors and genuine network IOExceptions (timeouts, resets).
+ */
 class RetryInterceptor(private val maxRetries: Int = 2) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -36,14 +60,19 @@ class RetryInterceptor(private val maxRetries: Int = 2) : Interceptor {
         while (attempt <= maxRetries) {
             try {
                 val response = chain.proceed(request)
-                if (response.isSuccessful || attempt == maxRetries) return response
-                Log.w("RetryInterceptor", "attempt $attempt: HTTP ${response.code} for ${request.url.toString().takeLast(60)}, retrying")
+                val code = response.code
+                // 2xx/3xx = success/redirect/cache — return as-is
+                // 4xx = client error — no point retrying
+                if (code < 500 || attempt == maxRetries) return response
+                Log.w("RetryInterceptor", "attempt $attempt: HTTP $code for ${request.url.toString().takeLast(60)}, retrying")
                 response.close()
             } catch (e: Exception) {
+                // "Canceled" = Coil cancelled intentionally (composable left composition) — don't retry
+                if (e.message == "Canceled") throw e
                 lastException = e
                 Log.w("RetryInterceptor", "attempt $attempt: ${e::class.simpleName}: ${e.message} for ${request.url.toString().takeLast(60)}")
                 if (attempt == maxRetries) throw e
-                Thread.sleep(1500L * (attempt + 1))
+                Thread.sleep(1500L)
             }
             attempt++
         }
