@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.HttpURLConnection
 import java.net.URL
 
 data class GlobalVoiceState(
@@ -71,6 +72,8 @@ class GlobalVoicePlayer(private val cacheDir: File) {
         scope.launch(Dispatchers.IO) {
             try {
                 val localPath = resolveLocalFile(messageId, url)
+                // Race condition guard: another play() may have released this player already
+                if (mediaPlayer !== player) return@launch
                 if (localPath != null) {
                     player.setDataSource(localPath)
                 } else {
@@ -150,7 +153,11 @@ class GlobalVoicePlayer(private val cacheDir: File) {
         return try {
             cacheDir.mkdirs()
             val tmp = File(cacheDir, "voice_${messageId}_tmp.m4a")
-            URL(url).openStream().use { input ->
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 30_000
+                readTimeout = 60_000
+            }
+            conn.inputStream.use { input ->
                 tmp.outputStream().use { output -> input.copyTo(output) }
             }
             tmp.renameTo(file)

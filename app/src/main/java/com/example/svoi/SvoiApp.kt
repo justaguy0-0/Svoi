@@ -4,6 +4,10 @@ import android.app.Application
 import android.util.Log
 import androidx.emoji2.bundled.BundledEmojiCompatConfig
 import androidx.emoji2.text.EmojiCompat
+import coil.Coil
+import coil.ImageLoader
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import com.example.svoi.data.NetworkMonitor
 import com.example.svoi.data.SupabaseReachabilityChecker
 import com.example.svoi.data.local.CacheManager
@@ -44,6 +48,17 @@ class SvoiApp : Application() {
     override fun onCreate() {
         super.onCreate()
         EmojiCompat.init(BundledEmojiCompatConfig(this))
+        // Coil: увеличенный таймаут для загрузки медиафайлов через прокси/медленный интернет
+        Coil.setImageLoader(
+            ImageLoader.Builder(this)
+                .okHttpClient(
+                    OkHttpClient.Builder()
+                        .connectTimeout(30, TimeUnit.SECONDS)
+                        .readTimeout(60, TimeUnit.SECONDS)
+                        .build()
+                )
+                .build()
+        )
         // Persist token refreshes: the Supabase SDK auto-refreshes the access/refresh token
         // internally. Without this, prefs always stores the original login tokens. After the
         // first SDK refresh cycle, the old refresh token is invalidated (token rotation), and
