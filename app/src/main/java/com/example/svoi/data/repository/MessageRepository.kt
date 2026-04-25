@@ -9,6 +9,7 @@ import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.TypingStatus
 import com.example.svoi.data.model.MessageReaction
 import com.example.svoi.data.model.VoiceListen
+import com.example.svoi.BuildConfig
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
@@ -749,7 +750,9 @@ class MessageRepository(private val supabase: SupabaseClient) {
                 val path = "$chatId/${java.util.UUID.randomUUID()}/$fileName"
                 supabase.storage.from("chat-media").upload(path, bytes)
                 onProgress?.invoke(1f)
-                supabase.storage.from("chat-media").publicUrl(path)
+                // Use direct Supabase URL (not proxy) so Coil/ExoPlayer can download media.
+                // The proxy only forwards /rest/v1/, not /storage/v1/.
+                "${BuildConfig.SUPABASE_STORAGE_URL}/storage/v1/object/public/chat-media/$path"
             }
         } catch (_: Exception) { null }
     }

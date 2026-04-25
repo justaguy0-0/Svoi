@@ -30,6 +30,9 @@ android {
 
         buildConfigField("String", "SUPABASE_URL", "\"${localProperties.getProperty("SUPABASE_URL", "")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localProperties.getProperty("SUPABASE_ANON_KEY", "")}\"")
+        // Direct Supabase URL for Storage (bypasses nginx proxy which only handles REST/Auth/Realtime).
+        // Falls back to SUPABASE_URL if not set (when no proxy is used).
+        buildConfigField("String", "SUPABASE_STORAGE_URL", "\"${localProperties.getProperty("SUPABASE_STORAGE_URL", localProperties.getProperty("SUPABASE_URL", ""))}\"")
     }
 
     signingConfigs {
