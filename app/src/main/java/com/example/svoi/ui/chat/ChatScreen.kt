@@ -329,12 +329,6 @@ fun ChatScreen(
     }
 
     var inputValue by remember { mutableStateOf(TextFieldValue("")) }
-    var showEmojiPicker by remember { mutableStateOf(false) }
-    var isTextFieldFocused by remember { mutableStateOf(false) }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    // Закрываем эмодзи-панель как только система показывает свою клавиатуру
-    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    LaunchedEffect(imeVisible) { if (imeVisible) showEmojiPicker = false }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -423,16 +417,6 @@ fun ChatScreen(
         }
     }
 
-    // Microphone permission
-    var micPermissionGranted by remember {
-        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
-    }
-    val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        micPermissionGranted = granted
-    }
-    // Voice recording drag state
-    var voiceDragOffsetX by remember { mutableFloatStateOf(0f) }
-    var voiceDragOffsetY by remember { mutableFloatStateOf(0f) }
 
     // Bottom sheet state
     var selectedMessage by remember { mutableStateOf<MessageUiItem?>(null) }
@@ -788,25 +772,6 @@ fun ChatScreen(
         editingMessage?.let { inputValue = TextFieldValue(it.content ?: "") }
     }
 
-    val cropBarColor = MaterialTheme.colorScheme.surfaceContainer.toArgb()
-    val cropOnBarColor = MaterialTheme.colorScheme.onSurface.toArgb()
-    val cropBgColor = MaterialTheme.colorScheme.surfaceContainerLow.toArgb()
-    val cropAccentColor = MaterialTheme.colorScheme.primary.toArgb()
-    var cropEditIndex by remember { mutableStateOf(-1) }
-    val cropEditLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
-        if (result.isSuccessful) {
-            result.uriContent?.let { uri ->
-                viewModel.replaceStagedMedia(cropEditIndex, uri, context)
-            }
-        }
-        cropEditIndex = -1
-    }
-
-    val mediaPicker = rememberLauncherForActivityResult(GetMultipleMedia()) { uris ->
-        if (uris.isNotEmpty()) viewModel.addStagedMedia(uris, context)
-    }
-
-
     val presenceText = remember(presence) {
         val p = presence
         when {
@@ -1135,541 +1100,19 @@ fun ChatScreen(
                     )
                 }
             } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .navigationBarsPadding()
-                ) {
-                    // Thin separator above input bar
-                    HorizontalDivider(
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                    )
-                    // Staged media preview
-                    AnimatedVisibility(
-                        visible = stagedMedia.isNotEmpty(),
-                        enter = slideInVertically { it } + fadeIn(tween(180)),
-                        exit  = slideOutVertically { it } + fadeOut(tween(140))
-                    ) {
-                        StagedMediaRow(
-                            items = stagedMedia,
-                            onRemove = { viewModel.removeStagedMedia(it) },
-                            onEdit = { idx ->
-                                val uri = stagedMedia.getOrNull(idx)?.uri ?: return@StagedMediaRow
-                                cropEditIndex = idx
-                                cropEditLauncher.launch(
-                                    CropImageContractOptions(
-                                        uri = uri,
-                                        cropImageOptions = CropImageOptions(
-                                            toolbarColor = cropBarColor,
-                                            toolbarTitleColor = cropOnBarColor,
-                                            toolbarBackButtonColor = cropOnBarColor,
-                                            activityMenuIconColor = cropOnBarColor,
-                                            activityMenuTextColor = cropOnBarColor,
-                                            activityBackgroundColor = cropBgColor,
-                                            borderCornerColor = cropAccentColor,
-                                            outputCompressQuality = 95
-                                        )
-                                    )
-                                )
-                            }
-                        )
-                    }
-
-
-                    // Emoji picker panel
-                    AnimatedVisibility(
-                        visible = showEmojiPicker,
-                        enter = slideInVertically { it },
-                        exit = slideOutVertically { it }
-                    ) {
-                        EmojiPicker(
-                            onEmojiSelected = { emoji ->
-                                val sel = inputValue.selection
-                                val text = inputValue.text
-                                val newText = text.substring(0, sel.start) + emoji + text.substring(sel.end)
-                                val newCursor = sel.start + emoji.length
-                                inputValue = TextFieldValue(newText, TextRange(newCursor))
-                                viewModel.onInputTextChanged(newText)
-                            }
-                        )
-                    }
-
-                    // @Mention suggestions panel
-                    if (isGroup && mentionSuggestions.isNotEmpty()) {
-                        MentionSuggestionsPanel(
-                            suggestions = mentionSuggestions,
-                            onSelect = { profile ->
-                                // Find the active @query start position and replace it
-                                val text = inputValue.text
-                                val cursor = inputValue.selection.start
-                                val beforeCursor = text.substring(0, cursor)
-                                val lastAtIdx = beforeCursor.lastIndexOf('@')
-                                if (lastAtIdx >= 0) {
-                                    val name = profile.displayName ?: return@MentionSuggestionsPanel
-                                    val afterCursor = text.substring(cursor)
-                                    val newText = text.substring(0, lastAtIdx) + "@$name " + afterCursor
-                                    val newCursor = lastAtIdx + name.length + 2 // +2 for @ and space
-                                    inputValue = TextFieldValue(newText, TextRange(newCursor))
-                                    viewModel.onInputTextChanged(newText)
-                                    viewModel.onMentionQueryChanged(newText, newCursor)
-                                }
-                            }
-                        )
-                    }
-
-                    // Reply / Edit preview
-                    val previewMessage = replyTo ?: editingMessage
-                    AnimatedVisibility(
-                        visible = previewMessage != null,
-                        enter = slideInVertically { it } + fadeIn(tween(180)),
-                        exit  = slideOutVertically { it } + fadeOut(tween(140))
-                    ) {
-                        previewMessage?.let { msg ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(3.dp)
-                                        .height(36.dp)
-                                        .background(MaterialTheme.colorScheme.primary)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = if (editingMessage != null) "Редактирование" else "Ответ",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        text = when {
-                                            msg.type == "album" -> {
-                                                val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
-                                                "📷 ${msg.photoUrls?.size ?: 0} фото$caption"
-                                            }
-                                            msg.type == "photo" -> {
-                                                val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
-                                                "📷 Фото$caption"
-                                            }
-                                            msg.type == "file" -> "📎 ${msg.fileName ?: "Файл"}"
-                                            msg.type == "video" -> {
-                                                val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
-                                                "🎬 Видео$caption"
-                                            }
-                                            msg.type == "voice" -> "🎤 Голосовое сообщение"
-                                            else -> msg.content ?: "[медиа]"
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                IconButton(onClick = {
-                                    viewModel.setReplyTo(null)
-                                    viewModel.setEditing(null)
-                                    inputValue = TextFieldValue("")
-                                }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Отмена")
-                                }
-                            }
-                        }
-                    }
-
-                    // Text input row — mic button always stays in composition during recording
-                    val isRecording = voiceRecordState is VoiceRecordState.Recording
-                    val isLocked = isRecording && (voiceRecordState as VoiceRecordState.Recording).isLocked
-                    val density = LocalDensity.current
-                    var showSendMenu by remember { mutableStateOf(false) }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // ── Left side: recording overlay OR normal inputs ───────
-                        Box(modifier = Modifier.weight(1f)) {
-                            if (isRecording) {
-                                // Recording indicator
-                                val elapsedSec = (voiceElapsedMs / 1000).toInt()
-                                val timeStr = "%d:%02d".format(elapsedSec / 60, elapsedSec % 60)
-                                val infiniteTransition = rememberInfiniteTransition(label = "rec_pulse")
-                                val dotAlpha by infiniteTransition.animateFloat(
-                                    initialValue = 1f, targetValue = 0.3f,
-                                    animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
-                                    label = "dot_alpha"
-                                )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier.size(10.dp).clip(CircleShape)
-                                            .background(Color.Red.copy(alpha = dotAlpha))
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        text = timeStr,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Spacer(Modifier.weight(1f))
-                                    if (isLocked) {
-                                        TextButton(onClick = { viewModel.cancelVoiceRecording() }) {
-                                            Text("Отменить", color = MaterialTheme.colorScheme.error)
-                                        }
-                                    } else {
-                                        val cancelFraction = (-voiceDragOffsetX / with(density) { 80.dp.toPx() }).coerceIn(0f, 1f)
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.alpha(1f - cancelFraction)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.ArrowBack, contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(Modifier.width(4.dp))
-                                            Text(
-                                                "Сдвиньте, чтобы отменить",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Spacer(Modifier.width(8.dp))
-                                    }
-                                }
-                            } else {
-                                // Normal inputs: [ 📎 ] [ 😀 TextField ] right→ mic/send
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Attach button
-                                    IconButton(
-                                        onClick = { mediaPicker.launch(Unit) },
-                                        modifier = Modifier.size(44.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.AttachFile,
-                                            contentDescription = "Прикрепить",
-                                            modifier = Modifier.size(22.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    Spacer(Modifier.width(4.dp))
-                                    // Transparent text field — blends with panel, shows border when active
-                                    val showInputBorder = isTextFieldFocused || inputValue.text.isNotBlank()
-                                    val inputBorderColor by animateColorAsState(
-                                        targetValue = if (showInputBorder)
-                                            MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-                                        else Color.Transparent,
-                                        label = "inputBorder"
-                                    )
-                                    BasicTextField(
-                                        value = inputValue,
-                                        onValueChange = {
-                                            inputValue = it
-                                            viewModel.onInputTextChanged(it.text)
-                                            viewModel.onMentionQueryChanged(it.text, it.selection.start)
-                                        },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(24.dp))
-                                            .border(1.dp, inputBorderColor, RoundedCornerShape(24.dp))
-                                            .onFocusChanged {
-                                                isTextFieldFocused = it.isFocused
-                                                if (it.isFocused) showEmojiPicker = false
-                                            },
-                                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        ),
-                                        maxLines = 5,
-                                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                        decorationBox = { innerTextField ->
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .heightIn(min = 48.dp)
-                                                    .padding(end = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                IconButton(
-                                                    onClick = {
-                                                        showEmojiPicker = !showEmojiPicker
-                                                        if (showEmojiPicker) keyboardController?.hide()
-                                                    },
-                                                    modifier = Modifier.size(36.dp)
-                                                ) {
-                                                    Icon(
-                                                        Icons.Default.EmojiEmotions,
-                                                        contentDescription = "Эмодзи",
-                                                        modifier = Modifier.size(18.dp),
-                                                        tint = if (showEmojiPicker)
-                                                            MaterialTheme.colorScheme.primary
-                                                        else MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                }
-                                                Box(modifier = Modifier.weight(1f)) {
-                                                    if (inputValue.text.isEmpty()) {
-                                                        Text(
-                                                            "Сообщение...",
-                                                            style = MaterialTheme.typography.bodyLarge,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                                .copy(alpha = 0.6f)
-                                                        )
-                                                    }
-                                                    innerTextField()
-                                                }
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(Modifier.width(6.dp))
-
-                        // ── Right: Mic/Send — always in composition ─────────────
-                        // When locked → Send (tap to send voice)
-                        // When has text/media and not recording → Send (tap to send message)
-                        // Otherwise → Mic (hold-to-record gesture)
-                        val hasContent = inputValue.text.isNotBlank() || stagedMedia.isNotEmpty()
-                        val showSend = isLocked || (!isRecording && hasContent)
-                        Box {
-                        AnimatedContent(
-                            targetState = showSend,
-                            transitionSpec = {
-                                (scaleIn(tween(160)) + fadeIn(tween(160))) togetherWith
-                                (scaleOut(tween(120)) + fadeOut(tween(120)))
-                            },
-                            label = "micSendToggle"
-                        ) { isSend ->
-                            if (isSend) {
-                                // Visual only — gestures handled by overlay below
-                                Box(
-                                    modifier = Modifier.size(48.dp).clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.Send, contentDescription = "Отправить",
-                                        tint = Color.White, modifier = Modifier.size(20.dp))
-                                }
-                            } else {
-                                // Mic button — stays in composition while recording (non-locked)
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (isRecording) Color.Red
-                                            else MaterialTheme.colorScheme.primary
-                                        )
-                                        .pointerInput(micPermissionGranted) {
-                                            if (!micPermissionGranted) return@pointerInput
-                                            awaitEachGesture {
-                                                val down = awaitFirstDown(requireUnconsumed = false)
-                                                down.consume()
-                                                viewModel.startVoiceRecording()
-                                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                                var cancelled = false
-                                                var locked = false
-                                                val cancelThreshold = 80.dp.toPx()
-                                                val lockThreshold = 70.dp.toPx()
-                                                while (true) {
-                                                    val event = awaitPointerEvent()
-                                                    val change = event.changes.firstOrNull { it.id == down.id }
-                                                    if (change == null || !change.pressed) {
-                                                        if (!cancelled && !locked) viewModel.sendVoiceRecording(context)
-                                                        voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
-                                                        break
-                                                    }
-                                                    val offset = change.position - down.position
-                                                    voiceDragOffsetX = offset.x
-                                                    voiceDragOffsetY = offset.y
-                                                    if (!locked && offset.x < -cancelThreshold) {
-                                                        viewModel.cancelVoiceRecording()
-                                                        cancelled = true
-                                                        voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
-                                                        break
-                                                    }
-                                                    if (!locked && offset.y < -lockThreshold) {
-                                                        viewModel.lockRecording()
-                                                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                                        locked = true
-                                                        voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
-                                                    }
-                                                    change.consume()
-                                                }
-                                            }
-                                        }
-                                        .clickable(enabled = !micPermissionGranted && !isRecording) {
-                                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.Mic, contentDescription = "Голосовое",
-                                        tint = Color.White, modifier = Modifier.size(22.dp))
-                                }
-                            }
-                        }
-                        // Gesture overlay — outside AnimatedContent so detectTapGestures works.
-                        // Popup(focusable=false) → keyboard never hides on long press.
-                        if (showSend) {
-                            val onTapSend by rememberUpdatedState<() -> Unit> {
-                                if (isLocked) {
-                                    viewModel.sendVoiceRecording(context)
-                                } else {
-                                    val text = inputValue.text
-                                    val media = stagedMedia
-                                    inputValue = TextFieldValue("")
-                                    viewModel.onInputTextChanged("")
-                                    app.draftManager.clearDraft(chatId)
-                                    if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
-                                    else viewModel.sendText(text)
-                                }
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .pointerInput(Unit) {
-                                        detectTapGestures(
-                                            onTap = { onTapSend() },
-                                            onLongPress = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                showSendMenu = true
-                                            }
-                                        )
-                                    }
-                            ) {
-                                if (showSendMenu) {
-                                    val popupPositionProvider = remember {
-                                        object : PopupPositionProvider {
-                                            override fun calculatePosition(
-                                                anchorBounds: IntRect,
-                                                windowSize: IntSize,
-                                                layoutDirection: LayoutDirection,
-                                                popupContentSize: IntSize
-                                            ): IntOffset {
-                                                val gap = with(density) { 8.dp.roundToPx() }
-                                                return IntOffset(
-                                                    x = (anchorBounds.right - popupContentSize.width)
-                                                        .coerceAtLeast(with(density) { 8.dp.roundToPx() }),
-                                                    y = anchorBounds.top - popupContentSize.height - gap
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Popup(
-                                        popupPositionProvider = popupPositionProvider,
-                                        onDismissRequest = { showSendMenu = false },
-                                        properties = PopupProperties(
-                                            focusable = false,
-                                            dismissOnClickOutside = true
-                                        )
-                                    ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            shadowElevation = 8.dp,
-                                            tonalElevation = 2.dp,
-                                            color = MaterialTheme.colorScheme.surface
-                                        ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .clickable {
-                                                        showSendMenu = false
-                                                        if (isLocked) {
-                                                            viewModel.sendVoiceRecording(context, silent = true)
-                                                        } else {
-                                                            val text = inputValue.text
-                                                            val media = stagedMedia
-                                                            inputValue = TextFieldValue("")
-                                                            viewModel.onInputTextChanged("")
-                                                            if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context, silent = true)
-                                                            else viewModel.sendText(text, silent = true)
-                                                        }
-                                                    }
-                                                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.NotificationsOff,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(20.dp),
-                                                    tint = MaterialTheme.colorScheme.onSurface
-                                                )
-                                                Spacer(Modifier.width(12.dp))
-                                                Text(
-                                                    "Отправить без звука",
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // Lock hint Popup — shown above mic button during active (non-locked) recording.
-                        // Popup renders outside layout hierarchy, so it never affects panel height.
-                        if (isRecording && !isLocked) {
-                            val lockHintAlpha = 1f - (-voiceDragOffsetY / with(density) { 70.dp.toPx() }).coerceIn(0f, 1f)
-                            Popup(
-                                popupPositionProvider = object : PopupPositionProvider {
-                                    override fun calculatePosition(
-                                        anchorBounds: IntRect,
-                                        windowSize: IntSize,
-                                        layoutDirection: LayoutDirection,
-                                        popupContentSize: IntSize
-                                    ): IntOffset {
-                                        val gapPx = with(density) { 56.dp.roundToPx() }
-                                        val endPadPx = with(density) { 12.dp.roundToPx() }
-                                        return IntOffset(
-                                            x = (anchorBounds.right - popupContentSize.width - endPadPx)
-                                                .coerceAtLeast(endPadPx),
-                                            y = anchorBounds.top - gapPx - popupContentSize.height
-                                        )
-                                    }
-                                },
-                                properties = PopupProperties(focusable = false)
-                            ) {
-                                Surface(
-                                    modifier = Modifier.alpha(lockHintAlpha),
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    shadowElevation = 2.dp
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            Icons.Default.ArrowUpward,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(Modifier.width(3.dp))
-                                        Icon(
-                                            Icons.Default.Lock,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        } // close outer Box
-                    }
-                }
+                ChatInputArea(
+                    inputValue = inputValue,
+                    onInputValueChange = { inputValue = it },
+                    stagedMedia = stagedMedia,
+                    voiceRecordState = voiceRecordState,
+                    voiceElapsedMs = voiceElapsedMs,
+                    mentionSuggestions = mentionSuggestions,
+                    isGroup = isGroup,
+                    replyTo = replyTo,
+                    editingMessage = editingMessage,
+                    viewModel = viewModel,
+                    chatId = chatId,
+                )
             }
         }
         // Error overlay — floats over content without shifting layout
@@ -1950,6 +1393,594 @@ fun ChatScreen(
         )
     }
 
+}
+
+// ── Input area ───────────────────────────────────────────────────────────────
+
+@Composable
+private fun ChatInputArea(
+    inputValue: TextFieldValue,
+    onInputValueChange: (TextFieldValue) -> Unit,
+    stagedMedia: List<StagedMedia>,
+    voiceRecordState: VoiceRecordState?,
+    voiceElapsedMs: Long,
+    mentionSuggestions: List<Profile>,
+    isGroup: Boolean,
+    replyTo: MessageUiItem?,
+    editingMessage: MessageUiItem?,
+    viewModel: ChatViewModel,
+    chatId: String,
+) {
+    val context = LocalContext.current
+    val app = context.applicationContext as SvoiApp
+    val haptic = LocalHapticFeedback.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    var isTextFieldFocused by remember { mutableStateOf(false) }
+    var voiceDragOffsetX by remember { mutableFloatStateOf(0f) }
+    var voiceDragOffsetY by remember { mutableFloatStateOf(0f) }
+
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    LaunchedEffect(imeVisible) { if (imeVisible) showEmojiPicker = false }
+
+    var micPermissionGranted by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+    }
+    val micPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        micPermissionGranted = granted
+    }
+
+    val cropBarColor = MaterialTheme.colorScheme.surfaceContainer.toArgb()
+    val cropOnBarColor = MaterialTheme.colorScheme.onSurface.toArgb()
+    val cropBgColor = MaterialTheme.colorScheme.surfaceContainerLow.toArgb()
+    val cropAccentColor = MaterialTheme.colorScheme.primary.toArgb()
+    var cropEditIndex by remember { mutableStateOf(-1) }
+    val cropEditLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
+        if (result.isSuccessful) {
+            result.uriContent?.let { uri ->
+                viewModel.replaceStagedMedia(cropEditIndex, uri, context)
+            }
+        }
+        cropEditIndex = -1
+    }
+    val mediaPicker = rememberLauncherForActivityResult(GetMultipleMedia()) { uris ->
+        if (uris.isNotEmpty()) viewModel.addStagedMedia(uris, context)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .navigationBarsPadding()
+    ) {
+        // Thin separator above input bar
+        HorizontalDivider(
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+        )
+        // Staged media preview
+        AnimatedVisibility(
+            visible = stagedMedia.isNotEmpty(),
+            enter = slideInVertically { it } + fadeIn(tween(180)),
+            exit  = slideOutVertically { it } + fadeOut(tween(140))
+        ) {
+            StagedMediaRow(
+                items = stagedMedia,
+                onRemove = { viewModel.removeStagedMedia(it) },
+                onEdit = { idx ->
+                    val uri = stagedMedia.getOrNull(idx)?.uri ?: return@StagedMediaRow
+                    cropEditIndex = idx
+                    cropEditLauncher.launch(
+                        CropImageContractOptions(
+                            uri = uri,
+                            cropImageOptions = CropImageOptions(
+                                toolbarColor = cropBarColor,
+                                toolbarTitleColor = cropOnBarColor,
+                                toolbarBackButtonColor = cropOnBarColor,
+                                activityMenuIconColor = cropOnBarColor,
+                                activityMenuTextColor = cropOnBarColor,
+                                activityBackgroundColor = cropBgColor,
+                                borderCornerColor = cropAccentColor,
+                                outputCompressQuality = 95
+                            )
+                        )
+                    )
+                }
+            )
+        }
+
+        // Emoji picker panel
+        AnimatedVisibility(
+            visible = showEmojiPicker,
+            enter = slideInVertically { it },
+            exit = slideOutVertically { it }
+        ) {
+            EmojiPicker(
+                onEmojiSelected = { emoji ->
+                    val sel = inputValue.selection
+                    val text = inputValue.text
+                    val newText = text.substring(0, sel.start) + emoji + text.substring(sel.end)
+                    val newCursor = sel.start + emoji.length
+                    onInputValueChange(TextFieldValue(newText, TextRange(newCursor)))
+                    viewModel.onInputTextChanged(newText)
+                }
+            )
+        }
+
+        // @Mention suggestions panel
+        if (isGroup && mentionSuggestions.isNotEmpty()) {
+            MentionSuggestionsPanel(
+                suggestions = mentionSuggestions,
+                onSelect = { profile ->
+                    val text = inputValue.text
+                    val cursor = inputValue.selection.start
+                    val beforeCursor = text.substring(0, cursor)
+                    val lastAtIdx = beforeCursor.lastIndexOf('@')
+                    if (lastAtIdx >= 0) {
+                        val name = profile.displayName ?: return@MentionSuggestionsPanel
+                        val afterCursor = text.substring(cursor)
+                        val newText = text.substring(0, lastAtIdx) + "@$name " + afterCursor
+                        val newCursor = lastAtIdx + name.length + 2 // +2 for @ and space
+                        onInputValueChange(TextFieldValue(newText, TextRange(newCursor)))
+                        viewModel.onInputTextChanged(newText)
+                        viewModel.onMentionQueryChanged(newText, newCursor)
+                    }
+                }
+            )
+        }
+
+        // Reply / Edit preview
+        val previewMessage = replyTo ?: editingMessage
+        AnimatedVisibility(
+            visible = previewMessage != null,
+            enter = slideInVertically { it } + fadeIn(tween(180)),
+            exit  = slideOutVertically { it } + fadeOut(tween(140))
+        ) {
+            previewMessage?.let { msg ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(36.dp)
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (editingMessage != null) "Редактирование" else "Ответ",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = when {
+                                msg.type == "album" -> {
+                                    val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                    "📷 ${msg.photoUrls?.size ?: 0} фото$caption"
+                                }
+                                msg.type == "photo" -> {
+                                    val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                    "📷 Фото$caption"
+                                }
+                                msg.type == "file" -> "📎 ${msg.fileName ?: "Файл"}"
+                                msg.type == "video" -> {
+                                    val caption = msg.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                                    "🎬 Видео$caption"
+                                }
+                                msg.type == "voice" -> "🎤 Голосовое сообщение"
+                                else -> msg.content ?: "[медиа]"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(onClick = {
+                        viewModel.setReplyTo(null)
+                        viewModel.setEditing(null)
+                        onInputValueChange(TextFieldValue(""))
+                    }) {
+                        Icon(Icons.Default.Close, contentDescription = "Отмена")
+                    }
+                }
+            }
+        }
+
+        // Text input row — mic button always stays in composition during recording
+        val isRecording = voiceRecordState is VoiceRecordState.Recording
+        val isLocked = isRecording && (voiceRecordState as VoiceRecordState.Recording).isLocked
+        val density = LocalDensity.current
+        var showSendMenu by remember { mutableStateOf(false) }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // ── Left side: recording overlay OR normal inputs ───────
+            Box(modifier = Modifier.weight(1f)) {
+                if (isRecording) {
+                    // Recording indicator
+                    val elapsedSec = (voiceElapsedMs / 1000).toInt()
+                    val timeStr = "%d:%02d".format(elapsedSec / 60, elapsedSec % 60)
+                    val infiniteTransition = rememberInfiniteTransition(label = "rec_pulse")
+                    val dotAlpha by infiniteTransition.animateFloat(
+                        initialValue = 1f, targetValue = 0.3f,
+                        animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
+                        label = "dot_alpha"
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier.size(10.dp).clip(CircleShape)
+                                .background(Color.Red.copy(alpha = dotAlpha))
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = timeStr,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.weight(1f))
+                        if (isLocked) {
+                            TextButton(onClick = { viewModel.cancelVoiceRecording() }) {
+                                Text("Отменить", color = MaterialTheme.colorScheme.error)
+                            }
+                        } else {
+                            val cancelFraction = (-voiceDragOffsetX / with(density) { 80.dp.toPx() }).coerceIn(0f, 1f)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.alpha(1f - cancelFraction)
+                            ) {
+                                Icon(
+                                    Icons.Default.ArrowBack, contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "Сдвиньте, чтобы отменить",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                        }
+                    }
+                } else {
+                    // Normal inputs: [ 📎 ] [ 😀 TextField ] right→ mic/send
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Attach button
+                        IconButton(
+                            onClick = { mediaPicker.launch(Unit) },
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.AttachFile,
+                                contentDescription = "Прикрепить",
+                                modifier = Modifier.size(22.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        // Transparent text field — blends with panel, shows border when active
+                        val showInputBorder = isTextFieldFocused || inputValue.text.isNotBlank()
+                        val inputBorderColor by animateColorAsState(
+                            targetValue = if (showInputBorder)
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                            else Color.Transparent,
+                            label = "inputBorder"
+                        )
+                        BasicTextField(
+                            value = inputValue,
+                            onValueChange = {
+                                onInputValueChange(it)
+                                viewModel.onInputTextChanged(it.text)
+                                viewModel.onMentionQueryChanged(it.text, it.selection.start)
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(24.dp))
+                                .border(1.dp, inputBorderColor, RoundedCornerShape(24.dp))
+                                .onFocusChanged {
+                                    isTextFieldFocused = it.isFocused
+                                    if (it.isFocused) showEmojiPicker = false
+                                },
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            maxLines = 5,
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            decorationBox = { innerTextField ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp)
+                                        .padding(end = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            showEmojiPicker = !showEmojiPicker
+                                            if (showEmojiPicker) keyboardController?.hide()
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.EmojiEmotions,
+                                            contentDescription = "Эмодзи",
+                                            modifier = Modifier.size(18.dp),
+                                            tint = if (showEmojiPicker)
+                                                MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        if (inputValue.text.isEmpty()) {
+                                            Text(
+                                                "Сообщение...",
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    .copy(alpha = 0.6f)
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.width(6.dp))
+
+            // ── Right: Mic/Send — always in composition ─────────────
+            // When locked → Send (tap to send voice)
+            // When has text/media and not recording → Send (tap to send message)
+            // Otherwise → Mic (hold-to-record gesture)
+            val hasContent = inputValue.text.isNotBlank() || stagedMedia.isNotEmpty()
+            val showSend = isLocked || (!isRecording && hasContent)
+            Box {
+            AnimatedContent(
+                targetState = showSend,
+                transitionSpec = {
+                    (scaleIn(tween(160)) + fadeIn(tween(160))) togetherWith
+                    (scaleOut(tween(120)) + fadeOut(tween(120)))
+                },
+                label = "micSendToggle"
+            ) { isSend ->
+                if (isSend) {
+                    // Visual only — gestures handled by overlay below
+                    Box(
+                        modifier = Modifier.size(48.dp).clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = "Отправить",
+                            tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                } else {
+                    // Mic button — stays in composition while recording (non-locked)
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isRecording) Color.Red
+                                else MaterialTheme.colorScheme.primary
+                            )
+                            .pointerInput(micPermissionGranted) {
+                                if (!micPermissionGranted) return@pointerInput
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    down.consume()
+                                    viewModel.startVoiceRecording()
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                    var cancelled = false
+                                    var locked = false
+                                    val cancelThreshold = 80.dp.toPx()
+                                    val lockThreshold = 70.dp.toPx()
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id }
+                                        if (change == null || !change.pressed) {
+                                            if (!cancelled && !locked) viewModel.sendVoiceRecording(context)
+                                            voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
+                                            break
+                                        }
+                                        val offset = change.position - down.position
+                                        voiceDragOffsetX = offset.x
+                                        voiceDragOffsetY = offset.y
+                                        if (!locked && offset.x < -cancelThreshold) {
+                                            viewModel.cancelVoiceRecording()
+                                            cancelled = true
+                                            voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
+                                            break
+                                        }
+                                        if (!locked && offset.y < -lockThreshold) {
+                                            viewModel.lockRecording()
+                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                            locked = true
+                                            voiceDragOffsetX = 0f; voiceDragOffsetY = 0f
+                                        }
+                                        change.consume()
+                                    }
+                                }
+                            }
+                            .clickable(enabled = !micPermissionGranted && !isRecording) {
+                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Mic, contentDescription = "Голосовое",
+                            tint = Color.White, modifier = Modifier.size(22.dp))
+                    }
+                }
+            }
+            // Gesture overlay — outside AnimatedContent so detectTapGestures works.
+            // Popup(focusable=false) → keyboard never hides on long press.
+            if (showSend) {
+                val onTapSend by rememberUpdatedState<() -> Unit> {
+                    if (isLocked) {
+                        viewModel.sendVoiceRecording(context)
+                    } else {
+                        val text = inputValue.text
+                        val media = stagedMedia
+                        onInputValueChange(TextFieldValue(""))
+                        viewModel.onInputTextChanged("")
+                        app.draftManager.clearDraft(chatId)
+                        if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context)
+                        else viewModel.sendText(text)
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { onTapSend() },
+                                onLongPress = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    showSendMenu = true
+                                }
+                            )
+                        }
+                ) {
+                    if (showSendMenu) {
+                        val popupPositionProvider = remember {
+                            object : PopupPositionProvider {
+                                override fun calculatePosition(
+                                    anchorBounds: IntRect,
+                                    windowSize: IntSize,
+                                    layoutDirection: LayoutDirection,
+                                    popupContentSize: IntSize
+                                ): IntOffset {
+                                    val gap = with(density) { 8.dp.roundToPx() }
+                                    return IntOffset(
+                                        x = (anchorBounds.right - popupContentSize.width)
+                                            .coerceAtLeast(with(density) { 8.dp.roundToPx() }),
+                                        y = anchorBounds.top - popupContentSize.height - gap
+                                    )
+                                }
+                            }
+                        }
+                        Popup(
+                            popupPositionProvider = popupPositionProvider,
+                            onDismissRequest = { showSendMenu = false },
+                            properties = PopupProperties(
+                                focusable = false,
+                                dismissOnClickOutside = true
+                            )
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                shadowElevation = 8.dp,
+                                tonalElevation = 2.dp,
+                                color = MaterialTheme.colorScheme.surface
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .clickable {
+                                            showSendMenu = false
+                                            if (isLocked) {
+                                                viewModel.sendVoiceRecording(context, silent = true)
+                                            } else {
+                                                val text = inputValue.text
+                                                val media = stagedMedia
+                                                onInputValueChange(TextFieldValue(""))
+                                                viewModel.onInputTextChanged("")
+                                                if (media.isNotEmpty()) viewModel.sendWithAttachments(text, media, context, silent = true)
+                                                else viewModel.sendText(text, silent = true)
+                                            }
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.NotificationsOff,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        "Отправить без звука",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Lock hint Popup — shown above mic button during active (non-locked) recording.
+            // Popup renders outside layout hierarchy, so it never affects panel height.
+            if (isRecording && !isLocked) {
+                val lockHintAlpha = 1f - (-voiceDragOffsetY / with(density) { 70.dp.toPx() }).coerceIn(0f, 1f)
+                Popup(
+                    popupPositionProvider = object : PopupPositionProvider {
+                        override fun calculatePosition(
+                            anchorBounds: IntRect,
+                            windowSize: IntSize,
+                            layoutDirection: LayoutDirection,
+                            popupContentSize: IntSize
+                        ): IntOffset {
+                            val gapPx = with(density) { 56.dp.roundToPx() }
+                            val endPadPx = with(density) { 12.dp.roundToPx() }
+                            return IntOffset(
+                                x = (anchorBounds.right - popupContentSize.width - endPadPx)
+                                    .coerceAtLeast(endPadPx),
+                                y = anchorBounds.top - gapPx - popupContentSize.height
+                            )
+                        }
+                    },
+                    properties = PopupProperties(focusable = false)
+                ) {
+                    Surface(
+                        modifier = Modifier.alpha(lockHintAlpha),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shadowElevation = 2.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.ArrowUpward,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.width(3.dp))
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+            } // close outer Box
+        }
+    }
 }
 
 // ── Message list + overlays ──────────────────────────────────────────────────

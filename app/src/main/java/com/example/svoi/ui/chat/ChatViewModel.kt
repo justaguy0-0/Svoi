@@ -924,22 +924,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Server-side only: sends read receipts without updating the badge counter */
-    private fun sendReadReceipts() {
-        viewModelScope.launch(Dispatchers.IO) {
-            withContext(NonCancellable) {
-                messageRepo.markMessagesAsRead(chatId)
-            }
-        }
-    }
-
     /** Called by ChatScreen when user reaches the bottom — clears the unread badge */
     fun markAsRead() {
         val incomingIds = _messages.value.filter { !it.isOwn }.map { it.message.id }.toSet()
-        val hasNewToMark = incomingIds.any { it !in _myReadMessageIds.value }
+        val newIds = incomingIds - _myReadMessageIds.value
         _lastSeenMsgCount.value = _messages.value.size
         _myReadMessageIds.value = incomingIds
-        if (hasNewToMark) sendReadReceipts()
+        if (newIds.isNotEmpty()) sendReadReceipts(newIds)
+    }
+
+    private fun sendReadReceipts(newIds: Set<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            withContext(NonCancellable) {
+                messageRepo.markMessagesAsRead(chatId, newIds.toList())
+            }
+        }
     }
 
     private suspend fun loadPinnedMessage() {

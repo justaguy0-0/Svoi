@@ -17,6 +17,7 @@ import io.github.jan.supabase.realtime.postgresChangeFlow
 import io.github.jan.supabase.realtime.realtime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
@@ -219,6 +220,8 @@ class UserRepository(
             supabase.from("user_presence").upsert(data)
             if (online) checker.markReachable()
             Log.d("Presence", "setOnline($online) SUCCESS")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: HttpRequestTimeoutException) {
             // Presence is a background heartbeat — a timeout here doesn't mean the main
             // Supabase API is down. The periodic probe handles reachability detection.
