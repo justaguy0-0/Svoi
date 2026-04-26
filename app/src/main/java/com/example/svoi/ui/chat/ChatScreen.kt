@@ -1406,8 +1406,8 @@ private fun ChatInputArea(
     voiceElapsedMs: Long,
     mentionSuggestions: List<Profile>,
     isGroup: Boolean,
-    replyTo: MessageUiItem?,
-    editingMessage: MessageUiItem?,
+    replyTo: Message?,
+    editingMessage: Message?,
     viewModel: ChatViewModel,
     chatId: String,
 ) {
