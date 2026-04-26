@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -121,6 +122,9 @@ fun SettingsScreen(
     val app = context.applicationContext as SvoiApp
     var globalNotifMuted by remember { mutableStateOf(app.themeManager.isNotificationsMuted()) }
     var showMuteConfirmDialog by remember { mutableStateOf(false) }
+
+    var proxyEnabled by remember { mutableStateOf(app.themeManager.isProxyEnabled()) }
+    var showRestartDialog by remember { mutableStateOf(false) }
 
     val updateAvailable by app.updateAvailable.collectAsState()
     var showUpdateSheet by remember { mutableStateOf(false) }
@@ -245,6 +249,30 @@ fun SettingsScreen(
                 }
             }
 
+            // ── Подключение ───────────────────────────────────────────────────
+            Surface(
+                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
+                shape = SvoiShapes.Card,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
+            ) {
+                Column {
+                    SectionHeader("Подключение")
+                    ToggleRow(
+                        icon = Icons.Default.VpnKey,
+                        title = "Использовать прокси-сервер",
+                        subtitle = if (proxyEnabled) "Трафик идёт через официальный прокси (рекомендуется)"
+                                   else "Прямое подключение к серверу Supabase",
+                        checked = proxyEnabled,
+                        onCheckedChange = { newValue ->
+                            proxyEnabled = newValue
+                            app.themeManager.setProxyEnabled(newValue)
+                            showRestartDialog = true
+                        }
+                    )
+                }
+            }
+
             // ── Данные ────────────────────────────────────────────────────────
             Surface(
                 modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
@@ -309,6 +337,31 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showMuteConfirmDialog = false }) { Text("Отмена") }
+            }
+        )
+    }
+
+    // ── Диалог перезапуска (смена прокси) ────────────────────────────────────
+    if (showRestartDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestartDialog = false },
+            title = { Text("Перезапуск приложения") },
+            text = {
+                Text("Изменение настройки прокси вступит в силу после перезапуска приложения.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRestartDialog = false
+                    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                    intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                    Runtime.getRuntime().exit(0)
+                }) {
+                    Text("Перезапустить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestartDialog = false }) { Text("Позже") }
             }
         )
     }

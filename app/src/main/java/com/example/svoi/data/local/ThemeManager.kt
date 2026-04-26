@@ -48,4 +48,10 @@ class ThemeManager(context: Context) {
     fun setChatMuted(chatId: String, muted: Boolean) {
         prefs.edit().putBoolean("chat_muted_$chatId", muted).apply()
     }
+
+    fun isProxyEnabled(): Boolean = prefs.getBoolean("proxy_enabled", true)
+
+    fun setProxyEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("proxy_enabled", enabled).apply()
+    }
 }
