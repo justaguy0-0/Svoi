@@ -22,7 +22,7 @@ import java.net.URL
  * Initial state is optimistic (true) so a fresh install works normally.
  */
 class SupabaseReachabilityChecker(
-    private val supabaseUrl: String,
+    private val probeUrl: String,
     private val anonKey: String
 ) {
 
@@ -87,9 +87,9 @@ class SupabaseReachabilityChecker(
     }
 
     private suspend fun probe(): Boolean = withContext(Dispatchers.IO) {
-        Log.d(TAG, "probe: checking $supabaseUrl/rest/v1/ ...")
+        Log.d(TAG, "probe: checking $probeUrl ...")
         try {
-            val conn = URL("$supabaseUrl/rest/v1/").openConnection() as HttpURLConnection
+            val conn = URL(probeUrl).openConnection() as HttpURLConnection
             conn.connectTimeout = PROBE_TIMEOUT_MS
             conn.readTimeout = PROBE_TIMEOUT_MS
             conn.requestMethod = "HEAD"

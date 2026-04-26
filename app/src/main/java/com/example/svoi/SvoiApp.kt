@@ -113,7 +113,7 @@ class SvoiApp : Application() {
 
     val supabase by lazy {
         val url = if (themeManager.isProxyEnabled()) BuildConfig.SUPABASE_URL
-                  else BuildConfig.SUPABASE_STORAGE_URL
+                  else BuildConfig.SUPABASE_DIRECT_URL
         createSupabaseClient(supabaseUrl = url, supabaseKey = BuildConfig.SUPABASE_ANON_KEY) {
             install(Auth)
             install(Postgrest)
@@ -126,9 +126,11 @@ class SvoiApp : Application() {
     val cacheManager by lazy { CacheManager(this) }
     val networkMonitor by lazy { NetworkMonitor(this) }
     val supabaseChecker by lazy {
-        val url = if (themeManager.isProxyEnabled()) BuildConfig.SUPABASE_URL
-                  else BuildConfig.SUPABASE_STORAGE_URL
-        SupabaseReachabilityChecker(url, BuildConfig.SUPABASE_ANON_KEY)
+        val probeUrl = if (themeManager.isProxyEnabled())
+            "${BuildConfig.SUPABASE_URL}/rest/v1/"
+        else
+            BuildConfig.SUPABASE_DIRECT_URL
+        SupabaseReachabilityChecker(probeUrl, BuildConfig.SUPABASE_ANON_KEY)
     }
     val themeManager by lazy { ThemeManager(this) }
     val wallpaperManager by lazy { WallpaperManager(this) }
