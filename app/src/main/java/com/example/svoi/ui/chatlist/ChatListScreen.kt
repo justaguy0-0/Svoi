@@ -92,7 +92,10 @@ import androidx.compose.foundation.Image
 import com.example.svoi.R
 import com.example.svoi.SvoiApp
 import com.example.svoi.data.model.AppAnnouncement
+import com.example.svoi.data.model.AppAnnouncementType
 import com.example.svoi.data.model.ChatListItem
+import com.example.svoi.data.model.normalizedType
+import com.example.svoi.data.model.typeLabel
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.components.OfflineBanner
@@ -401,17 +404,12 @@ private fun AppAnnouncementDialog(
     announcement: AppAnnouncement,
     onConfirm: () -> Unit
 ) {
-    val type = announcement.type.lowercase()
-    val accentColor = when (type) {
-        "critical" -> MaterialTheme.colorScheme.error
-        "warning" -> MaterialTheme.colorScheme.tertiary
-        else -> MaterialTheme.colorScheme.primary
+    val accentColor = when (announcement.normalizedType) {
+        AppAnnouncementType.IMPORTANT -> MaterialTheme.colorScheme.error
+        AppAnnouncementType.TECHNICAL -> MaterialTheme.colorScheme.tertiary
+        AppAnnouncementType.NORMAL -> MaterialTheme.colorScheme.primary
     }
-    val label = when (type) {
-        "critical" -> "Важное объявление"
-        "warning" -> "Предупреждение"
-        else -> "Объявление"
-    }
+    val label = announcement.typeLabel
 
     AlertDialog(
         onDismissRequest = {},

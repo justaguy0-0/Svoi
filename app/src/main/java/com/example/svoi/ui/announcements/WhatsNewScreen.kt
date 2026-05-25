@@ -43,6 +43,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.svoi.data.model.AppAnnouncement
+import com.example.svoi.data.model.AppAnnouncementType
+import com.example.svoi.data.model.normalizedType
+import com.example.svoi.data.model.typeLabel
 import com.example.svoi.ui.theme.SvoiDimens
 import com.example.svoi.ui.theme.SvoiShapes
 import com.example.svoi.util.toRegistrationDate
@@ -112,7 +115,7 @@ fun WhatsNewScreen(
 
 @Composable
 private fun AnnouncementCard(announcement: AppAnnouncement) {
-    val typeStyle = announcement.typeStyle()
+    val typeStyle = announcementTypeStyle(announcement)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -222,20 +225,20 @@ private data class AnnouncementTypeStyle(
 )
 
 @Composable
-private fun AppAnnouncement.typeStyle(): AnnouncementTypeStyle {
-    return when (type.lowercase()) {
-        "critical" -> AnnouncementTypeStyle(
-            label = "Важное",
+private fun announcementTypeStyle(announcement: AppAnnouncement): AnnouncementTypeStyle {
+    return when (announcement.normalizedType) {
+        AppAnnouncementType.IMPORTANT -> AnnouncementTypeStyle(
+            label = announcement.typeLabel,
             containerColor = MaterialTheme.colorScheme.errorContainer,
             contentColor = MaterialTheme.colorScheme.onErrorContainer
         )
-        "warning" -> AnnouncementTypeStyle(
-            label = "Предупреждение",
+        AppAnnouncementType.TECHNICAL -> AnnouncementTypeStyle(
+            label = announcement.typeLabel,
             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
             contentColor = MaterialTheme.colorScheme.onTertiaryContainer
         )
-        else -> AnnouncementTypeStyle(
-            label = "Обновление",
+        AppAnnouncementType.NORMAL -> AnnouncementTypeStyle(
+            label = announcement.typeLabel,
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
         )

@@ -8,7 +8,7 @@ data class AppAnnouncement(
     val id: String = "",
     val title: String = "",
     val body: String = "",
-    val type: String = "info",
+    val type: String = "normal",
     @SerialName("is_active") val isActive: Boolean = false,
     @SerialName("show_as_modal") val showAsModal: Boolean = false,
     val priority: Int = 0,
@@ -18,6 +18,29 @@ data class AppAnnouncement(
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("expires_at") val expiresAt: String? = null
 )
+
+enum class AppAnnouncementType(val label: String) {
+    IMPORTANT("Важное"),
+    NORMAL("Обычное"),
+    TECHNICAL("Техническое");
+
+    companion object {
+        fun from(rawType: String?): AppAnnouncementType {
+            return when (rawType?.lowercase()) {
+                "important", "critical" -> IMPORTANT
+                "technical", "warning" -> TECHNICAL
+                "normal", "info" -> NORMAL
+                else -> NORMAL
+            }
+        }
+    }
+}
+
+val AppAnnouncement.normalizedType: AppAnnouncementType
+    get() = AppAnnouncementType.from(type)
+
+val AppAnnouncement.typeLabel: String
+    get() = normalizedType.label
 
 @Serializable
 data class AppAnnouncementRead(
