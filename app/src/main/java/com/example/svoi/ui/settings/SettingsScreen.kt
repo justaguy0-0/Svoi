@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
@@ -93,6 +94,7 @@ fun SettingsScreen(
     onNavigateToProfile: () -> Unit,
     onWallpaperClick: () -> Unit = {},
     onAppearanceClick: () -> Unit = {},
+    onWhatsNewClick: () -> Unit = {},
     profileViewModel: ProfileViewModel = viewModel()
 ) {
     val currentProfile by profileViewModel.profile.collectAsState()
@@ -262,6 +264,25 @@ fun SettingsScreen(
                         subtitle = if (cacheSizeText.isEmpty()) "Сообщения, профили, превью"
                                    else "Сообщения, профили, превью · $cacheSizeText",
                         onClick = { showClearCacheDialog = true }
+                    )
+                }
+            }
+
+            // ── Приложение ────────────────────────────────────────────────────
+            Surface(
+                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
+                shape = SvoiShapes.Card,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
+            ) {
+                Column {
+                    SectionHeader("Приложение")
+
+                    NavRow(
+                        icon = Icons.Default.NewReleases,
+                        title = "Что нового",
+                        subtitle = "Обновления и важные новости приложения",
+                        onClick = onWhatsNewClick
                     )
                 }
             }

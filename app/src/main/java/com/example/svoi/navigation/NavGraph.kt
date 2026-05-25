@@ -21,6 +21,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.example.svoi.data.local.SvoiAccent
 import com.example.svoi.data.local.ThemeMode
+import com.example.svoi.ui.announcements.WhatsNewScreen
 import com.example.svoi.ui.auth.AuthViewModel
 import com.example.svoi.ui.auth.InviteKeyScreen
 import com.example.svoi.ui.auth.LoginScreen
@@ -57,6 +58,7 @@ object Routes {
     const val GLOBAL_SEARCH = "global_search"
     const val WALLPAPER_PICKER = "wallpaper_picker"
     const val APPEARANCE = "appearance"
+    const val WHATS_NEW = "whats_new"
 
     fun setupStep1(inviteKey: String) = "setup_step1/$inviteKey"
     fun chat(chatId: String) = "chat/$chatId"
@@ -355,6 +357,9 @@ fun NavGraph(
                     },
                     onAppearanceClick = {
                         if (canNav()) navController.navigate(Routes.APPEARANCE)
+                    },
+                    onWhatsNewClick = {
+                        if (canNav()) navController.navigate(Routes.WHATS_NEW)
                     }
                 )
             }
@@ -371,6 +376,12 @@ fun NavGraph(
                     onThemeChanged = onThemeChanged,
                     currentAccent = currentAccent,
                     onAccentChanged = onAccentChanged,
+                    onBack = { if (canNav()) navController.navigateUp() }
+                )
+            }
+
+            composable(Routes.WHATS_NEW) {
+                WhatsNewScreen(
                     onBack = { if (canNav()) navController.navigateUp() }
                 )
             }

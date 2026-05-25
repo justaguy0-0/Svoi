@@ -12,6 +12,25 @@ import java.time.Instant
 
 class AppAnnouncementRepository(private val supabase: SupabaseClient) {
 
+    suspend fun fetchLatestActiveAnnouncements(
+        versionCode: Int,
+        limit: Int = 5
+    ): List<AppAnnouncement> {
+        val queryLimit = (limit * 4).coerceAtLeast(limit)
+        return supabase.from("app_announcements")
+            .select {
+                filter {
+                    eq("is_active", true)
+                }
+                order("priority", Order.DESCENDING)
+                order("created_at", Order.DESCENDING)
+                limit(queryLimit.toLong())
+            }
+            .decodeList<AppAnnouncement>()
+            .filter { it.matchesVersion(versionCode) && !it.isExpired() }
+            .take(limit)
+    }
+
     suspend fun fetchActiveAnnouncements(versionCode: Int): List<AppAnnouncement> {
         return try {
             supabase.from("app_announcements")
