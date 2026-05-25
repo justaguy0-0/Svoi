@@ -99,6 +99,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private val refreshMutex = Mutex()
     private var refreshJob: Job? = null
     private var loadJob: Job? = null
+    private var refreshPending = false
 
     init {
         // Watch for OS-level network changes.
@@ -157,6 +158,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     fun loadChats(showUpdating: Boolean = false) {
         loadJob?.cancel()
         refreshJob?.cancel()  // cancel any pending silent refresh — we're doing a full load
+        refreshPending = false
         loadJob = viewModelScope.launch {
             // 1. Show cache immediately
             val cached = cache.loadChatList()
@@ -201,23 +203,24 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Debounced silent refresh — skips if a full loadChats() is already running or Supabase blocked
+    // Debounced silent refresh — coalesces realtime bursts into one getChatsForUser().
     fun silentRefresh() {
-        refreshJob?.cancel()
+        refreshPending = true
+        if (refreshJob?.isActive == true) return
         refreshJob = viewModelScope.launch {
-            delay(150) // debounce: ignore rapid-fire events
-            if (!app.supabaseChecker.isReachable.value) return@launch
-            if (!refreshMutex.tryLock()) return@launch  // loadChats in progress — it will have fresh data
-            try {
-                val fresh = chatRepo.getChatsForUser()
-                if (fresh.isNotEmpty()) {
-                    _chats.value = fresh
-                    cache.saveChatList(fresh)
-                    wasSupabaseBlocked = false
-                    app.supabaseChecker.markReachable()
+            delay(SILENT_REFRESH_DEBOUNCE_MS)
+            while (refreshPending) {
+                refreshPending = false
+                if (!app.supabaseChecker.isReachable.value) return@launch
+                refreshMutex.withLock {
+                    val fresh = chatRepo.getChatsForUser()
+                    if (fresh.isNotEmpty()) {
+                        _chats.value = fresh
+                        cache.saveChatList(fresh)
+                        wasSupabaseBlocked = false
+                        app.supabaseChecker.markReachable()
+                    }
                 }
-            } finally {
-                refreshMutex.unlock()
             }
         }
     }
@@ -281,7 +284,9 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private fun observeReadReceipts() {
         viewModelScope.launch {
             try {
-                messageRepo.messageReadInsertFlowAll().collect { silentRefresh() }
+                messageRepo.messageReadInsertFlowAll().collect { read ->
+                    if (read.userId != currentUserId) silentRefresh()
+                }
             } catch (_: Exception) {}
         }
     }
@@ -358,5 +363,9 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             2 -> "${users[0].displayName} и ${users[1].displayName} печатают..."
             else -> "${users[0].displayName}, ${users[1].displayName} и ещё ${users.size - 2} печатают..."
         }
+    }
+
+    private companion object {
+        const val SILENT_REFRESH_DEBOUNCE_MS = 1_200L
     }
 }

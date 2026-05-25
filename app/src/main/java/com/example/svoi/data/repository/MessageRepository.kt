@@ -265,7 +265,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
                     put("type", "system")
                     if (replyToId != null) put("reply_to_id", replyToId)
                 }
-            ).decodeSingle<Message>()
+            ) { select() }.decodeSingle<Message>()
             android.util.Log.d("SystemMsg", "sendSystemMessage OK: $content")
             result
         } catch (e: Exception) {
@@ -518,22 +518,24 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) { false }
     }
 
-    suspend fun markMessagesAsRead(chatId: String, messageIds: List<String>) {
+    suspend fun markMessagesAsRead(chatId: String, messageIds: List<String>): Boolean {
         val userId = currentUserId()
         if (userId.isEmpty()) {
             Log.w("ReadReceipts", "markMessagesAsRead: userId empty — skipping")
-            return
+            return false
         }
-        if (messageIds.isEmpty()) return
+        if (messageIds.isEmpty()) return true
         try {
             Log.d("ReadReceipts", "markMessagesAsRead: chatId=$chatId, marking ${messageIds.size} new")
             val reads = messageIds.map { MessageReadInsert(messageId = it, userId = userId) }
             supabase.from("message_reads").upsert(reads) { ignoreDuplicates = true }
             Log.d("ReadReceipts", "markMessagesAsRead: upsert SUCCESS for ${reads.size} rows")
+            return true
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e("ReadReceipts", "markMessagesAsRead FAILED: ${e.message}", e)
+            return false
         }
     }
 

@@ -192,6 +192,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /** IDs of incoming messages that the current user has already read */
     private val _myReadMessageIds = MutableStateFlow<Set<String>>(emptySet())
     val myReadMessageIds: StateFlow<Set<String>> = _myReadMessageIds
+    private val pendingReadReceiptIds = mutableSetOf<String>()
 
     /** Mute state for this chat (notifications) */
     private val _isMuted = MutableStateFlow(false)
@@ -927,16 +928,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     /** Called by ChatScreen when user reaches the bottom — clears the unread badge */
     fun markAsRead() {
         val incomingIds = _messages.value.filter { !it.isOwn }.map { it.message.id }.toSet()
-        val newIds = incomingIds - _myReadMessageIds.value
+        val newIds = incomingIds - _myReadMessageIds.value - pendingReadReceiptIds
         _lastSeenMsgCount.value = _messages.value.size
-        _myReadMessageIds.value = incomingIds
-        if (newIds.isNotEmpty()) sendReadReceipts(newIds)
+        if (newIds.isNotEmpty()) {
+            pendingReadReceiptIds.addAll(newIds)
+            sendReadReceipts(newIds)
+        }
     }
 
     private fun sendReadReceipts(newIds: Set<String>) {
         viewModelScope.launch(Dispatchers.IO) {
-            withContext(NonCancellable) {
+            val success = withContext(NonCancellable) {
                 messageRepo.markMessagesAsRead(chatId, newIds.toList())
+            }
+            withContext(Dispatchers.Main) {
+                pendingReadReceiptIds.removeAll(newIds)
+                if (success) {
+                    _myReadMessageIds.value = _myReadMessageIds.value + newIds
+                }
             }
         }
     }

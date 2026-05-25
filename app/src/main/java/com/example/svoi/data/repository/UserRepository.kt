@@ -198,20 +198,20 @@ class UserRepository(
         } catch (e: Exception) { emptyList() }
     }
 
-    suspend fun setOnline(online: Boolean) {
+    suspend fun setOnline(online: Boolean): Boolean {
         if (!checker.isReachable.value) {
             Log.d("Presence", "setOnline($online): skipped — Supabase unreachable")
-            return
+            return false
         }
         val userId = supabase.auth.currentUserOrNull()?.id
         if (userId == null) {
             Log.w("Presence", "setOnline($online): no authenticated user")
-            return
+            return false
         }
         Log.d("Presence", "setOnline($online) userId=$userId")
         try {
             // Always update lastSeen — acts as heartbeat.
-            // If app crashes, isTrulyOnline() will return false after 60s of no updates.
+            // Current presence view uses a short TTL, so foreground heartbeat must stay frequent.
             val data = PresenceUpdate(
                 userId = userId,
                 online = online,
@@ -220,14 +220,17 @@ class UserRepository(
             supabase.from("user_presence").upsert(data)
             if (online) checker.markReachable()
             Log.d("Presence", "setOnline($online) SUCCESS")
+            return true
         } catch (e: CancellationException) {
             throw e
         } catch (e: HttpRequestTimeoutException) {
             // Presence is a background heartbeat — a timeout here doesn't mean the main
             // Supabase API is down. The periodic probe handles reachability detection.
             Log.w("Presence", "setOnline($online) TIMEOUT")
+            return false
         } catch (e: Exception) {
             Log.e("Presence", "setOnline($online) FAILED: ${e.message}", e)
+            return false
         }
     }
 

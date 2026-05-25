@@ -156,18 +156,23 @@ class SvoiApp : Application() {
     }
 
     // Heartbeat: keeps online=true while app is in foreground.
-    // Fires immediately on start, then every 3s.
+    // Fires immediately on start, then every 8s to stay within the current 10s DB TTL.
     private val heartbeatScope = CoroutineScope(Dispatchers.IO)
     private var heartbeatJob: Job? = null
+    private var lastOnlinePresenceAtMs: Long = 0L
 
     fun startPresenceHeartbeat() {
         heartbeatJob?.cancel()
         heartbeatJob = heartbeatScope.launch {
             while (true) {
                 if (authRepository.isLoggedIn() && supabaseChecker.isReachable.value) {
-                    userRepository.setOnline(true)
+                    val now = System.currentTimeMillis()
+                    if (now - lastOnlinePresenceAtMs >= PRESENCE_ONLINE_MIN_UPDATE_MS) {
+                        val updated = userRepository.setOnline(true)
+                        if (updated) lastOnlinePresenceAtMs = System.currentTimeMillis()
+                    }
                 }
-                delay(3_000L)
+                delay(PRESENCE_HEARTBEAT_MS)
             }
         }
     }
@@ -175,6 +180,11 @@ class SvoiApp : Application() {
     fun stopPresenceHeartbeat() {
         heartbeatJob?.cancel()
         heartbeatJob = null
+    }
+
+    private companion object {
+        const val PRESENCE_HEARTBEAT_MS = 8_000L
+        const val PRESENCE_ONLINE_MIN_UPDATE_MS = 7_000L
     }
 
     suspend fun registerFcmToken() {
