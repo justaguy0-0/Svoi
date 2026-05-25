@@ -1047,7 +1047,7 @@ fun ChatScreen(
                 selectedMessageIds = selectedMessageIds,
                 animatingMessageIds = animatingMessageIds,
                 uploadProgresses = uploadProgresses,
-                activeVideoUrl = activeVideoUrl,
+                activeVideoUrl = if (fullscreenVideoUrl == null) activeVideoUrl else null,
                 isVideoMuted = isVideoMuted,
                 videoAspectRatios = videoAspectRatios,
                 imageRatioCache = imageRatioCache,
@@ -1135,9 +1135,11 @@ fun ChatScreen(
     fullscreenVideoUrl?.let { url ->
         FullscreenVideoPlayer(
             url = url,
+            sharedPlayer = exoPlayer,
             onDismiss = {
                 fullscreenVideoUrl = null
                 if (activeVideoUrl != null) exoPlayer.play()
+                else exoPlayer.pause()
             }
         )
     }
@@ -3268,93 +3270,33 @@ private fun MessageItem(
                         // Message content
                         when (msg.type) {
                             "photo", "album" -> {
-                                val photos: List<String> = when {
-                                    item.isPending || item.isFailed -> item.pendingLocalUris
-                                    msg.type == "album" -> msg.photoUrls ?: emptyList()
-                                    msg.fileUrl != null -> listOf(msg.fileUrl)
-                                    else -> emptyList()
-                                }
-                                if (photos.isNotEmpty()) {
-                                    PhotoGrid(
-                                        urls = photos,
-                                        isPending = item.isPending,
-                                        uploadProgresses = uploadProgresses,
-                                        isOwn = item.isOwn,
-                                        isSelectionMode = isSelectionMode,
-                                        textColor = textColor,
-                                        onPhotoClick = { url, albumUrls ->
-                                            if (!isSelectionMode) onPhotoClick(url, albumUrls) else onTap()
-                                        },
-                                        onTap = onTap,
-                                        onLongClick = onLongClick,
-                                        onImageRatioLoaded = onImageRatioLoaded,
-                                        cachedImageRatio = state.imageRatio
-                                    )
-                                    // Caption text (if present)
-                                    if (!msg.content.isNullOrBlank()) {
-                                        Spacer(Modifier.height(4.dp))
-                                        LinkText(
-                                            text = msg.content,
-                                            color = textColor,
-                                            isOwn = item.isOwn,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            onOtherTap = onTap
-                                        )
-                                    }
-                                } else {
-                                    Text("📷 Фото", color = textColor)
-                                }
+                                PhotoMessageContent(
+                                    item = item,
+                                    msg = msg,
+                                    uploadProgresses = uploadProgresses,
+                                    isSelectionMode = isSelectionMode,
+                                    textColor = textColor,
+                                    cachedImageRatio = state.imageRatio,
+                                    onPhotoClick = onPhotoClick,
+                                    onTap = onTap,
+                                    onLongClick = onLongClick,
+                                    onImageRatioLoaded = onImageRatioLoaded
+                                )
                             }
                             "video" -> {
-                                if (msg.fileUrl != null) {
-                                    if (exoPlayer != null) {
-                                        InlineVideoPlayer(
-                                            url = msg.fileUrl,
-                                            isActive = activeVideoUrl == msg.fileUrl,
-                                            exoPlayer = exoPlayer,
-                                            isMuted = isMuted,
-                                            aspectRatio = videoAspectRatio,
-                                            onTap = { onVideoTap(msg.fileUrl) },
-                                            onMuteToggle = onVideoMuteToggle,
-                                            onVideoSizeDetected = { ratio -> onVideoSizeDetected(msg.fileUrl, ratio) }
-                                        )
-                                    }
-                                } else {
-                                    // Pending or failed — show placeholder matching video proportions
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(16f / 9f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(Color.Black.copy(alpha = 0.55f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (item.isPending) {
-                                            CircularProgressIndicator(
-                                                color = Color.White,
-                                                modifier = Modifier.size(36.dp),
-                                                strokeWidth = 3.dp
-                                            )
-                                        } else {
-                                            Icon(
-                                                imageVector = Icons.Default.PlayArrow,
-                                                contentDescription = null,
-                                                tint = Color.White.copy(alpha = 0.45f),
-                                                modifier = Modifier.size(48.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                if (!msg.content.isNullOrBlank()) {
-                                    Spacer(Modifier.height(4.dp))
-                                    LinkText(
-                                        text = msg.content,
-                                        color = textColor,
-                                        isOwn = item.isOwn,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        onOtherTap = onTap
-                                    )
-                                }
+                                VideoMessageContent(
+                                    item = item,
+                                    msg = msg,
+                                    exoPlayer = exoPlayer,
+                                    activeVideoUrl = activeVideoUrl,
+                                    isMuted = isMuted,
+                                    videoAspectRatio = videoAspectRatio,
+                                    textColor = textColor,
+                                    onTap = onTap,
+                                    onVideoTap = onVideoTap,
+                                    onVideoMuteToggle = onVideoMuteToggle,
+                                    onVideoSizeDetected = onVideoSizeDetected
+                                )
                             }
                             "file" -> {
                                 val ctx = LocalContext.current
@@ -3407,72 +3349,27 @@ private fun MessageItem(
                                 }
                             }
                             "voice" -> {
-                                if (item.isPending) {
-                                    // Upload in progress — show spinner + duration
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.width(180.dp)
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(20.dp),
-                                            strokeWidth = 2.dp,
-                                            color = textColor.copy(0.7f)
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Icon(
-                                            Icons.Default.Mic,
-                                            contentDescription = null,
-                                            tint = textColor.copy(0.7f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(
-                                            text = (msg.duration ?: 0).toVoiceDuration(),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = textColor.copy(0.7f)
-                                        )
-                                    }
-                                } else {
-                                    msg.fileUrl?.let { url ->
-                                        VoiceMessageBubble(
-                                            messageId = msg.id,
-                                            url = url,
-                                            durationSec = msg.duration ?: 0,
-                                            waveformData = msg.waveformData,
-                                            isOwn = item.isOwn,
-                                            isListened = item.isListened,
-                                            isCached = msg.id in cachedVoiceIds,
-                                            voicePlayState = voicePlayState,
-                                            onPlay = { onVoicePlay(msg.id, url, msg.duration ?: 0) },
-                                            onPause = onVoicePause,
-                                            onResume = onVoiceResume,
-                                            onSeek = onVoiceSeek
-                                        )
-                                    }
-                                }
+                                VoiceMessageContent(
+                                    item = item,
+                                    msg = msg,
+                                    textColor = textColor,
+                                    cachedVoiceIds = cachedVoiceIds,
+                                    voicePlayState = voicePlayState,
+                                    onVoicePlay = onVoicePlay,
+                                    onVoicePause = onVoicePause,
+                                    onVoiceResume = onVoiceResume,
+                                    onVoiceSeek = onVoiceSeek
+                                )
                             }
                             else -> {
-                                LinkText(
-                                    text = msg.content ?: "",
-                                    color = textColor,
+                                TextMessageContent(
+                                    msg = msg,
                                     isOwn = item.isOwn,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    onOtherTap = onTap
+                                    textColor = textColor,
+                                    ogData = ogData,
+                                    onTap = onTap,
+                                    onFetchOg = onFetchOg
                                 )
-                                // OG link preview
-                                val firstUrl = remember(msg.content) {
-                                    msg.content?.let { URL_REGEX.find(it)?.value }
-                                }
-                                LaunchedEffect(firstUrl) {
-                                    firstUrl?.let { onFetchOg(it) }
-                                }
-                                if (ogData != null) {
-                                    OgPreviewCard(
-                                        ogData = ogData,
-                                        isOwn = item.isOwn,
-                                        modifier = Modifier.padding(top = 6.dp)
-                                    )
-                                }
                             }
                         }
 
@@ -3548,6 +3445,207 @@ private fun MessageItem(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PhotoMessageContent(
+    item: MessageUiItem,
+    msg: Message,
+    uploadProgresses: List<Float>,
+    isSelectionMode: Boolean,
+    textColor: Color,
+    cachedImageRatio: Float?,
+    onPhotoClick: (url: String, albumUrls: List<String>) -> Unit,
+    onTap: () -> Unit,
+    onLongClick: () -> Unit,
+    onImageRatioLoaded: (url: String, ratio: Float) -> Unit
+) {
+    val photos: List<String> = when {
+        item.isPending || item.isFailed -> item.pendingLocalUris
+        msg.type == "album" -> msg.photoUrls ?: emptyList()
+        msg.fileUrl != null -> listOf(msg.fileUrl)
+        else -> emptyList()
+    }
+    if (photos.isNotEmpty()) {
+        PhotoGrid(
+            urls = photos,
+            isPending = item.isPending,
+            uploadProgresses = uploadProgresses,
+            isOwn = item.isOwn,
+            isSelectionMode = isSelectionMode,
+            textColor = textColor,
+            onPhotoClick = { url, albumUrls ->
+                if (!isSelectionMode) onPhotoClick(url, albumUrls) else onTap()
+            },
+            onTap = onTap,
+            onLongClick = onLongClick,
+            onImageRatioLoaded = onImageRatioLoaded,
+            cachedImageRatio = cachedImageRatio
+        )
+        if (!msg.content.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
+            LinkText(
+                text = msg.content,
+                color = textColor,
+                isOwn = item.isOwn,
+                style = MaterialTheme.typography.bodyMedium,
+                onOtherTap = onTap
+            )
+        }
+    } else {
+        Text("📷 Фото", color = textColor)
+    }
+}
+
+@Composable
+private fun VideoMessageContent(
+    item: MessageUiItem,
+    msg: Message,
+    exoPlayer: ExoPlayer?,
+    activeVideoUrl: String?,
+    isMuted: Boolean,
+    videoAspectRatio: Float,
+    textColor: Color,
+    onTap: () -> Unit,
+    onVideoTap: (String) -> Unit,
+    onVideoMuteToggle: () -> Unit,
+    onVideoSizeDetected: (url: String, ratio: Float) -> Unit
+) {
+    if (msg.fileUrl != null) {
+        if (exoPlayer != null) {
+            InlineVideoPlayer(
+                url = msg.fileUrl,
+                isActive = activeVideoUrl == msg.fileUrl,
+                exoPlayer = exoPlayer,
+                isMuted = isMuted,
+                aspectRatio = videoAspectRatio,
+                onTap = { onVideoTap(msg.fileUrl) },
+                onMuteToggle = onVideoMuteToggle,
+                onVideoSizeDetected = { ratio -> onVideoSizeDetected(msg.fileUrl, ratio) }
+            )
+        }
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.Black.copy(alpha = 0.55f)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (item.isPending) {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    modifier = Modifier.size(36.dp),
+                    strokeWidth = 3.dp
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.45f),
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+        }
+    }
+    if (!msg.content.isNullOrBlank()) {
+        Spacer(Modifier.height(4.dp))
+        LinkText(
+            text = msg.content,
+            color = textColor,
+            isOwn = item.isOwn,
+            style = MaterialTheme.typography.bodyMedium,
+            onOtherTap = onTap
+        )
+    }
+}
+
+@Composable
+private fun VoiceMessageContent(
+    item: MessageUiItem,
+    msg: Message,
+    textColor: Color,
+    cachedVoiceIds: Set<String>,
+    voicePlayState: VoicePlayState?,
+    onVoicePlay: (msgId: String, url: String, durationSec: Int) -> Unit,
+    onVoicePause: () -> Unit,
+    onVoiceResume: () -> Unit,
+    onVoiceSeek: (Int) -> Unit
+) {
+    if (item.isPending) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.width(180.dp)
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = textColor.copy(0.7f)
+            )
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                Icons.Default.Mic,
+                contentDescription = null,
+                tint = textColor.copy(0.7f),
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = (msg.duration ?: 0).toVoiceDuration(),
+                style = MaterialTheme.typography.bodySmall,
+                color = textColor.copy(0.7f)
+            )
+        }
+    } else {
+        msg.fileUrl?.let { url ->
+            VoiceMessageBubble(
+                messageId = msg.id,
+                url = url,
+                durationSec = msg.duration ?: 0,
+                waveformData = msg.waveformData,
+                isOwn = item.isOwn,
+                isListened = item.isListened,
+                isCached = msg.id in cachedVoiceIds,
+                voicePlayState = voicePlayState,
+                onPlay = { onVoicePlay(msg.id, url, msg.duration ?: 0) },
+                onPause = onVoicePause,
+                onResume = onVoiceResume,
+                onSeek = onVoiceSeek
+            )
+        }
+    }
+}
+
+@Composable
+private fun TextMessageContent(
+    msg: Message,
+    isOwn: Boolean,
+    textColor: Color,
+    ogData: OgData?,
+    onTap: () -> Unit,
+    onFetchOg: (String) -> Unit
+) {
+    LinkText(
+        text = msg.content ?: "",
+        color = textColor,
+        isOwn = isOwn,
+        style = MaterialTheme.typography.bodyMedium,
+        onOtherTap = onTap
+    )
+    val firstUrl = remember(msg.content) {
+        msg.content?.let { URL_REGEX.find(it)?.value }
+    }
+    LaunchedEffect(firstUrl) {
+        firstUrl?.let { onFetchOg(it) }
+    }
+    if (ogData != null) {
+        OgPreviewCard(
+            ogData = ogData,
+            isOwn = isOwn,
+            modifier = Modifier.padding(top = 6.dp)
+        )
     }
 }
 

@@ -21,6 +21,7 @@ import com.example.svoi.navigation.NavGraph
 import com.example.svoi.navigation.Routes
 import com.example.svoi.ui.theme.SvoiTheme
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -68,9 +69,13 @@ class MainActivity : ComponentActivity() {
                     initialRestoreCompleted = true
                     startDestination = if (restored) Routes.CHAT_LIST else Routes.LOGIN
                     // setOnline is handled by startPresenceHeartbeat() in onResume
-                    if (restored) app.registerFcmToken()
+                    if (restored) launch {
+                        delay(1_000L)
+                        app.registerFcmToken()
+                    }
                     // Проверка обновления — один раз за запуск, в фоне
                     launch {
+                        delay(1_000L)
                         val update = app.appUpdateRepository.checkForUpdate()
                         app.setUpdateAvailable(update)
                     }

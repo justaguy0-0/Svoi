@@ -259,19 +259,29 @@ fun InlineVideoPlayer(
 fun FullscreenVideoPlayer(
     url: String,
     startPosition: Long = 0L,
+    sharedPlayer: ExoPlayer? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val player = remember {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(url))
-            prepare()
-            seekTo(startPosition)
-            play()
-        }
+    val ownsPlayer = sharedPlayer == null
+    val player = remember(sharedPlayer, context) {
+        sharedPlayer ?: ExoPlayer.Builder(context).build()
     }
-    DisposableEffect(player) {
-        onDispose { player.release() }
+
+    LaunchedEffect(player, url, startPosition) {
+        val currentUri = player.currentMediaItem?.localConfiguration?.uri?.toString()
+        if (currentUri != url) {
+            player.setMediaItem(MediaItem.fromUri(url))
+            player.prepare()
+        }
+        if (startPosition > 0L) player.seekTo(startPosition)
+        player.play()
+    }
+
+    DisposableEffect(player, ownsPlayer) {
+        onDispose {
+            if (ownsPlayer) player.release()
+        }
     }
 
     Dialog(
