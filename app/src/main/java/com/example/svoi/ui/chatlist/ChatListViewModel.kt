@@ -1,9 +1,12 @@
 package com.example.svoi.ui.chatlist
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.svoi.BuildConfig
 import com.example.svoi.SvoiApp
+import com.example.svoi.data.model.AppAnnouncement
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.TypingStatus
 import com.example.svoi.data.model.Message
@@ -24,6 +27,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private val chatRepo = app.chatRepository
     private val messageRepo = app.messageRepository
     private val userRepo = app.userRepository
+    private val announcementRepo = app.appAnnouncementRepository
     private val cache = app.cacheManager
 
     private val _chats = MutableStateFlow<List<ChatListItem>>(emptyList())
@@ -50,11 +54,41 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private val _currentProfile = MutableStateFlow<com.example.svoi.data.model.Profile?>(null)
     val currentProfile: StateFlow<com.example.svoi.data.model.Profile?> = _currentProfile
 
+    private val _modalAnnouncement = MutableStateFlow<AppAnnouncement?>(null)
+    val modalAnnouncement: StateFlow<AppAnnouncement?> = _modalAnnouncement
+    private var announcementsChecked = false
+
     // Holiday banner — survives navigation (VM is alive while app is running)
     var victoryBannerDismissed = false
         private set
 
     fun dismissVictoryBanner() { victoryBannerDismissed = true }
+
+    fun acknowledgeModalAnnouncement(announcement: AppAnnouncement) {
+        _modalAnnouncement.value = null
+        viewModelScope.launch {
+            try {
+                val userId = currentUserId
+                if (userId.isNotBlank()) {
+                    announcementRepo.markAsRead(announcement.id, userId)
+                }
+            } catch (e: Exception) {
+                Log.w("AppAnnouncements", "acknowledgeModalAnnouncement failed: ${e.message}")
+            }
+        }
+    }
+
+    private fun loadModalAnnouncementOnce() {
+        if (announcementsChecked) return
+        announcementsChecked = true
+        viewModelScope.launch {
+            val userId = currentUserId
+            if (userId.isBlank()) return@launch
+            _modalAnnouncement.value = announcementRepo
+                .fetchUnreadModalAnnouncements(userId, BuildConfig.VERSION_CODE)
+                .firstOrNull()
+        }
+    }
 
     // Track whether we need to show "Обновление..." on next refresh
     private var initialLoad = true
@@ -111,6 +145,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         observeReadReceipts()
         observePresenceUpdates()
         startTypingPolling()
+        loadModalAnnouncementOnce()
     }
 
     fun refreshCurrentProfile() {

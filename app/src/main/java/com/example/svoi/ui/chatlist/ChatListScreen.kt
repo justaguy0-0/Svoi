@@ -91,6 +91,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.Image
 import com.example.svoi.R
 import com.example.svoi.SvoiApp
+import com.example.svoi.data.model.AppAnnouncement
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.MainBottomBar
@@ -122,6 +123,7 @@ fun ChatListScreen(
     val isUpdating by viewModel.isUpdating.collectAsState()
     val chatTyping by viewModel.chatTyping.collectAsState()
     val currentProfile by viewModel.currentProfile.collectAsState()
+    val modalAnnouncement by viewModel.modalAnnouncement.collectAsState()
     val scope = rememberCoroutineScope()
     val app = LocalContext.current.applicationContext as SvoiApp
 
@@ -385,6 +387,63 @@ fun ChatListScreen(
             }
         )
     }
+
+    modalAnnouncement?.let { announcement ->
+        AppAnnouncementDialog(
+            announcement = announcement,
+            onConfirm = { viewModel.acknowledgeModalAnnouncement(announcement) }
+        )
+    }
+}
+
+@Composable
+private fun AppAnnouncementDialog(
+    announcement: AppAnnouncement,
+    onConfirm: () -> Unit
+) {
+    val type = announcement.type.lowercase()
+    val accentColor = when (type) {
+        "critical" -> MaterialTheme.colorScheme.error
+        "warning" -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.primary
+    }
+    val label = when (type) {
+        "critical" -> "Важное объявление"
+        "warning" -> "Предупреждение"
+        else -> "Объявление"
+    }
+
+    AlertDialog(
+        onDismissRequest = {},
+        title = {
+            Column {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = accentColor,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = announcement.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        text = {
+            Text(
+                text = announcement.body,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Понятно")
+            }
+        }
+    )
 }
 
 @Composable

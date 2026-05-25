@@ -20,6 +20,7 @@ import com.example.svoi.data.local.OutboxManager
 import com.example.svoi.data.local.ThemeManager
 import com.example.svoi.data.local.WallpaperManager
 import com.example.svoi.data.model.AppVersion
+import com.example.svoi.data.repository.AppAnnouncementRepository
 import com.example.svoi.data.repository.AppUpdateRepository
 import com.example.svoi.data.repository.AuthRepository
 import com.example.svoi.data.repository.ChatRepository
@@ -137,6 +138,7 @@ class SvoiApp : Application() {
     val messageRepository by lazy { MessageRepository(supabase) }
     val pushTokenRepository by lazy { PushTokenRepository(supabase) }
     val appUpdateRepository by lazy { AppUpdateRepository(supabase) }
+    val appAnnouncementRepository by lazy { AppAnnouncementRepository(supabase) }
     val globalVoicePlayer by lazy { GlobalVoicePlayer(java.io.File(filesDir, "cache")) }
 
     // Результат проверки обновления — null пока не проверено / нет обновления
