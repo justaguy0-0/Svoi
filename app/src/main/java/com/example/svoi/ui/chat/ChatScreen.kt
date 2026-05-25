@@ -2122,33 +2122,63 @@ private fun ChatMessageBox(
                                             }
                                         )
                                     } else {
-                                        MessageItem(
-                                            state = MessageItemState(
+                                        val messageId = msg.id
+                                        val itemUploadProgresses =
+                                            if (entry.item.isPending) uploadProgresses else emptyList()
+                                        val itemActiveVideoUrl =
+                                            if (msg.type == "video") activeVideoUrl else null
+                                        val itemVideoAspectRatio = msg.fileUrl
+                                            ?.let { videoAspectRatios[it] } ?: (16f / 9f)
+                                        val itemImageRatio = msg.let { m ->
+                                            val u = when {
+                                                entry.item.isPending || entry.item.isFailed -> entry.item.pendingLocalUris.firstOrNull()
+                                                m.type == "album" -> m.photoUrls?.firstOrNull()
+                                                m.fileUrl != null -> m.fileUrl
+                                                else -> null
+                                            }
+                                            u?.let { imageRatioCache[it] }
+                                        }
+                                        val itemVoicePlayState =
+                                            if (msg.type == "voice") voicePlayState else null
+                                        val itemCachedVoiceIds =
+                                            if (msg.type == "voice") cachedVoiceIds else emptySet()
+                                        val ogUrl = remember(msg.content) {
+                                            msg.content?.let { URL_REGEX.find(it)?.value }
+                                        }
+                                        val itemOgData = ogUrl?.let { viewModel.ogCache[it] }
+                                        val messageItemState = remember(
+                                            entry.item,
+                                            isGroup,
+                                            highlightedMessageId,
+                                            selectedMessageIds,
+                                            isSelectionMode,
+                                            itemUploadProgresses,
+                                            itemActiveVideoUrl,
+                                            isVideoMuted,
+                                            itemVideoAspectRatio,
+                                            itemImageRatio,
+                                            itemVoicePlayState,
+                                            itemCachedVoiceIds,
+                                            itemOgData
+                                        ) {
+                                            MessageItemState(
                                                 item = entry.item,
                                                 isGroup = isGroup,
-                                                isHighlighted = entry.item.message.id == highlightedMessageId,
-                                                isSelected = entry.item.message.id in selectedMessageIds,
+                                                isHighlighted = messageId == highlightedMessageId,
+                                                isSelected = messageId in selectedMessageIds,
                                                 isSelectionMode = isSelectionMode,
-                                                uploadProgresses = if (entry.item.isPending) uploadProgresses else emptyList(),
-                                                activeVideoUrl = activeVideoUrl,
+                                                uploadProgresses = itemUploadProgresses,
+                                                activeVideoUrl = itemActiveVideoUrl,
                                                 isMuted = isVideoMuted,
-                                                videoAspectRatio = entry.item.message.fileUrl
-                                                    ?.let { videoAspectRatios[it] } ?: (16f / 9f),
-                                                imageRatio = entry.item.message.let { m ->
-                                                    val u = when {
-                                                        entry.item.isPending || entry.item.isFailed -> entry.item.pendingLocalUris.firstOrNull()
-                                                        m.type == "album" -> m.photoUrls?.firstOrNull()
-                                                        m.fileUrl != null -> m.fileUrl
-                                                        else -> null
-                                                    }
-                                                    u?.let { imageRatioCache[it] }
-                                                },
-                                                voicePlayState = voicePlayState,
-                                                cachedVoiceIds = cachedVoiceIds,
-                                                ogData = entry.item.message.content
-                                                    ?.let { URL_REGEX.find(it)?.value }
-                                                    ?.let { viewModel.ogCache[it] },
-                                            ),
+                                                videoAspectRatio = itemVideoAspectRatio,
+                                                imageRatio = itemImageRatio,
+                                                voicePlayState = itemVoicePlayState,
+                                                cachedVoiceIds = itemCachedVoiceIds,
+                                                ogData = itemOgData,
+                                            )
+                                        }
+                                        MessageItem(
+                                            state = messageItemState,
                                             modifier = Modifier,
                                             exoPlayer = exoPlayer,
                                             onLongClick = {
@@ -2536,8 +2566,9 @@ private fun PhotoGrid(
         modifier: Modifier,
         showExtra: Boolean = false
     ) {
-        val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
-            Uri.parse(url) else url
+        val model: Any = remember(url) {
+            if (url.startsWith("content://") || url.startsWith("file://")) Uri.parse(url) else url
+        }
         val progress = uploadProgresses.getOrNull(idx)
         Box(
             modifier = modifier
@@ -2607,8 +2638,9 @@ private fun PhotoGrid(
         1 -> {
             // Single photo — adaptive aspect ratio
             val url = urls[0]
-            val model: Any = if (url.startsWith("content://") || url.startsWith("file://"))
-                Uri.parse(url) else url
+            val model: Any = remember(url) {
+                if (url.startsWith("content://") || url.startsWith("file://")) Uri.parse(url) else url
+            }
             val progress = uploadProgresses.getOrNull(0)
             var imageRatio by remember(url) { mutableStateOf(cachedImageRatio) }
             var loadError by remember(url) { mutableStateOf(false) }

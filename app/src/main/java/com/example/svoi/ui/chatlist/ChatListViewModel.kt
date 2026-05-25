@@ -100,6 +100,8 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private var refreshJob: Job? = null
     private var loadJob: Job? = null
     private var refreshPending = false
+    private var refreshIgnoreCooldownRequested = false
+    private var lastSuccessfulFullRefreshAtMs = 0L
 
     init {
         // Watch for OS-level network changes.
@@ -159,6 +161,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         loadJob?.cancel()
         refreshJob?.cancel()  // cancel any pending silent refresh — we're doing a full load
         refreshPending = false
+        refreshIgnoreCooldownRequested = false
         loadJob = viewModelScope.launch {
             // 1. Show cache immediately
             val cached = cache.loadChatList()
@@ -189,6 +192,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 if (fresh.isNotEmpty()) {
                     _chats.value = fresh
                     cache.saveChatList(fresh)
+                    lastSuccessfulFullRefreshAtMs = System.currentTimeMillis()
                     // Clear wasSupabaseBlocked BEFORE markReachable() so the isReachable
                     // collector doesn't see it as a blocked→reachable transition and fire
                     // a redundant reload after this job completes.
@@ -204,19 +208,25 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     }
 
     // Debounced silent refresh — coalesces realtime bursts into one getChatsForUser().
-    fun silentRefresh() {
+    fun silentRefresh(ignoreCooldown: Boolean = false) {
         refreshPending = true
+        if (ignoreCooldown) refreshIgnoreCooldownRequested = true
         if (refreshJob?.isActive == true) return
         refreshJob = viewModelScope.launch {
             delay(SILENT_REFRESH_DEBOUNCE_MS)
             while (refreshPending) {
+                val skipCooldown = refreshIgnoreCooldownRequested
                 refreshPending = false
+                refreshIgnoreCooldownRequested = false
                 if (!app.supabaseChecker.isReachable.value) return@launch
+                if (!skipCooldown && isSilentRefreshInCooldown()) return@launch
                 refreshMutex.withLock {
+                    if (!skipCooldown && isSilentRefreshInCooldown()) return@withLock
                     val fresh = chatRepo.getChatsForUser()
                     if (fresh.isNotEmpty()) {
                         _chats.value = fresh
                         cache.saveChatList(fresh)
+                        lastSuccessfulFullRefreshAtMs = System.currentTimeMillis()
                         wasSupabaseBlocked = false
                         app.supabaseChecker.markReachable()
                     }
@@ -311,12 +321,12 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
 
     suspend fun deleteChat(chatId: String) {
         chatRepo.deleteChat(chatId)
-        silentRefresh()
+        silentRefresh(ignoreCooldown = true)
     }
 
     suspend fun clearHistory(chatId: String) {
         chatRepo.clearChatHistory(chatId)
-        silentRefresh()
+        silentRefresh(ignoreCooldown = true)
     }
 
     fun signOut(onDone: () -> Unit) {
@@ -365,7 +375,11 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private fun isSilentRefreshInCooldown(): Boolean =
+        System.currentTimeMillis() - lastSuccessfulFullRefreshAtMs < SILENT_REFRESH_COOLDOWN_MS
+
     private companion object {
         const val SILENT_REFRESH_DEBOUNCE_MS = 1_200L
+        const val SILENT_REFRESH_COOLDOWN_MS = 2_500L
     }
 }

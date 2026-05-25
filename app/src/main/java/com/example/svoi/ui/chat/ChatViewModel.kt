@@ -193,6 +193,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _myReadMessageIds = MutableStateFlow<Set<String>>(emptySet())
     val myReadMessageIds: StateFlow<Set<String>> = _myReadMessageIds
     private val pendingReadReceiptIds = mutableSetOf<String>()
+    private var readReceiptBaselineReady = false
+    private var markAsReadAfterBaseline = false
 
     /** Mute state for this chat (notifications) */
     private val _isMuted = MutableStateFlow(false)
@@ -403,6 +405,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun init(chatId: String) {
         if (this.chatId == chatId) return
         this.chatId = chatId
+        readReceiptBaselineReady = false
+        markAsReadAfterBaseline = false
+        pendingReadReceiptIds.clear()
+        _myReadMessageIds.value = emptySet()
 
         app.globalVoicePlayer.onCompletion = { finishedId -> playNextVoiceAfter(finishedId) }
 
@@ -847,6 +853,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         lastKnownMessageId = newLastId
         if (scrollAfter) _scrollToBottomEvent.value++
+        readReceiptBaselineReady = true
+        if (markAsReadAfterBaseline) {
+            markAsReadAfterBaseline = false
+            markAsRead()
+        }
 
         // Save immediately — don't wait for OG prefetch
         cache.saveMessages(chatId, raw)
@@ -927,6 +938,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Called by ChatScreen when user reaches the bottom — clears the unread badge */
     fun markAsRead() {
+        if (!readReceiptBaselineReady) {
+            markAsReadAfterBaseline = true
+            return
+        }
         val incomingIds = _messages.value.filter { !it.isOwn }.map { it.message.id }.toSet()
         val newIds = incomingIds - _myReadMessageIds.value - pendingReadReceiptIds
         _lastSeenMsgCount.value = _messages.value.size
