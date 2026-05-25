@@ -35,10 +35,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Search
@@ -46,6 +49,8 @@ import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import com.example.svoi.ui.components.SvoiLoader
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +59,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -77,7 +83,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -392,56 +400,155 @@ fun ChatListScreen(
     }
 
     modalAnnouncement?.let { announcement ->
-        AppAnnouncementDialog(
+        AppAnnouncementModal(
             announcement = announcement,
             onConfirm = { viewModel.acknowledgeModalAnnouncement(announcement) }
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AppAnnouncementDialog(
+private fun AppAnnouncementModal(
     announcement: AppAnnouncement,
     onConfirm: () -> Unit
 ) {
-    val accentColor = when (announcement.normalizedType) {
-        AppAnnouncementType.IMPORTANT -> MaterialTheme.colorScheme.error
-        AppAnnouncementType.TECHNICAL -> MaterialTheme.colorScheme.tertiary
-        AppAnnouncementType.NORMAL -> MaterialTheme.colorScheme.primary
-    }
-    val label = announcement.typeLabel
+    // Important announcements must be acknowledged explicitly so the read marker is written.
+    // Prevent swipe/back/scrim dismiss from hiding the sheet while modalAnnouncement is still set.
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { target -> target != SheetValue.Hidden }
+    )
+    val style = announcement.modalStyle()
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = {},
-        title = {
-            Column {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = accentColor,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = announcement.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+        sheetState = sheetState,
+        dragHandle = null,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(top = 22.dp, bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(style.iconContainerColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = style.icon,
+                    contentDescription = null,
+                    tint = style.accentColor,
+                    modifier = Modifier.size(32.dp)
                 )
             }
-        },
-        text = {
+
+            Spacer(Modifier.height(14.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Объявление приложения",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(style.badgeContainerColor)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = announcement.typeLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = style.accentColor,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Text(
+                text = announcement.title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(12.dp))
+
             Text(
                 text = announcement.body,
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 24.sp,
+                textAlign = TextAlign.Center
             )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text("Понятно")
+
+            Spacer(Modifier.height(24.dp))
+
+            Button(
+                onClick = onConfirm,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White
+                )
+            ) {
+                Text(
+                    text = "Понятно",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
-    )
+    }
+}
+
+private data class AnnouncementModalStyle(
+    val icon: ImageVector,
+    val accentColor: Color,
+    val iconContainerColor: Color,
+    val badgeContainerColor: Color
+)
+
+@Composable
+private fun AppAnnouncement.modalStyle(): AnnouncementModalStyle {
+    return when (normalizedType) {
+        AppAnnouncementType.IMPORTANT -> AnnouncementModalStyle(
+            icon = Icons.Default.NewReleases,
+            accentColor = MaterialTheme.colorScheme.error,
+            iconContainerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.65f),
+            badgeContainerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
+        )
+        AppAnnouncementType.TECHNICAL -> AnnouncementModalStyle(
+            icon = Icons.Default.Build,
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            iconContainerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f),
+            badgeContainerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)
+        )
+        AppAnnouncementType.NORMAL -> AnnouncementModalStyle(
+            icon = Icons.Default.Info,
+            accentColor = MaterialTheme.colorScheme.primary,
+            iconContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+            badgeContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        )
+    }
 }
 
 @Composable
