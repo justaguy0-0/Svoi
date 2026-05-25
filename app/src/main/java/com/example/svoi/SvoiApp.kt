@@ -51,7 +51,7 @@ class SvoiApp : Application() {
     override fun onCreate() {
         super.onCreate()
         EmojiCompat.init(BundledEmojiCompatConfig(this))
-        // Coil: увеличенный таймаут + перехватчик прогресса загрузки для медленного прокси
+        // Coil: increased timeout + download progress interceptor for large media files.
         Coil.setImageLoader(
             ImageLoader.Builder(this)
                 .okHttpClient(
@@ -112,9 +112,7 @@ class SvoiApp : Application() {
     }
 
     val supabase by lazy {
-        val url = if (themeManager.isProxyEnabled()) BuildConfig.SUPABASE_URL
-                  else BuildConfig.SUPABASE_DIRECT_URL
-        createSupabaseClient(supabaseUrl = url, supabaseKey = BuildConfig.SUPABASE_ANON_KEY) {
+        createSupabaseClient(supabaseUrl = BuildConfig.SUPABASE_URL, supabaseKey = BuildConfig.SUPABASE_ANON_KEY) {
             install(Auth)
             install(Postgrest)
             install(Realtime)
@@ -126,11 +124,7 @@ class SvoiApp : Application() {
     val cacheManager by lazy { CacheManager(this) }
     val networkMonitor by lazy { NetworkMonitor(this) }
     val supabaseChecker by lazy {
-        val probeUrl = if (themeManager.isProxyEnabled())
-            "${BuildConfig.SUPABASE_URL}/rest/v1/"
-        else
-            BuildConfig.SUPABASE_DIRECT_URL
-        SupabaseReachabilityChecker(probeUrl, BuildConfig.SUPABASE_ANON_KEY)
+        SupabaseReachabilityChecker("${BuildConfig.SUPABASE_URL}/rest/v1/", BuildConfig.SUPABASE_ANON_KEY)
     }
     val themeManager by lazy { ThemeManager(this) }
     val wallpaperManager by lazy { WallpaperManager(this) }

@@ -50,8 +50,11 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         Log.d(TAG, "onMessageReceived: data=${message.data}")
         val data = message.data
-        val title = data["title"] ?: run { Log.w(TAG, "no title, skip"); return }
-        val body = data["body"] ?: run { Log.w(TAG, "no body, skip"); return }
+        val legacyTitle = data["title"]
+        val preview = data["preview"] ?: data["body"] ?: run { Log.w(TAG, "no preview/body, skip"); return }
+        val messageId = data["message_id"]
+        val messageType = data["msg_type"] ?: data["message_type"] ?: data["type"] ?: ""
+        val isForwarded = data["is_forwarded"] == "true"
         val chatId = data["chat_id"]
 
         if (chatId != null && chatId == ActiveChatTracker.activeChatId) {
@@ -75,22 +78,30 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
         }
 
         val isGroup = data["is_group"] == "true"
-        val senderName = data["sender_name"] ?: title
+        val chatTitle = data["chat_title"]?.takeIf { it.isNotBlank() }
+        val senderName = data["sender_name"] ?: legacyTitle ?: "Svoi"
+        val notificationTitle = if (isGroup) {
+            chatTitle ?: legacyTitle ?: "Групповой чат"
+        } else {
+            legacyTitle ?: senderName
+        }
+        val fallbackBody = if (isGroup) "$senderName: $preview" else preview
         val avatarEmoji = data["avatar_emoji"] ?: "😊"
         val avatarColor = data["avatar_color"] ?: "#5C6BC0"
+        Log.d(TAG, "message metadata: id=$messageId type=$messageType forwarded=$isForwarded")
 
         try {
             val avatarBitmap = createAvatarBitmap(avatarColor, avatarEmoji)
             showNotification(
-                conversationTitle = if (isGroup) title else null,
+                conversationTitle = if (isGroup) notificationTitle else null,
                 senderName = senderName,
-                body = body,
+                body = preview,
                 chatId = chatId,
                 avatarBitmap = avatarBitmap
             )
         } catch (e: Exception) {
             Log.e(TAG, "showNotification failed, falling back to simple notification", e)
-            showSimpleNotification(title, body, chatId)
+            showSimpleNotification(notificationTitle, fallbackBody, chatId)
         }
     }
 
@@ -196,6 +207,8 @@ class SvoiFirebaseMessagingService : FirebaseMessagingService() {
         val summary = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(PRIMARY_COLOR)
+            .setContentTitle("Svoi")
+            .setContentText("Новые сообщения")
             .setGroup(GROUP_KEY)
             .setGroupSummary(true)
             .setAutoCancel(true)

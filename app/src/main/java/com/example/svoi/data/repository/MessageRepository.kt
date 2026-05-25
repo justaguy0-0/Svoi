@@ -743,8 +743,7 @@ class MessageRepository(private val supabase: SupabaseClient) {
                 val path = "$chatId/${java.util.UUID.randomUUID()}/$fileName"
                 supabase.storage.from("chat-media").upload(path, bytes)
                 onProgress?.invoke(1f)
-                // Use direct Supabase URL (not proxy) so Coil/ExoPlayer can download media.
-                // The proxy only forwards /rest/v1/, not /storage/v1/.
+                // Use the storage base URL so Coil/ExoPlayer can download public media.
                 "${BuildConfig.SUPABASE_STORAGE_URL}/storage/v1/object/public/chat-media/$path"
             }
         } catch (_: Exception) { null }

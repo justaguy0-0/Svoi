@@ -28,10 +28,10 @@ object ImageDownloadProgress {
 }
 
 /**
- * Application-level interceptor: forces proxy/CDN to revalidate instead of returning
- * a 304 with no body. The nginx proxy at api.svoilink.ru caches files and sometimes
- * returns 304 without a prior conditional GET from the client, which OkHttp cannot
- * handle (no cached body to serve). Cache-Control: no-cache tells the proxy to always
+ * Application-level interceptor: forces CDN/cache layers to revalidate instead of returning
+ * a 304 with no body. Intermediate caches can sometimes
+ * return 304 without a prior conditional GET from the client, which OkHttp cannot
+ * handle (no cached body to serve). Cache-Control: no-cache asks caches to
  * return the full response.
  */
 class NoCacheInterceptor : Interceptor {

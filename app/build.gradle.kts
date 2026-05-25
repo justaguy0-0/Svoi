@@ -23,17 +23,17 @@ android {
         applicationId = "com.example.svoi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.7"
+        versionCode = 9
+        versionName = "1.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "SUPABASE_URL", "\"${localProperties.getProperty("SUPABASE_URL", "")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localProperties.getProperty("SUPABASE_ANON_KEY", "")}\"")
-        // Direct Supabase project URL (bypasses nginx proxy). Used when proxy is disabled and for Storage.
+        // Direct Supabase project URL. Kept for compatibility with existing local.properties.
         // Falls back to SUPABASE_URL if not set.
         buildConfigField("String", "SUPABASE_DIRECT_URL", "\"${localProperties.getProperty("SUPABASE_DIRECT_URL", localProperties.getProperty("SUPABASE_URL", ""))}\"")
-        // Storage URL — same as SUPABASE_DIRECT_URL; kept as alias for MessageRepository.
+        // Storage URL — kept as alias for MessageRepository public object URLs.
         buildConfigField("String", "SUPABASE_STORAGE_URL", "\"${localProperties.getProperty("SUPABASE_DIRECT_URL", localProperties.getProperty("SUPABASE_URL", ""))}\"")
     }
 
