@@ -140,9 +140,23 @@ class AuthRepository(
         return try {
             supabase.postgrest.rpc(
                 "validate_invite_key",
-                buildJsonObject { put("p_key", key) }
+                buildJsonObject { put("p_key", key.trim()) }
             ).decodeAs<Boolean>()
         } catch (e: Exception) {
+            Log.e("Auth", "validateInviteKey failed: ${e.message}", e)
+            false
+        }
+    }
+
+    /** Claims an invite key for the currently authenticated user. */
+    suspend fun claimInviteKey(inviteKey: String): Boolean {
+        return try {
+            supabase.postgrest.rpc(
+                "claim_invite_key",
+                buildJsonObject { put("p_key", inviteKey.trim()) }
+            ).decodeAs<Boolean>()
+        } catch (e: Exception) {
+            Log.e("Auth", "claimInviteKey failed: ${e.message}", e)
             false
         }
     }
@@ -179,14 +193,10 @@ class AuthRepository(
                 filter { eq("id", userId) }
             }
 
-            // 3. Mark invite key as used
-            supabase.from("invite_keys").update({
-                set("used", true)
-                set("used_by", userId)
-            }) {
-                filter {
-                    eq("key", inviteKey)
-                }
+            // 3. Mark invite key as used through authenticated RPC.
+            if (!claimInviteKey(inviteKey)) {
+                Log.e("Auth", "signUp failed: invite key was not claimed for userId=$userId")
+                return "Не удалось применить пригласительный ключ. Попробуйте получить новый ключ или войти, если аккаунт уже создан."
             }
 
             // 4. Save session
