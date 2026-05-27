@@ -225,8 +225,10 @@ import coil.request.ImageRequest
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
+import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.ReactionGroup
+import com.example.svoi.data.model.UserPresence
 import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.OfflineBanner
@@ -422,7 +424,6 @@ fun ChatScreen(
     var selectedMessage by remember { mutableStateOf<MessageUiItem?>(null) }
     var lightboxState by remember { mutableStateOf<LightboxState?>(null) }
     val sheetState = rememberModalBottomSheetState()
-
     // Forward picker state
     var showForwardPicker by remember { mutableStateOf(false) }
     var pendingForwardMessageId by remember { mutableStateOf<String?>(null) }
@@ -794,341 +795,99 @@ fun ChatScreen(
             }
         },
         topBar = {
-            Column {
-                TopAppBar(
-                    title = {
-                        if (isSelectionMode) {
-                            Text(
-                                text = "Выбрано ${selectedMessageIds.size}",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        } else {
-                            Column(
-                                modifier = Modifier.clickable(
-                                    enabled = (isGroup || otherUserId != null)
-                                ) {
-                                    if (isGroup) onGroupInfoClick(chatId)
-                                    else otherUserId?.let { onUserClick(it) }
-                                }
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = chatName,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    if (isMuted) {
-                                        Spacer(Modifier.width(4.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.NotificationsOff,
-                                            contentDescription = "Уведомления отключены",
-                                            modifier = Modifier.size(16.dp),
-                                            tint = TextSecondary
-                                        )
-                                    }
-                                }
-                                val typingText = remember(typingUsers, isGroup) { typingIndicatorText(typingUsers, isGroup) }
-                                val subtitleText: String? = when {
-                                    typingText != null -> typingText
-                                    !isOnline -> "Нет подключения"
-                                    !isReachable -> "Нет доступа к серверам"
-                                    isUpdating && memberCount == 0 && presenceText.isBlank() -> "Обновление..."
-                                    isGroup && memberCount > 0 -> memberCountText(memberCount).let { base ->
-                                        if (groupOnlineCount >= 1) "$base, ${groupOnlineCount + 1} в сети" else base
-                                    }
-                                    !isGroup && presenceText.isNotBlank() -> presenceText
-                                    else -> null
-                                }
-                                val isStatusAnimated = !isOnline || !isReachable || (isUpdating && memberCount == 0 && presenceText.isBlank())
-                                val isTyping = typingText != null
-                                if (subtitleText != null) {
-                                    if (isStatusAnimated && !isTyping) {
-                                        val infiniteTransition = rememberInfiniteTransition(label = "chat_subtitle_pulse")
-                                        val alpha by infiniteTransition.animateFloat(
-                                            initialValue = 1f,
-                                            targetValue = 0.4f,
-                                            animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
-                                            label = "chat_subtitle_alpha"
-                                        )
-                                        Text(
-                                            text = subtitleText,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = TextSecondary,
-                                            modifier = Modifier.alpha(alpha)
-                                        )
-                                    } else {
-                                        Text(
-                                            text = subtitleText,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = when {
-                                                isTyping -> MaterialTheme.colorScheme.primary
-                                                !isGroup && presence?.isTrulyOnline() == true -> Online
-                                                else -> TextSecondary
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = {
-                            if (isSelectionMode) viewModel.clearSelection() else onBack()
-                        }) {
-                            Icon(
-                                if (isSelectionMode) Icons.Default.Close else Icons.Default.ArrowBack,
-                                contentDescription = if (isSelectionMode) "Отмена" else "Назад"
-                            )
-                        }
-                    },
-                    actions = {
-                        if (!isSelectionMode) {
-                            Box {
-                                IconButton(onClick = { showChatMenu = true }) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = "Меню")
-                                }
-                                DropdownMenu(
-                                    expanded = showChatMenu,
-                                    onDismissRequest = { showChatMenu = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(if (isMuted) "Включить уведомления" else "Отключить уведомления")
-                                        },
-                                        leadingIcon = {
-                                            Icon(
-                                                if (isMuted) Icons.Default.Notifications else Icons.Default.NotificationsOff,
-                                                contentDescription = null
-                                            )
-                                        },
-                                        onClick = {
-                                            showChatMenu = false
-                                            viewModel.toggleMute()
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                if (isGroup) "Выйти из группы" else "Удалить чат",
-                                                color = MaterialTheme.colorScheme.error
-                                            )
-                                        },
-                                        leadingIcon = {
-                                            Icon(
-                                                Icons.Default.ExitToApp,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.error
-                                            )
-                                        },
-                                        onClick = {
-                                            showChatMenu = false
-                                            if (isGroup) showLeaveConfirmDialog = true
-                                            else showDeleteChatDialog = true
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                    )
-                )
-
-                OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = isUpdating)
-
-                // Pinned message banner — slides in/out smoothly
-                AnimatedVisibility(
-                    visible = pinnedMessage != null,
-                    enter = slideInVertically { -it } + fadeIn(tween(220)),
-                    exit  = slideOutVertically { -it } + fadeOut(tween(180))
-                ) {
-                    pinnedMessage?.let { pinned ->
-                        val contentText = when (pinnedContent?.type) {
-                            "album" -> {
-                                val count = pinnedContent?.photoUrls?.size ?: 0
-                                val caption = pinnedContent?.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
-                                "📷 ${if (count > 1) "$count фото" else "Фото"}$caption"
-                            }
-                            "photo" -> {
-                                val caption = pinnedContent?.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
-                                "📷 Фото$caption"
-                            }
-                            "file" -> "📎 ${pinnedContent?.fileName ?: "Файл"}"
-                            "video" -> {
-                                val caption = pinnedContent?.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
-                                "🎬 Видео$caption"
-                            }
-                            "voice" -> "🎤 Голосовое сообщение"
-                            else -> pinnedContent?.content ?: ""
-                        }
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { viewModel.scrollToMessage(pinned.messageId) },
-                            color = MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(3.dp)
-                                        .height(32.dp)
-                                        .background(MaterialTheme.colorScheme.primary)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Закреплённое сообщение",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (pinnedContent?.forwardedFromId != null) {
-                                            Icon(
-                                                imageVector = Icons.Default.Redo,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(12.dp).padding(end = 2.dp),
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Text(
-                                            contentText,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                                IconButton(
-                                    onClick = { viewModel.unpinMessage() },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = "Открепить",
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            ChatHeaderContainer(
+                chatId = chatId,
+                chatName = chatName,
+                isGroup = isGroup,
+                presence = presence,
+                presenceText = presenceText,
+                pinnedMessage = pinnedMessage,
+                pinnedContent = pinnedContent,
+                typingUsers = typingUsers,
+                isSelectionMode = isSelectionMode,
+                selectedCount = selectedMessageIds.size,
+                isOnline = isOnline,
+                isReachable = isReachable,
+                isUpdating = isUpdating,
+                memberCount = memberCount,
+                groupOnlineCount = groupOnlineCount,
+                otherUserId = otherUserId,
+                isMuted = isMuted,
+                showChatMenu = showChatMenu,
+                onShowChatMenuChange = { showChatMenu = it },
+                onBack = onBack,
+                onClearSelection = viewModel::clearSelection,
+                onToggleMute = viewModel::toggleMute,
+                onShowLeaveConfirm = { showLeaveConfirmDialog = true },
+                onShowDeleteChatConfirm = { showDeleteChatDialog = true },
+                onScrollToMessage = viewModel::scrollToMessage,
+                onUnpinMessage = viewModel::unpinMessage,
+                onUserClick = onUserClick,
+                onGroupInfoClick = onGroupInfoClick
+            )
         }
     ) { padding ->
-        Box(
+        ChatContentContainer(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = padding.calculateTopPadding())
-                .imePadding()
-        ) {
-        // Wallpaper background (rendered first, behind everything)
-        ChatWallpaperBackground(wallpaper, dim = wallpaperDim, blur = wallpaperBlur)
-        Column(modifier = Modifier.fillMaxSize()) {
-
-            // Messages
-            ChatMessageBox(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                listState = listState,
-                displayEntries = displayEntries,
-                currentDisplayEntries = currentDisplayEntries,
-                isLoading = isLoading,
-                chatReady = chatReady,
-                isLoadingMore = isLoadingMore,
-                hasMoreMessages = hasMoreMessages,
-                chatAlpha = chatAlpha,
-                loadingOverlayAlpha = loadingOverlayAlpha,
-                isSelectionMode = isSelectionMode,
-                selectedMessageIds = selectedMessageIds,
-                animatingMessageIds = animatingMessageIds,
-                uploadProgresses = uploadProgresses,
-                activeVideoUrl = if (fullscreenVideoUrl == null) activeVideoUrl else null,
-                isVideoMuted = isVideoMuted,
-                videoAspectRatios = videoAspectRatios,
-                imageRatioCache = imageRatioCache,
-                initialScrollDone = initialScrollDone,
-                isNearBottom = isNearBottom,
-                highlightedMessageId = highlightedMessageId,
-                isGroup = isGroup,
-                voicePlayState = voicePlayState,
-                cachedVoiceIds = cachedVoiceIds,
-                messages = messages,
-                myReadMessageIds = myReadMessageIds,
-                wallpaper = wallpaper,
-                exoPlayer = exoPlayer,
-                globalVoiceState = globalVoiceState,
-                scope = scope,
-                onShowLightbox = { lightboxState = it },
-                onShowFullscreenVideo = { fullscreenVideoUrl = it },
-                onSelectMessage = { selectedMessage = it },
-                onVideoMuteToggle = { isVideoMuted = !isVideoMuted },
-                onUserClick = onUserClick,
-                viewModel = viewModel
-            )
-
-            // Input area or Selection action bar
-            if (isSelectionMode) {
-                SelectionActionBar(
-                    selectedCount = selectedMessageIds.size,
-                    onForward = {
-                        viewModel.loadChatsForForward()
-                        pendingForwardMessageId = null
-                        showForwardPicker = true
-                    },
-                    onDeleteForAll = { viewModel.deleteSelectedMessages(forEveryone = true) },
-                    hasOwnMessages = messages.any { it.message.id in selectedMessageIds && it.isOwn }
-                )
-            } else if (isPartnerLeft) {
-                // Personal chat: partner deleted the chat
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Пользователь удалил чат",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                ChatInputArea(
-                    inputValue = inputValue,
-                    onInputValueChange = { inputValue = it },
-                    stagedMedia = stagedMedia,
-                    voiceRecordState = voiceRecordState,
-                    voiceElapsedMs = voiceElapsedMs,
-                    mentionSuggestions = mentionSuggestions,
-                    isGroup = isGroup,
-                    replyTo = replyTo,
-                    editingMessage = editingMessage,
-                    viewModel = viewModel,
-                    chatId = chatId,
-                )
-            }
-        }
-        // Error overlay — floats over content without shifting layout
-        error?.let { msg ->
-            Text(
-                text = msg,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.errorContainer)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .clickable { viewModel.clearError() },
-                color = MaterialTheme.colorScheme.onErrorContainer,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-        }
+                .imePadding(),
+            wallpaper = wallpaper,
+            wallpaperDim = wallpaperDim,
+            wallpaperBlur = wallpaperBlur,
+            listState = listState,
+            displayEntries = displayEntries,
+            currentDisplayEntries = currentDisplayEntries,
+            isLoading = isLoading,
+            chatReady = chatReady,
+            isLoadingMore = isLoadingMore,
+            hasMoreMessages = hasMoreMessages,
+            chatAlpha = chatAlpha,
+            loadingOverlayAlpha = loadingOverlayAlpha,
+            isSelectionMode = isSelectionMode,
+            selectedMessageIds = selectedMessageIds,
+            animatingMessageIds = animatingMessageIds,
+            uploadProgresses = uploadProgresses,
+            activeVideoUrl = if (fullscreenVideoUrl == null) activeVideoUrl else null,
+            isVideoMuted = isVideoMuted,
+            videoAspectRatios = videoAspectRatios,
+            imageRatioCache = imageRatioCache,
+            initialScrollDone = initialScrollDone,
+            isNearBottom = isNearBottom,
+            highlightedMessageId = highlightedMessageId,
+            isGroup = isGroup,
+            voicePlayState = voicePlayState,
+            cachedVoiceIds = cachedVoiceIds,
+            messages = messages,
+            myReadMessageIds = myReadMessageIds,
+            exoPlayer = exoPlayer,
+            globalVoiceState = globalVoiceState,
+            scope = scope,
+            inputValue = inputValue,
+            stagedMedia = stagedMedia,
+            voiceRecordState = voiceRecordState,
+            voiceElapsedMs = voiceElapsedMs,
+            mentionSuggestions = mentionSuggestions,
+            replyTo = replyTo,
+            editingMessage = editingMessage,
+            isPartnerLeft = isPartnerLeft,
+            error = error,
+            chatId = chatId,
+            onInputValueChange = { inputValue = it },
+            onShowLightbox = { lightboxState = it },
+            onShowFullscreenVideo = { fullscreenVideoUrl = it },
+            onSelectMessage = { selectedMessage = it },
+            onVideoMuteToggle = { isVideoMuted = !isVideoMuted },
+            onForwardSelected = {
+                viewModel.loadChatsForForward()
+                pendingForwardMessageId = null
+                showForwardPicker = true
+            },
+            onDeleteSelectedForAll = { viewModel.deleteSelectedMessages(forEveryone = true) },
+            onClearError = viewModel::clearError,
+            onUserClick = onUserClick,
+            viewModel = viewModel
+        )
     }
 
     // ── Fullscreen video player ───────────────────────────────────────────────
@@ -1395,6 +1154,609 @@ fun ChatScreen(
         )
     }
 
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatHeaderContainer(
+    chatId: String,
+    chatName: String,
+    isGroup: Boolean,
+    presence: UserPresence?,
+    presenceText: String,
+    pinnedMessage: PinnedMessage?,
+    pinnedContent: Message?,
+    typingUsers: List<TypingInfo>,
+    isSelectionMode: Boolean,
+    selectedCount: Int,
+    isOnline: Boolean,
+    isReachable: Boolean,
+    isUpdating: Boolean,
+    memberCount: Int,
+    groupOnlineCount: Int,
+    otherUserId: String?,
+    isMuted: Boolean,
+    showChatMenu: Boolean,
+    onShowChatMenuChange: (Boolean) -> Unit,
+    onBack: () -> Unit,
+    onClearSelection: () -> Unit,
+    onToggleMute: () -> Unit,
+    onShowLeaveConfirm: () -> Unit,
+    onShowDeleteChatConfirm: () -> Unit,
+    onScrollToMessage: (String) -> Unit,
+    onUnpinMessage: () -> Unit,
+    onUserClick: (String) -> Unit,
+    onGroupInfoClick: (String) -> Unit
+) {
+    Column {
+        TopAppBar(
+            title = {
+                if (isSelectionMode) {
+                    Text(
+                        text = "Выбрано $selectedCount",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                } else {
+                    ChatHeaderTitle(
+                        chatId = chatId,
+                        chatName = chatName,
+                        isGroup = isGroup,
+                        presence = presence,
+                        presenceText = presenceText,
+                        typingUsers = typingUsers,
+                        isOnline = isOnline,
+                        isReachable = isReachable,
+                        isUpdating = isUpdating,
+                        memberCount = memberCount,
+                        groupOnlineCount = groupOnlineCount,
+                        otherUserId = otherUserId,
+                        isMuted = isMuted,
+                        onUserClick = onUserClick,
+                        onGroupInfoClick = onGroupInfoClick
+                    )
+                }
+            },
+            navigationIcon = {
+                IconButton(onClick = {
+                    if (isSelectionMode) onClearSelection() else onBack()
+                }) {
+                    Icon(
+                        if (isSelectionMode) Icons.Default.Close else Icons.Default.ArrowBack,
+                        contentDescription = if (isSelectionMode) "Отмена" else "Назад"
+                    )
+                }
+            },
+            actions = {
+                if (!isSelectionMode) {
+                    ChatHeaderMenu(
+                        isGroup = isGroup,
+                        isMuted = isMuted,
+                        showChatMenu = showChatMenu,
+                        onShowChatMenuChange = onShowChatMenuChange,
+                        onToggleMute = onToggleMute,
+                        onShowLeaveConfirm = onShowLeaveConfirm,
+                        onShowDeleteChatConfirm = onShowDeleteChatConfirm
+                    )
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            )
+        )
+
+        OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = isUpdating)
+
+        PinnedMessageBanner(
+            pinnedMessage = pinnedMessage,
+            pinnedContent = pinnedContent,
+            onScrollToMessage = onScrollToMessage,
+            onUnpinMessage = onUnpinMessage
+        )
+    }
+}
+
+@Composable
+private fun ChatHeaderTitle(
+    chatId: String,
+    chatName: String,
+    isGroup: Boolean,
+    presence: UserPresence?,
+    presenceText: String,
+    typingUsers: List<TypingInfo>,
+    isOnline: Boolean,
+    isReachable: Boolean,
+    isUpdating: Boolean,
+    memberCount: Int,
+    groupOnlineCount: Int,
+    otherUserId: String?,
+    isMuted: Boolean,
+    onUserClick: (String) -> Unit,
+    onGroupInfoClick: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier.clickable(enabled = (isGroup || otherUserId != null)) {
+            if (isGroup) onGroupInfoClick(chatId)
+            else otherUserId?.let { onUserClick(it) }
+        }
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = chatName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (isMuted) {
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Default.NotificationsOff,
+                    contentDescription = "Уведомления отключены",
+                    modifier = Modifier.size(16.dp),
+                    tint = TextSecondary
+                )
+            }
+        }
+        val typingText = remember(typingUsers, isGroup) {
+            typingIndicatorText(typingUsers, isGroup)
+        }
+        val subtitleText: String? = when {
+            typingText != null -> typingText
+            !isOnline -> "Нет подключения"
+            !isReachable -> "Нет доступа к серверам"
+            isUpdating && memberCount == 0 && presenceText.isBlank() -> "Обновление..."
+            isGroup && memberCount > 0 -> memberCountText(memberCount).let { base ->
+                if (groupOnlineCount >= 1) "$base, ${groupOnlineCount + 1} в сети" else base
+            }
+            !isGroup && presenceText.isNotBlank() -> presenceText
+            else -> null
+        }
+        val isStatusAnimated = !isOnline || !isReachable ||
+            (isUpdating && memberCount == 0 && presenceText.isBlank())
+        val isTyping = typingText != null
+        if (subtitleText != null) {
+            if (isStatusAnimated && !isTyping) {
+                val infiniteTransition = rememberInfiniteTransition(label = "chat_subtitle_pulse")
+                val alpha by infiniteTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 0.4f,
+                    animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+                    label = "chat_subtitle_alpha"
+                )
+                Text(
+                    text = subtitleText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.alpha(alpha)
+                )
+            } else {
+                Text(
+                    text = subtitleText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when {
+                        isTyping -> MaterialTheme.colorScheme.primary
+                        !isGroup && presence?.isTrulyOnline() == true -> Online
+                        else -> TextSecondary
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatHeaderMenu(
+    isGroup: Boolean,
+    isMuted: Boolean,
+    showChatMenu: Boolean,
+    onShowChatMenuChange: (Boolean) -> Unit,
+    onToggleMute: () -> Unit,
+    onShowLeaveConfirm: () -> Unit,
+    onShowDeleteChatConfirm: () -> Unit
+) {
+    Box {
+        IconButton(onClick = { onShowChatMenuChange(true) }) {
+            Icon(Icons.Default.MoreVert, contentDescription = "Меню")
+        }
+        DropdownMenu(
+            expanded = showChatMenu,
+            onDismissRequest = { onShowChatMenuChange(false) }
+        ) {
+            DropdownMenuItem(
+                text = { Text(if (isMuted) "Включить уведомления" else "Отключить уведомления") },
+                leadingIcon = {
+                    Icon(
+                        if (isMuted) Icons.Default.Notifications else Icons.Default.NotificationsOff,
+                        contentDescription = null
+                    )
+                },
+                onClick = {
+                    onShowChatMenuChange(false)
+                    onToggleMute()
+                }
+            )
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        if (isGroup) "Выйти из группы" else "Удалить чат",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.ExitToApp,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                },
+                onClick = {
+                    onShowChatMenuChange(false)
+                    if (isGroup) onShowLeaveConfirm() else onShowDeleteChatConfirm()
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun PinnedMessageBanner(
+    pinnedMessage: PinnedMessage?,
+    pinnedContent: Message?,
+    onScrollToMessage: (String) -> Unit,
+    onUnpinMessage: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = pinnedMessage != null,
+        enter = slideInVertically { -it } + fadeIn(tween(220)),
+        exit = slideOutVertically { -it } + fadeOut(tween(180))
+    ) {
+        pinnedMessage?.let { pinned ->
+            val contentText = when (pinnedContent?.type) {
+                "album" -> {
+                    val count = pinnedContent.photoUrls?.size ?: 0
+                    val caption = pinnedContent.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                    "📷 ${if (count > 1) "$count фото" else "Фото"}$caption"
+                }
+                "photo" -> {
+                    val caption = pinnedContent.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                    "📷 Фото$caption"
+                }
+                "file" -> "📎 ${pinnedContent?.fileName ?: "Файл"}"
+                "video" -> {
+                    val caption = pinnedContent.content?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+                    "🎬 Видео$caption"
+                }
+                "voice" -> "🎤 Голосовое сообщение"
+                else -> pinnedContent?.content ?: ""
+            }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onScrollToMessage(pinned.messageId) },
+                color = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(32.dp)
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Закреплённое сообщение",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (pinnedContent?.forwardedFromId != null) {
+                                Icon(
+                                    imageVector = Icons.Default.Redo,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp).padding(end = 2.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                contentText,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = onUnpinMessage,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Открепить",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatContentContainer(
+    modifier: Modifier,
+    wallpaper: ChatWallpaper,
+    wallpaperDim: Float,
+    wallpaperBlur: Boolean,
+    listState: LazyListState,
+    displayEntries: List<ChatEntry>,
+    currentDisplayEntries: List<ChatEntry>,
+    isLoading: Boolean,
+    chatReady: Boolean,
+    isLoadingMore: Boolean,
+    hasMoreMessages: Boolean,
+    chatAlpha: Float,
+    loadingOverlayAlpha: Float,
+    isSelectionMode: Boolean,
+    selectedMessageIds: Set<String>,
+    animatingMessageIds: Set<String>,
+    uploadProgresses: List<Float>,
+    activeVideoUrl: String?,
+    isVideoMuted: Boolean,
+    videoAspectRatios: MutableMap<String, Float>,
+    imageRatioCache: MutableMap<String, Float>,
+    initialScrollDone: Boolean,
+    isNearBottom: Boolean,
+    highlightedMessageId: String?,
+    isGroup: Boolean,
+    voicePlayState: VoicePlayState?,
+    cachedVoiceIds: Set<String>,
+    messages: List<MessageUiItem>,
+    myReadMessageIds: Set<String>,
+    exoPlayer: ExoPlayer,
+    globalVoiceState: GlobalVoiceState?,
+    scope: CoroutineScope,
+    inputValue: TextFieldValue,
+    stagedMedia: List<StagedMedia>,
+    voiceRecordState: VoiceRecordState,
+    voiceElapsedMs: Long,
+    mentionSuggestions: List<Profile>,
+    replyTo: Message?,
+    editingMessage: Message?,
+    isPartnerLeft: Boolean,
+    error: String?,
+    chatId: String,
+    onInputValueChange: (TextFieldValue) -> Unit,
+    onShowLightbox: (LightboxState) -> Unit,
+    onShowFullscreenVideo: (String) -> Unit,
+    onSelectMessage: (MessageUiItem) -> Unit,
+    onVideoMuteToggle: () -> Unit,
+    onForwardSelected: () -> Unit,
+    onDeleteSelectedForAll: () -> Unit,
+    onClearError: () -> Unit,
+    onUserClick: (String) -> Unit,
+    viewModel: ChatViewModel
+) {
+    Box(modifier = modifier) {
+        ChatWallpaperBackground(wallpaper, dim = wallpaperDim, blur = wallpaperBlur)
+        Column(modifier = Modifier.fillMaxSize()) {
+            MessageListContainer(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                listState = listState,
+                displayEntries = displayEntries,
+                currentDisplayEntries = currentDisplayEntries,
+                isLoading = isLoading,
+                chatReady = chatReady,
+                isLoadingMore = isLoadingMore,
+                hasMoreMessages = hasMoreMessages,
+                chatAlpha = chatAlpha,
+                loadingOverlayAlpha = loadingOverlayAlpha,
+                isSelectionMode = isSelectionMode,
+                selectedMessageIds = selectedMessageIds,
+                animatingMessageIds = animatingMessageIds,
+                uploadProgresses = uploadProgresses,
+                activeVideoUrl = activeVideoUrl,
+                isVideoMuted = isVideoMuted,
+                videoAspectRatios = videoAspectRatios,
+                imageRatioCache = imageRatioCache,
+                initialScrollDone = initialScrollDone,
+                isNearBottom = isNearBottom,
+                highlightedMessageId = highlightedMessageId,
+                isGroup = isGroup,
+                voicePlayState = voicePlayState,
+                cachedVoiceIds = cachedVoiceIds,
+                messages = messages,
+                myReadMessageIds = myReadMessageIds,
+                wallpaper = wallpaper,
+                exoPlayer = exoPlayer,
+                globalVoiceState = globalVoiceState,
+                scope = scope,
+                onShowLightbox = onShowLightbox,
+                onShowFullscreenVideo = onShowFullscreenVideo,
+                onSelectMessage = onSelectMessage,
+                onVideoMuteToggle = onVideoMuteToggle,
+                onUserClick = onUserClick,
+                viewModel = viewModel
+            )
+
+            ChatInputContainer(
+                isSelectionMode = isSelectionMode,
+                selectedMessageIds = selectedMessageIds,
+                messages = messages,
+                isPartnerLeft = isPartnerLeft,
+                inputValue = inputValue,
+                stagedMedia = stagedMedia,
+                voiceRecordState = voiceRecordState,
+                voiceElapsedMs = voiceElapsedMs,
+                mentionSuggestions = mentionSuggestions,
+                isGroup = isGroup,
+                replyTo = replyTo,
+                editingMessage = editingMessage,
+                chatId = chatId,
+                onForwardSelected = onForwardSelected,
+                onDeleteSelectedForAll = onDeleteSelectedForAll,
+                onInputValueChange = onInputValueChange,
+                viewModel = viewModel
+            )
+        }
+
+        error?.let { msg ->
+            Text(
+                text = msg,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .clickable { onClearError() },
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+@Composable
+private fun MessageListContainer(
+    modifier: Modifier,
+    listState: LazyListState,
+    displayEntries: List<ChatEntry>,
+    currentDisplayEntries: List<ChatEntry>,
+    isLoading: Boolean,
+    chatReady: Boolean,
+    isLoadingMore: Boolean,
+    hasMoreMessages: Boolean,
+    chatAlpha: Float,
+    loadingOverlayAlpha: Float,
+    isSelectionMode: Boolean,
+    selectedMessageIds: Set<String>,
+    animatingMessageIds: Set<String>,
+    uploadProgresses: List<Float>,
+    activeVideoUrl: String?,
+    isVideoMuted: Boolean,
+    videoAspectRatios: MutableMap<String, Float>,
+    imageRatioCache: MutableMap<String, Float>,
+    initialScrollDone: Boolean,
+    isNearBottom: Boolean,
+    highlightedMessageId: String?,
+    isGroup: Boolean,
+    voicePlayState: VoicePlayState?,
+    cachedVoiceIds: Set<String>,
+    messages: List<MessageUiItem>,
+    myReadMessageIds: Set<String>,
+    wallpaper: ChatWallpaper,
+    exoPlayer: ExoPlayer,
+    globalVoiceState: GlobalVoiceState?,
+    scope: CoroutineScope,
+    onShowLightbox: (LightboxState) -> Unit,
+    onShowFullscreenVideo: (String) -> Unit,
+    onSelectMessage: (MessageUiItem) -> Unit,
+    onVideoMuteToggle: () -> Unit,
+    onUserClick: (String) -> Unit,
+    viewModel: ChatViewModel
+) {
+    ChatMessageBox(
+        modifier = modifier,
+        listState = listState,
+        displayEntries = displayEntries,
+        currentDisplayEntries = currentDisplayEntries,
+        isLoading = isLoading,
+        chatReady = chatReady,
+        isLoadingMore = isLoadingMore,
+        hasMoreMessages = hasMoreMessages,
+        chatAlpha = chatAlpha,
+        loadingOverlayAlpha = loadingOverlayAlpha,
+        isSelectionMode = isSelectionMode,
+        selectedMessageIds = selectedMessageIds,
+        animatingMessageIds = animatingMessageIds,
+        uploadProgresses = uploadProgresses,
+        activeVideoUrl = activeVideoUrl,
+        isVideoMuted = isVideoMuted,
+        videoAspectRatios = videoAspectRatios,
+        imageRatioCache = imageRatioCache,
+        initialScrollDone = initialScrollDone,
+        isNearBottom = isNearBottom,
+        highlightedMessageId = highlightedMessageId,
+        isGroup = isGroup,
+        voicePlayState = voicePlayState,
+        cachedVoiceIds = cachedVoiceIds,
+        messages = messages,
+        myReadMessageIds = myReadMessageIds,
+        wallpaper = wallpaper,
+        exoPlayer = exoPlayer,
+        globalVoiceState = globalVoiceState,
+        scope = scope,
+        onShowLightbox = onShowLightbox,
+        onShowFullscreenVideo = onShowFullscreenVideo,
+        onSelectMessage = onSelectMessage,
+        onVideoMuteToggle = onVideoMuteToggle,
+        onUserClick = onUserClick,
+        viewModel = viewModel
+    )
+}
+
+@Composable
+private fun ChatInputContainer(
+    isSelectionMode: Boolean,
+    selectedMessageIds: Set<String>,
+    messages: List<MessageUiItem>,
+    isPartnerLeft: Boolean,
+    inputValue: TextFieldValue,
+    stagedMedia: List<StagedMedia>,
+    voiceRecordState: VoiceRecordState,
+    voiceElapsedMs: Long,
+    mentionSuggestions: List<Profile>,
+    isGroup: Boolean,
+    replyTo: Message?,
+    editingMessage: Message?,
+    chatId: String,
+    onForwardSelected: () -> Unit,
+    onDeleteSelectedForAll: () -> Unit,
+    onInputValueChange: (TextFieldValue) -> Unit,
+    viewModel: ChatViewModel
+) {
+    if (isSelectionMode) {
+        val hasOwnMessages = remember(messages, selectedMessageIds) {
+            messages.any { it.message.id in selectedMessageIds && it.isOwn }
+        }
+        SelectionActionBar(
+            selectedCount = selectedMessageIds.size,
+            onForward = onForwardSelected,
+            onDeleteForAll = onDeleteSelectedForAll,
+            hasOwnMessages = hasOwnMessages
+        )
+    } else if (isPartnerLeft) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Пользователь удалил чат",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    } else {
+        ChatInputArea(
+            inputValue = inputValue,
+            onInputValueChange = onInputValueChange,
+            stagedMedia = stagedMedia,
+            voiceRecordState = voiceRecordState,
+            voiceElapsedMs = voiceElapsedMs,
+            mentionSuggestions = mentionSuggestions,
+            isGroup = isGroup,
+            replyTo = replyTo,
+            editingMessage = editingMessage,
+            viewModel = viewModel,
+            chatId = chatId,
+        )
+    }
 }
 
 // ── Input area ───────────────────────────────────────────────────────────────
