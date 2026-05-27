@@ -62,7 +62,12 @@ class ChatRepository(
             checker.notifyTimeout()
             return emptyList()
         } catch (e: Exception) {
-            Log.e("ChatRepo", "getChatsForUser: failed to load memberships", e)
+            if (checker.isTransientNetworkFailure(e)) {
+                checker.notifyNetworkFailure(e)
+                Log.w("ChatRepo", "getChatsForUser: memberships temporarily unavailable (${e.javaClass.simpleName}: ${e.message})")
+            } else {
+                Log.e("ChatRepo", "getChatsForUser: failed to load memberships", e)
+            }
             return emptyList()
         }
 

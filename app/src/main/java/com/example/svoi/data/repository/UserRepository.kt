@@ -229,7 +229,12 @@ class UserRepository(
             Log.w("Presence", "setOnline($online) TIMEOUT")
             return false
         } catch (e: Exception) {
-            Log.e("Presence", "setOnline($online) FAILED: ${e.message}", e)
+            if (checker.isTransientNetworkFailure(e)) {
+                checker.notifyNetworkFailure(e)
+                Log.w("Presence", "setOnline($online) temporarily unavailable (${e.javaClass.simpleName}: ${e.message})")
+            } else {
+                Log.e("Presence", "setOnline($online) FAILED: ${e.message}", e)
+            }
             return false
         }
     }

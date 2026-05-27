@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.net.URL
 
 /**
@@ -19,7 +21,8 @@ import java.net.URL
  * IOException / SocketTimeoutException = blocked.
  *
  * The result is cached for [PROBE_COOLDOWN_MS] to avoid hammering the probe endpoint.
- * Initial state is optimistic (true) so a fresh install works normally.
+ * Initial state is pessimistic until the first probe or confirmed API success. This keeps
+ * startup from launching a burst of Supabase requests before DNS is ready.
  */
 class SupabaseReachabilityChecker(
     private val probeUrl: String,
@@ -32,9 +35,9 @@ class SupabaseReachabilityChecker(
         private const val PROBE_COOLDOWN_MS = 30_000L
     }
 
-    private val _isReachable = MutableStateFlow(true)
+    private val _isReachable = MutableStateFlow(false)
 
-    /** True when Supabase is reachable. Starts optimistic (true). */
+    /** True when Supabase is reachable. Starts false until probe/API confirms it. */
     val isReachable: StateFlow<Boolean> = _isReachable
 
     @Volatile private var lastProbeTime = 0L
@@ -54,7 +57,7 @@ class SupabaseReachabilityChecker(
     }
 
     /**
-     * Called by SvoiApp when the OS reports no network — immediately marks as unreachable
+     * Called by SvoiApp when the OS reports no network. Immediately marks as unreachable
      * without spending a probe attempt.
      */
     fun markOffline() {
@@ -76,14 +79,36 @@ class SupabaseReachabilityChecker(
 
     /**
      * Called when a Supabase API request times out. The probe may have reported reachable
-     * (CDN/edge responds quickly), but the actual backend is too slow — mark as unreachable
+     * (CDN/edge responds quickly), but the actual backend is too slow. Mark as unreachable
      * and reset the cooldown so the next checkNow() runs a fresh probe immediately.
      */
     fun notifyTimeout() {
+        markTemporarilyUnreachable("API request timed out")
+    }
+
+    fun notifyNetworkFailure(error: Throwable) {
+        if (!isTransientNetworkFailure(error)) return
+        markTemporarilyUnreachable("${error.javaClass.simpleName}: ${error.message}")
+    }
+
+    fun isTransientNetworkFailure(error: Throwable): Boolean {
+        var current: Throwable? = error
+        while (current != null) {
+            if (current is UnknownHostException || current is SocketTimeoutException) return true
+            val name = current.javaClass.simpleName
+            if (name.contains("Timeout", ignoreCase = true) ||
+                name.contains("UnknownHost", ignoreCase = true)
+            ) return true
+            current = current.cause
+        }
+        return false
+    }
+
+    private fun markTemporarilyUnreachable(reason: String) {
         if (!_isReachable.value) return  // already unreachable, avoid log spam
         _isReachable.value = false
         lastProbeTime = 0L  // force re-probe on next checkNow()
-        Log.w(TAG, "notifyTimeout: API request timed out — marking unreachable, will re-probe on next check")
+        Log.w(TAG, "temporary network failure ($reason) - marking unreachable")
     }
 
     private suspend fun probe(): Boolean = withContext(Dispatchers.IO) {
@@ -98,11 +123,11 @@ class SupabaseReachabilityChecker(
             conn.connect()
             val code = conn.responseCode
             conn.disconnect()
-            // Any real HTTP response means the server is reachable (even 4xx errors)
+            // Any real HTTP response means the server is reachable (even 4xx errors).
             val reachable = code in 100..499
             _isReachable.value = reachable
             lastProbeTime = System.currentTimeMillis()
-            Log.d(TAG, "probe: HTTP $code → reachable=$reachable")
+            Log.d(TAG, "probe: HTTP $code -> reachable=$reachable")
             reachable
         } catch (e: Exception) {
             lastProbeTime = System.currentTimeMillis()
@@ -110,11 +135,11 @@ class SupabaseReachabilityChecker(
             // is stale (probe runs slower than actual requests on congested links). Trust the API.
             val sinceApiSuccess = System.currentTimeMillis() - lastApiSuccessTime
             if (sinceApiSuccess < 30_000L) {
-                Log.d(TAG, "probe: failed but API confirmed reachable ${sinceApiSuccess}ms ago — ignoring probe failure")
+                Log.d(TAG, "probe: failed but API confirmed reachable ${sinceApiSuccess}ms ago - ignoring probe failure")
                 return@withContext true
             }
             _isReachable.value = false
-            Log.w(TAG, "probe: failed (${e.javaClass.simpleName}: ${e.message}) → blocked")
+            Log.w(TAG, "probe: failed (${e.javaClass.simpleName}: ${e.message}) -> blocked")
             false
         }
     }

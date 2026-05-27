@@ -159,6 +159,7 @@ class SvoiApp : Application() {
     // Fires immediately on start, then every 8s to stay within the current 10s DB TTL.
     private val heartbeatScope = CoroutineScope(Dispatchers.IO)
     private var heartbeatJob: Job? = null
+    private var fcmRetryJob: Job? = null
     private var lastOnlinePresenceAtMs: Long = 0L
 
     fun startPresenceHeartbeat() {
@@ -189,23 +190,46 @@ class SvoiApp : Application() {
 
     suspend fun registerFcmToken() {
         val userId = authRepository.currentUserId() ?: return
+        if (!supabaseChecker.isReachable.value) {
+            scheduleFcmTokenRetry()
+            return
+        }
         try {
             val token = FirebaseMessaging.getInstance().token.await()
             val saved = pushTokenRepository.saveToken(userId, token)
             if (!saved) {
-                // Save failed (likely timeout/no connection) — retry once when reachable
-                heartbeatScope.launch {
-                    val became = withTimeoutOrNull(120_000L) {
-                        supabaseChecker.isReachable.first { it }
-                    }
-                    if (became == true && authRepository.currentUserId() != null) {
-                        Log.d("FCM", "Retrying FCM token registration after reachability restored")
-                        pushTokenRepository.saveToken(userId, token)
-                    }
-                }
+                scheduleFcmTokenRetry()
             }
         } catch (e: Exception) {
             Log.e("FCM", "registerFcmToken: ${e.message}")
+            scheduleFcmTokenRetry()
+        }
+    }
+
+    suspend fun awaitSupabaseReachable(timeoutMs: Long = 120_000L): Boolean {
+        if (supabaseChecker.isReachable.value) return true
+        return withTimeoutOrNull(timeoutMs) {
+            supabaseChecker.isReachable.first { it }
+        } == true
+    }
+
+    private fun scheduleFcmTokenRetry() {
+        if (fcmRetryJob?.isActive == true) return
+        fcmRetryJob = heartbeatScope.launch {
+            while (authRepository.currentUserId() != null) {
+                val becameReachable = awaitSupabaseReachable()
+                val userId = authRepository.currentUserId() ?: return@launch
+                if (!becameReachable) continue
+                Log.d("FCM", "Retrying FCM token registration after reachability restored")
+                val saved = runCatching {
+                    val token = FirebaseMessaging.getInstance().token.await()
+                    pushTokenRepository.saveToken(userId, token)
+                }.onFailure { e ->
+                    Log.w("FCM", "retry save token failed: ${e.message}")
+                }.getOrDefault(false)
+                if (saved) return@launch
+                delay(10_000L)
+            }
         }
     }
 

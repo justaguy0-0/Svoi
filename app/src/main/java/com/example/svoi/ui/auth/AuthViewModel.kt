@@ -60,6 +60,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 bgColor = bgColor
             )
             if (err == null) {
+                app.supabaseChecker.markReachable()
                 app.startPresenceHeartbeat()
                 app.registerFcmToken()
                 onSuccess()
@@ -123,6 +124,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 bgColor = bgColor
             )
             if (err == null) {
+                app.supabaseChecker.markReachable()
                 app.startPresenceHeartbeat()
                 app.registerFcmToken()
                 onSuccess()
@@ -142,6 +144,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             _error.value = null
             val err = authRepo.signIn(email.trim().lowercase(), password)
             if (err == null) {
+                app.supabaseChecker.markReachable()
                 app.startPresenceHeartbeat()
                 app.registerFcmToken()
                 onSuccess()

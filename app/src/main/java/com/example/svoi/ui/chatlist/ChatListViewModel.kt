@@ -49,7 +49,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
     val isReachable: StateFlow<Boolean> = app.supabaseChecker.isReachable
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val _currentProfile = MutableStateFlow<com.example.svoi.data.model.Profile?>(null)
     val currentProfile: StateFlow<com.example.svoi.data.model.Profile?> = _currentProfile
@@ -57,6 +57,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private val _modalAnnouncement = MutableStateFlow<AppAnnouncement?>(null)
     val modalAnnouncement: StateFlow<AppAnnouncement?> = _modalAnnouncement
     private var announcementsChecked = false
+    private var announcementsCheckJob: Job? = null
 
     // Holiday banner — survives navigation (VM is alive while app is running)
     var victoryBannerDismissed = false
@@ -79,11 +80,12 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun loadModalAnnouncementOnce() {
-        if (announcementsChecked) return
-        announcementsChecked = true
-        viewModelScope.launch {
+        if (announcementsChecked || announcementsCheckJob?.isActive == true) return
+        announcementsCheckJob = viewModelScope.launch {
+            if (!app.awaitSupabaseReachable()) return@launch
             val userId = currentUserId
             if (userId.isBlank()) return@launch
+            announcementsChecked = true
             _modalAnnouncement.value = announcementRepo
                 .fetchUnreadModalAnnouncements(userId, BuildConfig.VERSION_CODE)
                 .firstOrNull()
@@ -93,8 +95,6 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     // Track whether we need to show "Обновление..." on next refresh
     private var initialLoad = true
     private var wasOffline = false
-    private var wasSupabaseBlocked = false
-
     // Mutex ensures only one getChatsForUser() runs at a time — prevents partial/stale overwrites
     private val refreshMutex = Mutex()
     private var refreshJob: Job? = null
@@ -102,21 +102,20 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private var refreshPending = false
     private var refreshIgnoreCooldownRequested = false
     private var lastSuccessfulFullRefreshAtMs = 0L
+    private var realtimeObserversStarted = false
 
     init {
         // Watch for OS-level network changes.
         // On reconnect: probe Supabase immediately and reload if reachable.
-        // If probe fails, wasSupabaseBlocked observer below handles reload when reachable.
+        // If probe fails, reachable observer below handles reload when reachable.
         viewModelScope.launch {
             isOnline.collect { online ->
                 if (!online) {
                     wasOffline = true
                 } else if (wasOffline) {
                     wasOffline = false
-                    val reachable = app.supabaseChecker.checkNow(force = true)
-                    if (reachable) loadChats(showUpdating = true)
-                    // If still blocked: wasSupabaseBlocked is set by the isReachable observer
-                    // and reload fires automatically when the probe eventually succeeds
+                    app.supabaseChecker.checkNow(force = true)
+                    // If still blocked, reload fires automatically when the probe eventually succeeds.
                 }
             }
         }
@@ -124,29 +123,29 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         // whether the OS was also offline. Covers slow-internet startup and VPN-blocked scenarios
         // where the OS sees a network but Supabase specifically is unreachable.
         viewModelScope.launch {
+            var wasReachable = app.supabaseChecker.isReachable.value
             app.supabaseChecker.isReachable.collect { reachable ->
-                if (!reachable) {
-                    wasSupabaseBlocked = true
-                } else if (wasSupabaseBlocked) {
-                    wasSupabaseBlocked = false
-                    // Only reload if no load is currently running — avoids cancelling a
-                    // successful in-progress fetch that triggered the markReachable() transition.
-                    if (loadJob?.isActive != true) {
-                        loadChats(showUpdating = true)
+                if (reachable) {
+                    startRealtimeObserversOnce()
+                    loadModalAnnouncementOnce()
+                    if (!wasReachable) {
+                        silentRefresh(ignoreCooldown = true)
                     }
+                } else {
+                    // Next reachable=true emission will coalesce refresh and startup checks.
                 }
+                wasReachable = reachable
             }
         }
         loadChats(showUpdating = true)  // initial load
         viewModelScope.launch {
             // Show cached profile immediately, then refresh from network
             cache.loadOwnProfile()?.let { _currentProfile.value = it }
+            if (!app.awaitSupabaseReachable()) return@launch
             val fresh = app.userRepository.getCurrentProfile()
             if (fresh != null) _currentProfile.value = fresh
         }
-        observeNewMessages()
-        observeReadReceipts()
-        observePresenceUpdates()
+        startRealtimeObserversOnce()
         startTypingPolling()
         loadModalAnnouncementOnce()
     }
@@ -193,10 +192,6 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                     _chats.value = fresh
                     cache.saveChatList(fresh)
                     lastSuccessfulFullRefreshAtMs = System.currentTimeMillis()
-                    // Clear wasSupabaseBlocked BEFORE markReachable() so the isReachable
-                    // collector doesn't see it as a blocked→reachable transition and fire
-                    // a redundant reload after this job completes.
-                    wasSupabaseBlocked = false
                     app.supabaseChecker.markReachable()
                 }
             }
@@ -227,12 +222,19 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                         _chats.value = fresh
                         cache.saveChatList(fresh)
                         lastSuccessfulFullRefreshAtMs = System.currentTimeMillis()
-                        wasSupabaseBlocked = false
                         app.supabaseChecker.markReachable()
                     }
                 }
             }
         }
+    }
+
+    private fun startRealtimeObserversOnce() {
+        if (realtimeObserversStarted || !app.supabaseChecker.isReachable.value) return
+        realtimeObserversStarted = true
+        observeNewMessages()
+        observeReadReceipts()
+        observePresenceUpdates()
     }
 
     private fun observeNewMessages() {

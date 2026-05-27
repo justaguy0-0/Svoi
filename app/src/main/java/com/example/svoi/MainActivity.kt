@@ -76,8 +76,10 @@ class MainActivity : ComponentActivity() {
                     // Проверка обновления — один раз за запуск, в фоне
                     launch {
                         delay(1_000L)
-                        val update = app.appUpdateRepository.checkForUpdate()
-                        app.setUpdateAvailable(update)
+                        if (app.awaitSupabaseReachable()) {
+                            val update = app.appUpdateRepository.checkForUpdate()
+                            app.setUpdateAvailable(update)
+                        }
                     }
                 }
 
