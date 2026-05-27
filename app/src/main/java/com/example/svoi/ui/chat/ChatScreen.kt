@@ -2082,7 +2082,8 @@ private fun ChatMessageBox(
                             is ChatEntry.DateDivider -> "date_${entry.triggerMsgId}"
                             ChatEntry.UnreadDivider -> "unread_divider"
                         }
-                    }
+                    },
+                    contentType = { entry -> entry.contentType() }
                 ) { entry ->
                     val isNew = entry is ChatEntry.Msg &&
                         entry.item.message.id in animatingMessageIds
@@ -2125,10 +2126,16 @@ private fun ChatMessageBox(
                                         )
                                     } else {
                                         val messageId = msg.id
+                                        val isVideoMessage = msg.type == "video"
+                                        val isVoiceMessage = msg.type == "voice"
+                                        val itemIsHighlighted = messageId == highlightedMessageId
+                                        val itemIsSelected = messageId in selectedMessageIds
                                         val itemUploadProgresses =
                                             if (entry.item.isPending) uploadProgresses else emptyList()
-                                        val itemActiveVideoUrl =
-                                            if (msg.type == "video") activeVideoUrl else null
+                                        val itemIsActiveVideo =
+                                            isVideoMessage && msg.fileUrl != null && msg.fileUrl == activeVideoUrl
+                                        val itemIsVideoMuted =
+                                            if (itemIsActiveVideo) isVideoMuted else true
                                         val itemVideoAspectRatio = msg.fileUrl
                                             ?.let { videoAspectRatios[it] } ?: (16f / 9f)
                                         val itemImageRatio = msg.let { m ->
@@ -2141,9 +2148,9 @@ private fun ChatMessageBox(
                                             u?.let { imageRatioCache[it] }
                                         }
                                         val itemVoicePlayState =
-                                            if (msg.type == "voice") voicePlayState else null
-                                        val itemCachedVoiceIds =
-                                            if (msg.type == "voice") cachedVoiceIds else emptySet()
+                                            if (isVoiceMessage && voicePlayState?.messageId == messageId) voicePlayState else null
+                                        val itemIsVoiceCached =
+                                            isVoiceMessage && messageId in cachedVoiceIds
                                         val ogUrl = remember(msg.content) {
                                             msg.content?.let { URL_REGEX.find(it)?.value }
                                         }
@@ -2151,36 +2158,42 @@ private fun ChatMessageBox(
                                         val messageItemState = remember(
                                             entry.item,
                                             isGroup,
-                                            highlightedMessageId,
-                                            selectedMessageIds,
-                                            isSelectionMode,
-                                            itemUploadProgresses,
-                                            itemActiveVideoUrl,
-                                            isVideoMuted,
                                             itemVideoAspectRatio,
                                             itemImageRatio,
-                                            itemVoicePlayState,
-                                            itemCachedVoiceIds,
                                             itemOgData
                                         ) {
                                             MessageItemState(
                                                 item = entry.item,
                                                 isGroup = isGroup,
-                                                isHighlighted = messageId == highlightedMessageId,
-                                                isSelected = messageId in selectedMessageIds,
-                                                isSelectionMode = isSelectionMode,
-                                                uploadProgresses = itemUploadProgresses,
-                                                activeVideoUrl = itemActiveVideoUrl,
-                                                isMuted = isVideoMuted,
                                                 videoAspectRatio = itemVideoAspectRatio,
                                                 imageRatio = itemImageRatio,
-                                                voicePlayState = itemVoicePlayState,
-                                                cachedVoiceIds = itemCachedVoiceIds,
                                                 ogData = itemOgData,
+                                            )
+                                        }
+                                        val messageRuntimeState = remember(
+                                            itemIsHighlighted,
+                                            itemIsSelected,
+                                            isSelectionMode,
+                                            itemUploadProgresses,
+                                            itemIsActiveVideo,
+                                            itemIsVideoMuted,
+                                            itemVoicePlayState,
+                                            itemIsVoiceCached
+                                        ) {
+                                            MessageItemRuntimeState(
+                                                isHighlighted = itemIsHighlighted,
+                                                isSelected = itemIsSelected,
+                                                isSelectionMode = isSelectionMode,
+                                                uploadProgresses = itemUploadProgresses,
+                                                isActiveVideo = itemIsActiveVideo,
+                                                isVideoMuted = itemIsVideoMuted,
+                                                voicePlayState = itemVoicePlayState,
+                                                isVoiceCached = itemIsVoiceCached,
                                             )
                                         }
                                         MessageItem(
                                             state = messageItemState,
+                                            runtimeState = messageRuntimeState,
                                             modifier = Modifier,
                                             exoPlayer = exoPlayer,
                                             onLongClick = {
@@ -2928,6 +2941,7 @@ private fun UnreadMessagesDivider() {
 @Composable
 private fun MessageItem(
     state: MessageItemState,
+    runtimeState: MessageItemRuntimeState,
     modifier: Modifier = Modifier,
     exoPlayer: ExoPlayer? = null,
     onLongClick: () -> Unit,
@@ -2948,15 +2962,15 @@ private fun MessageItem(
 ) {
     val item = state.item
     val isGroup = state.isGroup
-    val isHighlighted = state.isHighlighted
-    val isSelected = state.isSelected
-    val isSelectionMode = state.isSelectionMode
-    val uploadProgresses = state.uploadProgresses
-    val activeVideoUrl = state.activeVideoUrl
-    val isMuted = state.isMuted
+    val isHighlighted = runtimeState.isHighlighted
+    val isSelected = runtimeState.isSelected
+    val isSelectionMode = runtimeState.isSelectionMode
+    val uploadProgresses = runtimeState.uploadProgresses
+    val isActiveVideo = runtimeState.isActiveVideo
+    val isVideoMuted = runtimeState.isVideoMuted
     val videoAspectRatio = state.videoAspectRatio
-    val voicePlayState = state.voicePlayState
-    val cachedVoiceIds = state.cachedVoiceIds
+    val voicePlayState = runtimeState.voicePlayState
+    val isVoiceCached = runtimeState.isVoiceCached
     val ogData = state.ogData
     val msg = item.message
     if (msg.deletedForAll) {
@@ -3288,8 +3302,8 @@ private fun MessageItem(
                                     item = item,
                                     msg = msg,
                                     exoPlayer = exoPlayer,
-                                    activeVideoUrl = activeVideoUrl,
-                                    isMuted = isMuted,
+                                    isActiveVideo = isActiveVideo,
+                                    isMuted = isVideoMuted,
                                     videoAspectRatio = videoAspectRatio,
                                     textColor = textColor,
                                     onTap = onTap,
@@ -3353,7 +3367,7 @@ private fun MessageItem(
                                     item = item,
                                     msg = msg,
                                     textColor = textColor,
-                                    cachedVoiceIds = cachedVoiceIds,
+                                    isCached = isVoiceCached,
                                     voicePlayState = voicePlayState,
                                     onVoicePlay = onVoicePlay,
                                     onVoicePause = onVoicePause,
@@ -3503,7 +3517,7 @@ private fun VideoMessageContent(
     item: MessageUiItem,
     msg: Message,
     exoPlayer: ExoPlayer?,
-    activeVideoUrl: String?,
+    isActiveVideo: Boolean,
     isMuted: Boolean,
     videoAspectRatio: Float,
     textColor: Color,
@@ -3516,7 +3530,7 @@ private fun VideoMessageContent(
         if (exoPlayer != null) {
             InlineVideoPlayer(
                 url = msg.fileUrl,
-                isActive = activeVideoUrl == msg.fileUrl,
+                isActive = isActiveVideo,
                 exoPlayer = exoPlayer,
                 isMuted = isMuted,
                 aspectRatio = videoAspectRatio,
@@ -3567,7 +3581,7 @@ private fun VoiceMessageContent(
     item: MessageUiItem,
     msg: Message,
     textColor: Color,
-    cachedVoiceIds: Set<String>,
+    isCached: Boolean,
     voicePlayState: VoicePlayState?,
     onVoicePlay: (msgId: String, url: String, durationSec: Int) -> Unit,
     onVoicePause: () -> Unit,
@@ -3607,7 +3621,7 @@ private fun VoiceMessageContent(
                 waveformData = msg.waveformData,
                 isOwn = item.isOwn,
                 isListened = item.isListened,
-                isCached = msg.id in cachedVoiceIds,
+                isCached = isCached,
                 voicePlayState = voicePlayState,
                 onPlay = { onVoicePlay(msg.id, url, msg.duration ?: 0) },
                 onPause = onVoicePause,
@@ -4105,6 +4119,21 @@ private sealed class ChatEntry {
     data class Msg(val item: MessageUiItem) : ChatEntry()
     data class DateDivider(val date: String, val triggerMsgId: String) : ChatEntry()
     object UnreadDivider : ChatEntry()
+}
+
+private fun ChatEntry.contentType(): String = when (this) {
+    is ChatEntry.DateDivider -> "date"
+    ChatEntry.UnreadDivider -> "unread"
+    is ChatEntry.Msg -> when (item.message.type) {
+        "system" -> "system"
+        "text" -> "message_text"
+        "photo" -> "message_photo"
+        "album" -> "message_album"
+        "video" -> "message_video"
+        "voice" -> "message_voice"
+        "file" -> "message_file"
+        else -> "message_unknown"
+    }
 }
 
 data class LightboxState(val urls: List<String>, val startIndex: Int = 0)

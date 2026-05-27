@@ -7,15 +7,19 @@ import com.example.svoi.data.model.MessageUiItem
 data class MessageItemState(
     val item: MessageUiItem,
     val isGroup: Boolean,
-    val isHighlighted: Boolean,
+    val videoAspectRatio: Float = 16f / 9f,
+    val imageRatio: Float? = null,
+    val ogData: OgData? = null,
+)
+
+@Immutable
+data class MessageItemRuntimeState(
+    val isHighlighted: Boolean = false,
     val isSelected: Boolean = false,
     val isSelectionMode: Boolean = false,
     val uploadProgresses: List<Float> = emptyList(),
-    val activeVideoUrl: String? = null,
-    val isMuted: Boolean = true,
-    val videoAspectRatio: Float = 16f / 9f,
-    val imageRatio: Float? = null,
+    val isActiveVideo: Boolean = false,
+    val isVideoMuted: Boolean = true,
     val voicePlayState: VoicePlayState? = null,
-    val cachedVoiceIds: Set<String> = emptySet(),
-    val ogData: OgData? = null,
+    val isVoiceCached: Boolean = false,
 )
