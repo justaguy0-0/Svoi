@@ -1,6 +1,7 @@
 package com.example.svoi.ui.chatlist
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -16,6 +17,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -25,6 +29,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -63,14 +68,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -96,11 +98,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.Image
 import com.example.svoi.R
@@ -119,6 +123,7 @@ import com.example.svoi.ui.theme.OnlineGreen
 import com.example.svoi.ui.theme.SvoiDimens
 import com.example.svoi.util.toChatListTime
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -640,7 +645,6 @@ private fun BoxScope.OnlineDot() {
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SwipeableChatListItem(
     item: ChatListItem,
@@ -651,25 +655,40 @@ private fun SwipeableChatListItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val dismissState = rememberSwipeToDismissBoxState(
-        positionalThreshold = { distance -> distance * 0.45f }
-    )
-
-    LaunchedEffect(dismissState.currentValue) {
-        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
-            onSwipeAction()
-            dismissState.reset()
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val maxSwipePx = with(density) { 104.dp.toPx() }
+    val actionThresholdPx = with(density) { 72.dp.toPx() }
+    val offset = remember { Animatable(0f) }
+    val swipeProgress = (-offset.value / maxSwipePx).coerceIn(0f, 1f)
+    val draggableState = rememberDraggableState { delta ->
+        scope.launch {
+            offset.snapTo((offset.value + delta).coerceIn(-maxSwipePx, 0f))
         }
     }
 
-    SwipeToDismissBox(
-        state = dismissState,
-        enableDismissFromStartToEnd = false,
-        enableDismissFromEndToStart = true,
-        backgroundContent = {
-            ChatSwipeActionBackground(action = action, item = item)
-        },
-        content = {
+    Box(modifier = Modifier.fillMaxWidth()) {
+        ChatSwipeActionBackground(
+            action = action,
+            item = item,
+            progress = swipeProgress
+        )
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(offset.value.roundToInt(), 0) }
+                .draggable(
+                    state = draggableState,
+                    orientation = Orientation.Horizontal,
+                    onDragStarted = {
+                        scope.launch { offset.stop() }
+                    },
+                    onDragStopped = {
+                        val shouldRunAction = offset.value <= -actionThresholdPx
+                        if (shouldRunAction) onSwipeAction()
+                        scope.launch { offset.animateTo(0f, tween(durationMillis = 180)) }
+                    }
+                )
+        ) {
             ChatListItem(
                 item = item,
                 typingText = typingText,
@@ -678,13 +697,14 @@ private fun SwipeableChatListItem(
                 onLongClick = onLongClick
             )
         }
-    )
+    }
 }
 
 @Composable
 private fun ChatSwipeActionBackground(
     action: ChatSwipeLeftAction,
-    item: ChatListItem
+    item: ChatListItem,
+    progress: Float
 ) {
     val icon = when (action) {
         ChatSwipeLeftAction.MARK_AS_READ -> Icons.Default.DoneAll
@@ -705,7 +725,8 @@ private fun ChatSwipeActionBackground(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(color.copy(alpha = 0.16f))
+            .background(color.copy(alpha = 0.16f * progress))
+            .alpha(progress)
             .padding(horizontal = SvoiDimens.ScreenHorizontalPadding),
         contentAlignment = Alignment.CenterEnd
     ) {
@@ -739,17 +760,23 @@ private fun ChatListItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
+    val rowModifier = if (item.isPinned) {
+        Modifier
             .fillMaxWidth()
             .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 2.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                if (item.isPinned) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
-                else Color.Transparent
-            )
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.14f))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 0.dp, vertical = SvoiDimens.ItemVerticalPadding),
+            .padding(horizontal = 0.dp, vertical = SvoiDimens.ItemVerticalPadding)
+    } else {
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = SvoiDimens.ItemVerticalPadding)
+    }
+
+    Row(
+        modifier = rowModifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Avatar with optional online dot

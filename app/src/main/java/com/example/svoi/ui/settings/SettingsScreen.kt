@@ -1,4 +1,4 @@
-package com.example.svoi.ui.settings
+﻿package com.example.svoi.ui.settings
 
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -23,11 +23,11 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.AlertDialog
@@ -120,9 +120,9 @@ fun SettingsScreen(
         val coilBytes = context.imageLoader.diskCache?.size ?: 0L
         val total = jsonBytes + coilBytes
         when {
-            total < 1024 -> "$total Б"
-            total < 1024 * 1024 -> "${total / 1024} КБ"
-            else -> "${"%.1f".format(total / (1024.0 * 1024.0))} МБ"
+            total < 1024 -> "$total Р‘"
+            total < 1024 * 1024 -> "${total / 1024} РљР‘"
+            else -> "${"%.1f".format(total / (1024.0 * 1024.0))} РњР‘"
         }
     }
 
@@ -151,7 +151,7 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Настройки", fontWeight = FontWeight.SemiBold) },
+                title = { Text("РќР°СЃС‚СЂРѕР№РєРё", fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer
                 )
@@ -184,7 +184,7 @@ fun SettingsScreen(
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
             ) {
-            // ── Баннер обновления ─────────────────────────────────────────────
+            // в”Ђв”Ђ Р‘Р°РЅРЅРµСЂ РѕР±РЅРѕРІР»РµРЅРёСЏ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             if (updateAvailable != null) {
                 UpdateBanner(
                     version = updateAvailable,
@@ -197,7 +197,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(4.dp))
             }
 
-            // ── Внешний вид приложения ────────────────────────────────────────
+            // в”Ђв”Ђ Р’РЅРµС€РЅРёР№ РІРёРґ РїСЂРёР»РѕР¶РµРЅРёСЏ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             Surface(
                 modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
                 shape = SvoiShapes.Card,
@@ -205,11 +205,11 @@ fun SettingsScreen(
                 tonalElevation = 1.dp
             ) {
                 Column {
-                    SectionHeader("Внешний вид приложения")
+                    SectionHeader("Р’РЅРµС€РЅРёР№ РІРёРґ РїСЂРёР»РѕР¶РµРЅРёСЏ")
                     NavRow(
                         icon = Icons.Default.Palette,
-                        title = "Настройка оформления",
-                        subtitle = "Тема и цветовая палитра",
+                        title = "РќР°СЃС‚СЂРѕР№РєР° РѕС„РѕСЂРјР»РµРЅРёСЏ",
+                        subtitle = "РўРµРјР° Рё С†РІРµС‚РѕРІР°СЏ РїР°Р»РёС‚СЂР°",
                         onClick = onAppearanceClick
                     )
                     HorizontalDivider(
@@ -219,8 +219,8 @@ fun SettingsScreen(
                     )
                     NavRow(
                         icon = Icons.Default.Wallpaper,
-                        title = "Фон чата",
-                        subtitle = "Установить фоновое изображение",
+                        title = "Р¤РѕРЅ С‡Р°С‚Р°",
+                        subtitle = "РЈСЃС‚Р°РЅРѕРІРёС‚СЊ С„РѕРЅРѕРІРѕРµ РёР·РѕР±СЂР°Р¶РµРЅРёРµ",
                         onClick = onWallpaperClick
                     )
                     HorizontalDivider(
@@ -230,14 +230,14 @@ fun SettingsScreen(
                     )
                     NavRow(
                         icon = Icons.Default.FormatSize,
-                        title = "Размер текста",
+                        title = "Р Р°Р·РјРµСЂ С‚РµРєСЃС‚Р°",
                         subtitle = currentTextSizePreset.title,
                         onClick = onTextSizeClick
                     )
                 }
             }
 
-            // ── Медиа ─────────────────────────────────────────────────────────
+            // в”Ђв”Ђ РњРµРґРёР° в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             Surface(
                 modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
                 shape = SvoiShapes.Card,
@@ -245,12 +245,12 @@ fun SettingsScreen(
                 tonalElevation = 1.dp
             ) {
                 Column {
-                    SectionHeader("Медиа")
+                    SectionHeader("РњРµРґРёР°")
 
                     ToggleRow(
                         icon = Icons.Default.PlayCircle,
-                        title = "Автовоспроизведение видео",
-                        subtitle = "Запускать видео автоматически при прокрутке",
+                        title = "РђРІС‚РѕРІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ РІРёРґРµРѕ",
+                        subtitle = "Р—Р°РїСѓСЃРєР°С‚СЊ РІРёРґРµРѕ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїСЂРё РїСЂРѕРєСЂСѓС‚РєРµ",
                         checked = autoPlayVideos,
                         onCheckedChange = onAutoPlayChanged
                     )
@@ -264,10 +264,10 @@ fun SettingsScreen(
                 tonalElevation = 1.dp
             ) {
                 Column {
-                    SectionHeader("Чаты")
+                    SectionHeader("Список чатов")
 
                     NavRow(
-                        icon = Icons.Default.PushPin,
+                        icon = Icons.Default.Gesture,
                         title = "Действие свайпа чата",
                         subtitle = chatSwipeLeftAction.title,
                         onClick = { showChatSwipeActionDialog = true }
@@ -275,7 +275,7 @@ fun SettingsScreen(
                 }
             }
 
-            // ── Уведомления ───────────────────────────────────────────────────
+            // в”Ђв”Ђ РЈРІРµРґРѕРјР»РµРЅРёСЏ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             Surface(
                 modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
                 shape = SvoiShapes.Card,
@@ -283,13 +283,13 @@ fun SettingsScreen(
                 tonalElevation = 1.dp
             ) {
                 Column {
-                    SectionHeader("Уведомления")
+                    SectionHeader("РЈРІРµРґРѕРјР»РµРЅРёСЏ")
 
                     ToggleRow(
                         icon = Icons.Default.NotificationsOff,
-                        title = "Отключить все уведомления",
-                        subtitle = if (globalNotifMuted) "Уведомления отключены во всём приложении"
-                                   else "Получать уведомления о новых сообщениях",
+                        title = "РћС‚РєР»СЋС‡РёС‚СЊ РІСЃРµ СѓРІРµРґРѕРјР»РµРЅРёСЏ",
+                        subtitle = if (globalNotifMuted) "РЈРІРµРґРѕРјР»РµРЅРёСЏ РѕС‚РєР»СЋС‡РµРЅС‹ РІРѕ РІСЃС‘Рј РїСЂРёР»РѕР¶РµРЅРёРё"
+                                   else "РџРѕР»СѓС‡Р°С‚СЊ СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ РЅРѕРІС‹С… СЃРѕРѕР±С‰РµРЅРёСЏС…",
                         checked = globalNotifMuted,
                         onCheckedChange = { newValue ->
                             if (newValue) {
@@ -303,7 +303,7 @@ fun SettingsScreen(
                 }
             }
 
-            // ── Данные ────────────────────────────────────────────────────────
+            // в”Ђв”Ђ Р”Р°РЅРЅС‹Рµ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             Surface(
                 modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
                 shape = SvoiShapes.Card,
@@ -311,20 +311,20 @@ fun SettingsScreen(
                 tonalElevation = 1.dp
             ) {
                 Column {
-                    SectionHeader("Данные")
+                    SectionHeader("Р”Р°РЅРЅС‹Рµ")
 
                     ActionRow(
                         icon = if (isClearingCache) null else Icons.Default.DeleteSweep,
                         isLoading = isClearingCache,
-                        title = "Очистить кэш",
-                        subtitle = if (cacheSizeText.isEmpty()) "Сообщения, профили, превью"
-                                   else "Сообщения, профили, превью · $cacheSizeText",
+                        title = "РћС‡РёСЃС‚РёС‚СЊ РєСЌС€",
+                        subtitle = if (cacheSizeText.isEmpty()) "РЎРѕРѕР±С‰РµРЅРёСЏ, РїСЂРѕС„РёР»Рё, РїСЂРµРІСЊСЋ"
+                                   else "РЎРѕРѕР±С‰РµРЅРёСЏ, РїСЂРѕС„РёР»Рё, РїСЂРµРІСЊСЋ В· $cacheSizeText",
                         onClick = { showClearCacheDialog = true }
                     )
                 }
             }
 
-            // ── Приложение ────────────────────────────────────────────────────
+            // в”Ђв”Ђ РџСЂРёР»РѕР¶РµРЅРёРµ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             Surface(
                 modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
                 shape = SvoiShapes.Card,
@@ -332,20 +332,20 @@ fun SettingsScreen(
                 tonalElevation = 1.dp
             ) {
                 Column {
-                    SectionHeader("Приложение")
+                    SectionHeader("РџСЂРёР»РѕР¶РµРЅРёРµ")
 
                     NavRow(
                         icon = Icons.Default.NewReleases,
-                        title = "Что нового",
-                        subtitle = "Обновления и важные новости приложения",
+                        title = "Р§С‚Рѕ РЅРѕРІРѕРіРѕ",
+                        subtitle = "РћР±РЅРѕРІР»РµРЅРёСЏ Рё РІР°Р¶РЅС‹Рµ РЅРѕРІРѕСЃС‚Рё РїСЂРёР»РѕР¶РµРЅРёСЏ",
                         onClick = onWhatsNewClick
                     )
                 }
             }
 
-            // ── Версия приложения ─────────────────────────────────────────────
+            // в”Ђв”Ђ Р’РµСЂСЃРёСЏ РїСЂРёР»РѕР¶РµРЅРёСЏ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
             Text(
-                text = "Свои ${BuildConfig.VERSION_NAME}",
+                text = "РЎРІРѕРё ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier
@@ -359,7 +359,7 @@ fun SettingsScreen(
         } // outer Column
     }
 
-    // ── Bottom sheet обновления ───────────────────────────────────────────────
+    // в”Ђв”Ђ Bottom sheet РѕР±РЅРѕРІР»РµРЅРёСЏ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
     if (showUpdateSheet && updateAvailable != null) {
         UpdateBottomSheet(
             update = updateAvailable,
@@ -367,7 +367,7 @@ fun SettingsScreen(
         )
     }
 
-    // ── Диалог подтверждения отключения уведомлений ──────────────────────────
+    // в”Ђв”Ђ Р”РёР°Р»РѕРі РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РѕС‚РєР»СЋС‡РµРЅРёСЏ СѓРІРµРґРѕРјР»РµРЅРёР№ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
     if (showChatSwipeActionDialog) {
         ChatSwipeActionDialog(
             selected = chatSwipeLeftAction,
@@ -383,9 +383,9 @@ fun SettingsScreen(
     if (showMuteConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showMuteConfirmDialog = false },
-            title = { Text("Отключить уведомления?") },
+            title = { Text("РћС‚РєР»СЋС‡РёС‚СЊ СѓРІРµРґРѕРјР»РµРЅРёСЏ?") },
             text = {
-                Text("Вы не будете получать уведомления о новых сообщениях, пока сами не включите их обратно в настройках.")
+                Text("Р’С‹ РЅРµ Р±СѓРґРµС‚Рµ РїРѕР»СѓС‡Р°С‚СЊ СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ РЅРѕРІС‹С… СЃРѕРѕР±С‰РµРЅРёСЏС…, РїРѕРєР° СЃР°РјРё РЅРµ РІРєР»СЋС‡РёС‚Рµ РёС… РѕР±СЂР°С‚РЅРѕ РІ РЅР°СЃС‚СЂРѕР№РєР°С….")
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -393,21 +393,21 @@ fun SettingsScreen(
                     globalNotifMuted = true
                     app.themeManager.setNotificationsMuted(true)
                 }) {
-                    Text("Отключить", color = MaterialTheme.colorScheme.error)
+                    Text("РћС‚РєР»СЋС‡РёС‚СЊ", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showMuteConfirmDialog = false }) { Text("Отмена") }
+                TextButton(onClick = { showMuteConfirmDialog = false }) { Text("РћС‚РјРµРЅР°") }
             }
         )
     }
 
-    // ── Диалог подтверждения очистки ──────────────────────────────────────────
+    // в”Ђв”Ђ Р”РёР°Р»РѕРі РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РѕС‡РёСЃС‚РєРё в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
     if (showClearCacheDialog) {
         AlertDialog(
             onDismissRequest = { showClearCacheDialog = false },
-            title = { Text("Очистить кэш?") },
-            text = { Text("Сохранённые данные будут удалены. Это не затронет сообщения на сервере.") },
+            title = { Text("РћС‡РёСЃС‚РёС‚СЊ РєСЌС€?") },
+            text = { Text("РЎРѕС…СЂР°РЅС‘РЅРЅС‹Рµ РґР°РЅРЅС‹Рµ Р±СѓРґСѓС‚ СѓРґР°Р»РµРЅС‹. Р­С‚Рѕ РЅРµ Р·Р°С‚СЂРѕРЅРµС‚ СЃРѕРѕР±С‰РµРЅРёСЏ РЅР° СЃРµСЂРІРµСЂРµ.") },
             confirmButton = {
                 TextButton(onClick = {
                     showClearCacheDialog = false
@@ -422,20 +422,20 @@ fun SettingsScreen(
                         }
                         isClearingCache = false
                         cacheSizeText = calcCacheSize()
-                        snackbarHostState.showSnackbar("Кэш очищен")
+                        snackbarHostState.showSnackbar("РљСЌС€ РѕС‡РёС‰РµРЅ")
                     }
                 }) {
-                    Text("Очистить", color = MaterialTheme.colorScheme.error)
+                    Text("РћС‡РёСЃС‚РёС‚СЊ", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearCacheDialog = false }) { Text("Отмена") }
+                TextButton(onClick = { showClearCacheDialog = false }) { Text("РћС‚РјРµРЅР°") }
             }
         )
     }
 }
 
-// ── Секция-заголовок ──────────────────────────────────────────────────────────
+// в”Ђв”Ђ РЎРµРєС†РёСЏ-Р·Р°РіРѕР»РѕРІРѕРє в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 @Composable
 private fun ChatSwipeActionDialog(
@@ -445,7 +445,7 @@ private fun ChatSwipeActionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Действие свайпа чата") },
+        title = { Text("Р”РµР№СЃС‚РІРёРµ СЃРІР°Р№РїР° С‡Р°С‚Р°") },
         text = {
             Column {
                 ChatSwipeLeftAction.entries.forEach { action ->
@@ -472,7 +472,7 @@ private fun ChatSwipeActionDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Отмена")
+                Text("РћС‚РјРµРЅР°")
             }
         }
     )
@@ -490,7 +490,7 @@ private fun SectionHeader(title: String) {
 }
 
 
-// ── Строка с переключателем (Switch) ─────────────────────────────────────────
+// в”Ђв”Ђ РЎС‚СЂРѕРєР° СЃ РїРµСЂРµРєР»СЋС‡Р°С‚РµР»РµРј (Switch) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 @Composable
 private fun ToggleRow(
@@ -520,7 +520,7 @@ private fun ToggleRow(
     }
 }
 
-// ── Баннер обновления в настройках ───────────────────────────────────────────
+// в”Ђв”Ђ Р‘Р°РЅРЅРµСЂ РѕР±РЅРѕРІР»РµРЅРёСЏ РІ РЅР°СЃС‚СЂРѕР№РєР°С… в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 @Composable
 private fun UpdateBanner(version: AppVersion, onClick: () -> Unit) {
@@ -555,13 +555,13 @@ private fun UpdateBanner(version: AppVersion, onClick: () -> Unit) {
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Доступно обновление",
+                    text = "Р”РѕСЃС‚СѓРїРЅРѕ РѕР±РЅРѕРІР»РµРЅРёРµ",
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Text(
-                    text = "Версия ${version.displayVersionName()} · Нажмите, чтобы узнать подробности",
+                    text = "Р’РµСЂСЃРёСЏ ${version.displayVersionName()} В· РќР°Р¶РјРёС‚Рµ, С‡С‚РѕР±С‹ СѓР·РЅР°С‚СЊ РїРѕРґСЂРѕР±РЅРѕСЃС‚Рё",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
                 )
@@ -576,7 +576,7 @@ private fun UpdateBanner(version: AppVersion, onClick: () -> Unit) {
     }
 }
 
-// ── Bottom Sheet с деталями обновления ───────────────────────────────────────
+// в”Ђв”Ђ Bottom Sheet СЃ РґРµС‚Р°Р»СЏРјРё РѕР±РЅРѕРІР»РµРЅРёСЏ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -602,7 +602,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
         if (installer.canInstallPackages()) {
             installer.installApk(apk)
         } else {
-            errorMessage = "Разрешите установку из этого источника и нажмите «Установить» снова."
+            errorMessage = "Р Р°Р·СЂРµС€РёС‚Рµ СѓСЃС‚Р°РЅРѕРІРєСѓ РёР· СЌС‚РѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР° Рё РЅР°Р¶РјРёС‚Рµ В«РЈСЃС‚Р°РЅРѕРІРёС‚СЊВ» СЃРЅРѕРІР°."
             installer.openUnknownSourcesSettings()
         }
     }
@@ -613,7 +613,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
         cancelRequested = false
 
         if (update.downloadUrl.isNullOrBlank()) {
-            errorMessage = "Ссылка для скачивания обновления не указана. Попробуйте позже."
+            errorMessage = "РЎСЃС‹Р»РєР° РґР»СЏ СЃРєР°С‡РёРІР°РЅРёСЏ РѕР±РЅРѕРІР»РµРЅРёСЏ РЅРµ СѓРєР°Р·Р°РЅР°. РџРѕРїСЂРѕР±СѓР№С‚Рµ РїРѕР·Р¶Рµ."
             return
         }
 
@@ -639,7 +639,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
             } catch (_: Exception) {
                 isDownloading = false
                 if (!cancelRequested) {
-                    errorMessage = "Не удалось скачать обновление. Проверьте интернет и попробуйте снова."
+                    errorMessage = "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРєР°С‡Р°С‚СЊ РѕР±РЅРѕРІР»РµРЅРёРµ. РџСЂРѕРІРµСЂСЊС‚Рµ РёРЅС‚РµСЂРЅРµС‚ Рё РїРѕРїСЂРѕР±СѓР№С‚Рµ СЃРЅРѕРІР°."
                 }
             } finally {
                 downloadJob = null
@@ -680,7 +680,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Иконка
+            // РРєРѕРЅРєР°
             Box(
                 modifier = Modifier
                     .size(64.dp)
@@ -698,9 +698,9 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
 
             Spacer(Modifier.height(16.dp))
 
-            // Заголовок
+            // Р—Р°РіРѕР»РѕРІРѕРє
             Text(
-                text = "Доступно обновление",
+                text = "Р”РѕСЃС‚СѓРїРЅРѕ РѕР±РЅРѕРІР»РµРЅРёРµ",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
@@ -708,14 +708,14 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
 
-            // Версии: с какой на какую
+            // Р’РµСЂСЃРёРё: СЃ РєР°РєРѕР№ РЅР° РєР°РєСѓСЋ
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 VersionChip(
-                    label = "Текущая",
+                    label = "РўРµРєСѓС‰Р°СЏ",
                     version = BuildConfig.VERSION_NAME,
                     isNew = false
                 )
@@ -728,13 +728,13 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                         .size(28.dp)
                 )
                 VersionChip(
-                    label = "Новая",
+                    label = "РќРѕРІР°СЏ",
                     version = update.displayVersionName(),
                     isNew = true
                 )
             }
 
-            // Блок "Что нового" — показываем только если changelog не пустой
+            // Р‘Р»РѕРє "Р§С‚Рѕ РЅРѕРІРѕРіРѕ" вЂ” РїРѕРєР°Р·С‹РІР°РµРј С‚РѕР»СЊРєРѕ РµСЃР»Рё changelog РЅРµ РїСѓСЃС‚РѕР№
             if (update.changelog?.isNotBlank() == true) {
                 Spacer(Modifier.height(24.dp))
 
@@ -745,7 +745,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Что нового",
+                            text = "Р§С‚Рѕ РЅРѕРІРѕРіРѕ",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary
@@ -765,7 +765,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
 
             if (isDownloading) {
                 Text(
-                    text = "Скачивание обновления… $downloadProgress%",
+                    text = "РЎРєР°С‡РёРІР°РЅРёРµ РѕР±РЅРѕРІР»РµРЅРёСЏвЂ¦ $downloadProgress%",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
@@ -790,7 +790,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
 
             if (missingDownloadUrl) {
                 Text(
-                    text = "Ссылка для скачивания обновления не указана. Попробуйте позже.",
+                    text = "РЎСЃС‹Р»РєР° РґР»СЏ СЃРєР°С‡РёРІР°РЅРёСЏ РѕР±РЅРѕРІР»РµРЅРёСЏ РЅРµ СѓРєР°Р·Р°РЅР°. РџРѕРїСЂРѕР±СѓР№С‚Рµ РїРѕР·Р¶Рµ.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center
@@ -798,7 +798,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
             }
 
-            // Кнопка установки
+            // РљРЅРѕРїРєР° СѓСЃС‚Р°РЅРѕРІРєРё
             Button(
                 onClick = { startInstallFlow() },
                 enabled = !isDownloading && !missingDownloadUrl,
@@ -817,7 +817,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    text = "Установить",
+                    text = "РЈСЃС‚Р°РЅРѕРІРёС‚СЊ",
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -832,7 +832,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                     }
                 ) {
                     Text(
-                        "Отмена",
+                        "РћС‚РјРµРЅР°",
                         color = MaterialTheme.colorScheme.error
                     )
                 }
@@ -840,7 +840,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
 
             TextButton(onClick = { dismissSheet() }) {
                 Text(
-                    "Позже",
+                    "РџРѕР·Р¶Рµ",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -853,7 +853,7 @@ private fun AppVersion.isNewerVersion(): Boolean =
 
 private fun AppVersion.displayVersionName(): String =
     if (versionName == BuildConfig.VERSION_NAME && isNewerVersion()) {
-        "$versionName (сборка $versionCode)"
+        "$versionName (СЃР±РѕСЂРєР° $versionCode)"
     } else {
         versionName
     }
@@ -889,7 +889,7 @@ private fun VersionChip(label: String, version: String, isNew: Boolean) {
 }
 
 
-// ── Строка-ссылка (стрелка вправо) ───────────────────────────────────────────
+// в”Ђв”Ђ РЎС‚СЂРѕРєР°-СЃСЃС‹Р»РєР° (СЃС‚СЂРµР»РєР° РІРїСЂР°РІРѕ) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 @Composable
 private fun NavRow(
@@ -925,7 +925,7 @@ private fun NavRow(
     }
 }
 
-// ── Строка действия (кнопка / loader) ────────────────────────────────────────
+// в”Ђв”Ђ РЎС‚СЂРѕРєР° РґРµР№СЃС‚РІРёСЏ (РєРЅРѕРїРєР° / loader) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 @Composable
 private fun ActionRow(

@@ -1,4 +1,4 @@
-package com.example.svoi.data.local
+﻿package com.example.svoi.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -19,32 +19,32 @@ enum class AppTextSizePreset(
 ) {
     COMPACT(
         key = "compact",
-        title = "Компактный",
-        description = "Больше текста на экране",
+        title = "РљРѕРјРїР°РєС‚РЅС‹Р№",
+        description = "Р‘РѕР»СЊС€Рµ С‚РµРєСЃС‚Р° РЅР° СЌРєСЂР°РЅРµ",
         scale = 0.92f
     ),
     NORMAL(
         key = "normal",
-        title = "Обычный",
-        description = "Стандартный размер",
+        title = "РћР±С‹С‡РЅС‹Р№",
+        description = "РЎС‚Р°РЅРґР°СЂС‚РЅС‹Р№ СЂР°Р·РјРµСЂ",
         scale = 1.00f
     ),
     COMFORTABLE(
         key = "comfortable",
-        title = "Комфортный",
-        description = "Чуть крупнее обычного",
+        title = "РљРѕРјС„РѕСЂС‚РЅС‹Р№",
+        description = "Р§СѓС‚СЊ РєСЂСѓРїРЅРµРµ РѕР±С‹С‡РЅРѕРіРѕ",
         scale = 1.08f
     ),
     LARGE(
         key = "large",
-        title = "Крупный",
-        description = "Для лучшей читаемости",
+        title = "РљСЂСѓРїРЅС‹Р№",
+        description = "Р”Р»СЏ Р»СѓС‡С€РµР№ С‡РёС‚Р°РµРјРѕСЃС‚Рё",
         scale = 1.16f
     ),
     EXTRA_LARGE(
         key = "extra_large",
-        title = "Очень крупный",
-        description = "Максимальный размер",
+        title = "РћС‡РµРЅСЊ РєСЂСѓРїРЅС‹Р№",
+        description = "РњР°РєСЃРёРјР°Р»СЊРЅС‹Р№ СЂР°Р·РјРµСЂ",
         scale = 1.25f
     );
 
@@ -73,7 +73,7 @@ enum class ChatSwipeLeftAction(
 
     companion object {
         fun fromKey(key: String?): ChatSwipeLeftAction =
-            entries.firstOrNull { it.key == key } ?: TOGGLE_PIN
+            entries.firstOrNull { it.key == key } ?: MARK_AS_READ
     }
 }
 
@@ -81,7 +81,7 @@ class ThemeManager(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("svoi_settings", Context.MODE_PRIVATE)
     private val _chatSwipeLeftAction = MutableStateFlow(
-        ChatSwipeLeftAction.fromKey(prefs.getString("chat_swipe_left_action", ChatSwipeLeftAction.TOGGLE_PIN.key))
+        ChatSwipeLeftAction.fromKey(prefs.getString("chat_swipe_left_action", ChatSwipeLeftAction.MARK_AS_READ.key))
     )
     val chatSwipeLeftAction: StateFlow<ChatSwipeLeftAction> = _chatSwipeLeftAction
 
