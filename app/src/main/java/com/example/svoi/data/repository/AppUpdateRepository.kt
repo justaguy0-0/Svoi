@@ -17,16 +17,43 @@ class AppUpdateRepository(private val supabase: SupabaseClient) {
         return try {
             val latest = supabase.from("app_versions")
                 .select {
+                    filter {
+                        eq("is_active", true)
+                    }
                     order("version_code", Order.DESCENDING)
                     limit(1)
                 }
                 .decodeSingleOrNull<AppVersion>()
 
-            if (latest != null && latest.versionCode > BuildConfig.VERSION_CODE) {
-                Log.d("AppUpdate", "Update available: ${latest.versionName} (code ${latest.versionCode})")
+            val remoteCode = latest?.versionCode
+            val remoteName = latest?.versionName
+            val hasDownloadUrl = latest?.resolvedDownloadUrl?.isNotBlank() == true
+            val updateAvailable = remoteCode != null &&
+                remoteCode > BuildConfig.VERSION_CODE &&
+                latest.isActive &&
+                hasDownloadUrl
+
+            Log.d(
+                "AppUpdate",
+                "current=${BuildConfig.VERSION_CODE}/${BuildConfig.VERSION_NAME} " +
+                    "remote=${remoteCode ?: "null"}/${remoteName ?: "null"} " +
+                    "updateAvailable=$updateAvailable"
+            )
+
+            if (latest != null && updateAvailable) {
+                val downloadUrl = latest.resolvedDownloadUrl
+                if (!downloadUrl.endsWith(".apk", ignoreCase = true)) {
+                    Log.d("AppUpdate", "APK URL does not end with .apk: $downloadUrl")
+                }
                 latest
             } else {
-                Log.d("AppUpdate", "App is up to date (current=${BuildConfig.VERSION_CODE})")
+                Log.d(
+                    "AppUpdate",
+                    "no update (currentCode=${BuildConfig.VERSION_CODE}, " +
+                        "remoteCode=${remoteCode ?: "null"}, " +
+                        "currentName=${BuildConfig.VERSION_NAME}, " +
+                        "remoteName=${remoteName ?: "null"})"
+                )
                 null
             }
         } catch (e: Exception) {

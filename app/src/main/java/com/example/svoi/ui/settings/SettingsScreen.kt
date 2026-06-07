@@ -1,7 +1,5 @@
 package com.example.svoi.ui.settings
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,6 +36,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -51,6 +50,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,12 +76,15 @@ import com.example.svoi.BuildConfig
 import com.example.svoi.SvoiApp
 import com.example.svoi.data.local.AppTextSizePreset
 import com.example.svoi.data.model.AppVersion
+import com.example.svoi.data.repository.AppUpdateInstaller
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.components.OfflineBanner
 import com.example.svoi.ui.profile.ProfileViewModel
 import com.example.svoi.ui.theme.SvoiDimens
 import com.example.svoi.ui.theme.SvoiShapes
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -126,8 +129,15 @@ fun SettingsScreen(
     var globalNotifMuted by remember { mutableStateOf(app.themeManager.isNotificationsMuted()) }
     var showMuteConfirmDialog by remember { mutableStateOf(false) }
 
-    val updateAvailable by app.updateAvailable.collectAsState()
+    val updateAvailableState by app.updateAvailable.collectAsState()
+    val updateAvailable = updateAvailableState?.takeIf { it.isInstallableUpdate() }
     var showUpdateSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(updateAvailable) {
+        if (updateAvailable == null) {
+            showUpdateSheet = false
+        }
+    }
 
     val isOnline by app.isOnline.collectAsState()
     val isReachable by app.supabaseChecker.isReachable.collectAsState()
@@ -172,8 +182,12 @@ fun SettingsScreen(
             // ── Баннер обновления ─────────────────────────────────────────────
             if (updateAvailable != null) {
                 UpdateBanner(
-                    version = updateAvailable!!,
-                    onClick = { showUpdateSheet = true }
+                    version = updateAvailable,
+                    onClick = {
+                        if (updateAvailable.isInstallableUpdate()) {
+                            showUpdateSheet = true
+                        }
+                    }
                 )
                 Spacer(Modifier.height(4.dp))
             }
@@ -325,7 +339,7 @@ fun SettingsScreen(
     // ── Bottom sheet обновления ───────────────────────────────────────────────
     if (showUpdateSheet && updateAvailable != null) {
         UpdateBottomSheet(
-            update = updateAvailable!!,
+            update = updateAvailable,
             onDismiss = { showUpdateSheet = false }
         )
     }
@@ -471,7 +485,7 @@ private fun UpdateBanner(version: AppVersion, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Text(
-                    text = "Версия ${version.versionName} · Нажмите, чтобы узнать подробности",
+                    text = "Версия ${version.displayVersionName()} · Нажмите, чтобы узнать подробности",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
                 )
@@ -493,9 +507,85 @@ private fun UpdateBanner(version: AppVersion, onClick: () -> Unit) {
 private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    if (!update.isInstallableUpdate()) {
+        return
+    }
+    val scope = rememberCoroutineScope()
+    val installer = remember(update.versionCode) {
+        AppUpdateInstaller(context.applicationContext)
+    }
+    var downloadProgress by remember(update.versionCode) { mutableStateOf(0) }
+    var isDownloading by remember(update.versionCode) { mutableStateOf(false) }
+    var errorMessage by remember(update.versionCode) { mutableStateOf<String?>(null) }
+    var cachedApk by remember(update.versionCode) { mutableStateOf(installer.cachedApk(update)) }
+    var downloadJob by remember(update.versionCode) { mutableStateOf<Job?>(null) }
+    var cancelRequested by remember(update.versionCode) { mutableStateOf(false) }
+
+    fun installOrRequestPermission(apk: File) {
+        if (installer.canInstallPackages()) {
+            installer.installApk(apk)
+        } else {
+            errorMessage = "Разрешите установку из этого источника и нажмите «Установить» снова."
+            installer.openUnknownSourcesSettings()
+        }
+    }
+
+    fun startInstallFlow() {
+        if (!update.isInstallableUpdate() || isDownloading) return
+        errorMessage = null
+        cancelRequested = false
+
+        val cached = cachedApk ?: installer.cachedApk(update)
+        if (cached != null) {
+            cachedApk = cached
+            installOrRequestPermission(cached)
+            return
+        }
+
+        isDownloading = true
+        downloadProgress = 0
+        downloadJob = scope.launch {
+            try {
+                val apk = installer.downloadApk(update) { progress ->
+                    downloadProgress = progress
+                }
+                cachedApk = apk
+                isDownloading = false
+                installOrRequestPermission(apk)
+            } catch (_: CancellationException) {
+                isDownloading = false
+            } catch (_: Exception) {
+                isDownloading = false
+                if (!cancelRequested) {
+                    errorMessage = "Не удалось скачать обновление. Проверьте интернет и попробуйте снова."
+                }
+            } finally {
+                downloadJob = null
+            }
+        }
+    }
+
+    fun cancelDownloadIfNeeded() {
+        cancelRequested = true
+        installer.cancelDownload()
+        downloadJob?.cancel()
+        isDownloading = false
+    }
+
+    fun dismissSheet() {
+        cancelDownloadIfNeeded()
+        onDismiss()
+    }
+
+    DisposableEffect(update.versionCode) {
+        onDispose {
+            installer.cancelDownload()
+            downloadJob?.cancel()
+        }
+    }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { dismissSheet() },
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         shape = SvoiShapes.Dialog
@@ -557,13 +647,13 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                 )
                 VersionChip(
                     label = "Новая",
-                    version = update.versionName,
+                    version = update.displayVersionName(),
                     isNew = true
                 )
             }
 
             // Блок "Что нового" — показываем только если changelog не пустой
-            if (update.changelog.isNotBlank()) {
+            if (update.resolvedReleaseNotes.isNotBlank()) {
                 Spacer(Modifier.height(24.dp))
 
                 Surface(
@@ -580,7 +670,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = update.changelog,
+                            text = update.resolvedReleaseNotes,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             lineHeight = 22.sp
@@ -591,12 +681,35 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
 
             Spacer(Modifier.height(28.dp))
 
-            // Кнопка скачивания
+            if (isDownloading) {
+                Text(
+                    text = "Скачивание обновления… $downloadProgress%",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(10.dp))
+                LinearProgressIndicator(
+                    progress = { downloadProgress / 100f },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+
+            errorMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+
+            // Кнопка установки
             Button(
-                onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl))
-                    context.startActivity(intent)
-                },
+                onClick = { startInstallFlow() },
+                enabled = !isDownloading,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(SvoiDimens.ButtonHeight),
@@ -612,7 +725,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    text = "Перейти к скачиванию",
+                    text = "Установить",
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -620,7 +733,20 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
 
             Spacer(Modifier.height(8.dp))
 
-            TextButton(onClick = onDismiss) {
+            if (isDownloading) {
+                TextButton(
+                    onClick = {
+                        cancelDownloadIfNeeded()
+                    }
+                ) {
+                    Text(
+                        "Отмена",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
+            TextButton(onClick = { dismissSheet() }) {
                 Text(
                     "Позже",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -629,6 +755,18 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
         }
     }
 }
+
+private fun AppVersion.isInstallableUpdate(): Boolean =
+    versionCode != null &&
+        versionCode > BuildConfig.VERSION_CODE &&
+        resolvedDownloadUrl.isNotBlank()
+
+private fun AppVersion.displayVersionName(): String =
+    if (versionName == BuildConfig.VERSION_NAME && isInstallableUpdate()) {
+        "$versionName (сборка $versionCode)"
+    } else {
+        versionName
+    }
 
 @Composable
 private fun VersionChip(label: String, version: String, isNew: Boolean) {
