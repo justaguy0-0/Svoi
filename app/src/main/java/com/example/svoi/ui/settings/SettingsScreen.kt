@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,10 +21,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Palette
@@ -75,6 +74,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.imageLoader
 import com.example.svoi.BuildConfig
 import com.example.svoi.SvoiApp
+import com.example.svoi.data.local.AppTextSizePreset
 import com.example.svoi.data.model.AppVersion
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.components.OfflineBanner
@@ -90,6 +90,8 @@ import kotlinx.coroutines.withContext
 fun SettingsScreen(
     autoPlayVideos: Boolean = true,
     onAutoPlayChanged: (Boolean) -> Unit = {},
+    currentTextSizePreset: AppTextSizePreset = AppTextSizePreset.NORMAL,
+    onTextSizeClick: () -> Unit = {},
     onNavigateToChats: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onWallpaperClick: () -> Unit = {},
@@ -195,6 +197,17 @@ fun SettingsScreen(
                         title = "Фон чата",
                         subtitle = "Установить фоновое изображение",
                         onClick = onWallpaperClick
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 0.4.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                    )
+                    NavRow(
+                        icon = Icons.Default.FormatSize,
+                        title = "Размер текста",
+                        subtitle = currentTextSizePreset.title,
+                        onClick = onTextSizeClick
                     )
                 }
             }

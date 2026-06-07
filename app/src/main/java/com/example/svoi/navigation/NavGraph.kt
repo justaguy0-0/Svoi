@@ -19,6 +19,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.example.svoi.data.local.AppTextSizePreset
 import com.example.svoi.data.local.SvoiAccent
 import com.example.svoi.data.local.ThemeMode
 import com.example.svoi.ui.announcements.WhatsNewScreen
@@ -38,6 +39,7 @@ import com.example.svoi.ui.profile.UserProfileScreen
 import com.example.svoi.ui.search.GlobalSearchScreen
 import com.example.svoi.ui.settings.AppearanceScreen
 import com.example.svoi.ui.settings.SettingsScreen
+import com.example.svoi.ui.settings.TextSizeSettingsScreen
 import com.example.svoi.ui.settings.WallpaperPickerScreen
 
 object Routes {
@@ -58,6 +60,7 @@ object Routes {
     const val GLOBAL_SEARCH = "global_search"
     const val WALLPAPER_PICKER = "wallpaper_picker"
     const val APPEARANCE = "appearance"
+    const val TEXT_SIZE_SETTINGS = "text_size_settings"
     const val WHATS_NEW = "whats_new"
 
     fun setupStep1(inviteKey: String) = "setup_step1/$inviteKey"
@@ -77,7 +80,9 @@ fun NavGraph(
     autoPlayVideos: Boolean = true,
     onAutoPlayChanged: (Boolean) -> Unit = {},
     currentAccent: SvoiAccent = SvoiAccent.BLUE,
-    onAccentChanged: (SvoiAccent) -> Unit = {}
+    onAccentChanged: (SvoiAccent) -> Unit = {},
+    currentTextSizePreset: AppTextSizePreset = AppTextSizePreset.NORMAL,
+    onTextSizeChanged: (AppTextSizePreset) -> Unit = {}
 ) {
     // Shared AuthViewModel — scoped to NavGraph (Activity), so all auth screens share state
     val authViewModel: AuthViewModel = viewModel()
@@ -343,6 +348,10 @@ fun NavGraph(
                 SettingsScreen(
                     autoPlayVideos = autoPlayVideos,
                     onAutoPlayChanged = onAutoPlayChanged,
+                    currentTextSizePreset = currentTextSizePreset,
+                    onTextSizeClick = {
+                        if (canNav()) navController.navigate(Routes.TEXT_SIZE_SETTINGS)
+                    },
                     onNavigateToChats = {
                         if (canNav()) navController.popBackStack(Routes.CHAT_LIST, inclusive = false)
                     },
@@ -376,6 +385,14 @@ fun NavGraph(
                     onThemeChanged = onThemeChanged,
                     currentAccent = currentAccent,
                     onAccentChanged = onAccentChanged,
+                    onBack = { if (canNav()) navController.navigateUp() }
+                )
+            }
+
+            composable(Routes.TEXT_SIZE_SETTINGS) {
+                TextSizeSettingsScreen(
+                    currentPreset = currentTextSizePreset,
+                    onPresetSelected = onTextSizeChanged,
                     onBack = { if (canNav()) navController.navigateUp() }
                 )
             }

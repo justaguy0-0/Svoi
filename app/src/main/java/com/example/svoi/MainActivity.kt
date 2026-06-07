@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.svoi.data.local.AppTextSizePreset
 import com.example.svoi.data.local.SvoiAccent
 import com.example.svoi.data.local.ThemeMode
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -59,8 +60,13 @@ class MainActivity : ComponentActivity() {
             var themeMode by remember { mutableStateOf(app.themeManager.getThemeMode()) }
             var autoPlayVideos by remember { mutableStateOf(app.themeManager.getAutoPlayVideos()) }
             var accent by remember { mutableStateOf(app.themeManager.getAccent()) }
+            var textSizePreset by remember { mutableStateOf(app.themeManager.getTextSizePreset()) }
 
-            SvoiTheme(themeMode = themeMode, accent = accent) {
+            SvoiTheme(
+                themeMode = themeMode,
+                accent = accent,
+                textSizePreset = textSizePreset
+            ) {
                 val navController = rememberNavController()
                 var startDestination by remember { mutableStateOf<String?>(null) }
 
@@ -118,6 +124,11 @@ class MainActivity : ComponentActivity() {
                         onAccentChanged = { newAccent ->
                             app.themeManager.setAccent(newAccent)
                             accent = newAccent
+                        },
+                        currentTextSizePreset = textSizePreset,
+                        onTextSizeChanged = { preset ->
+                            app.themeManager.setTextSizePreset(preset)
+                            textSizePreset = preset
                         }
                     )
                 }

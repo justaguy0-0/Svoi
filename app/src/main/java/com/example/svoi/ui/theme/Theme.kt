@@ -7,9 +7,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.example.svoi.data.local.AppTextSizePreset
 import com.example.svoi.data.local.SvoiAccent
 import com.example.svoi.data.local.ThemeMode
 
@@ -55,6 +57,7 @@ private fun buildDarkScheme(p: AccentPalette) = darkColorScheme(
 fun SvoiTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     accent: SvoiAccent = SvoiAccent.BLUE,
+    textSizePreset: AppTextSizePreset = AppTextSizePreset.NORMAL,
     content: @Composable () -> Unit
 ) {
     val isDark = when (themeMode) {
@@ -64,6 +67,9 @@ fun SvoiTheme(
     }
     val palette = accentPalette(accent)
     val colorScheme = if (isDark) buildDarkScheme(palette) else buildLightScheme(palette)
+    val appTypography = remember(textSizePreset) {
+        scaledTypography(Typography, textSizePreset.scale)
+    }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -77,7 +83,7 @@ fun SvoiTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = appTypography,
         content = content
     )
 }

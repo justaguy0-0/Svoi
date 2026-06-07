@@ -9,6 +9,49 @@ enum class SvoiAccent {
     BLUE, ORANGE, RED, GREEN, PINK, PURPLE
 }
 
+enum class AppTextSizePreset(
+    val key: String,
+    val title: String,
+    val description: String,
+    val scale: Float
+) {
+    COMPACT(
+        key = "compact",
+        title = "Компактный",
+        description = "Больше текста на экране",
+        scale = 0.92f
+    ),
+    NORMAL(
+        key = "normal",
+        title = "Обычный",
+        description = "Стандартный размер",
+        scale = 1.00f
+    ),
+    COMFORTABLE(
+        key = "comfortable",
+        title = "Комфортный",
+        description = "Чуть крупнее обычного",
+        scale = 1.08f
+    ),
+    LARGE(
+        key = "large",
+        title = "Крупный",
+        description = "Для лучшей читаемости",
+        scale = 1.16f
+    ),
+    EXTRA_LARGE(
+        key = "extra_large",
+        title = "Очень крупный",
+        description = "Максимальный размер",
+        scale = 1.25f
+    );
+
+    companion object {
+        fun fromKey(key: String?): AppTextSizePreset =
+            entries.firstOrNull { it.key == key } ?: NORMAL
+    }
+}
+
 class ThemeManager(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("svoi_settings", Context.MODE_PRIVATE)
@@ -41,6 +84,15 @@ class ThemeManager(context: Context) {
 
     fun setAccent(accent: SvoiAccent) {
         prefs.edit().putString("accent_color", accent.name).apply()
+    }
+
+    fun getTextSizePreset(): AppTextSizePreset {
+        val value = prefs.getString("text_size_preset", AppTextSizePreset.NORMAL.key)
+        return AppTextSizePreset.fromKey(value)
+    }
+
+    fun setTextSizePreset(preset: AppTextSizePreset) {
+        prefs.edit().putString("text_size_preset", preset.key).apply()
     }
 
     fun isChatMuted(chatId: String): Boolean = prefs.getBoolean("chat_muted_$chatId", false)

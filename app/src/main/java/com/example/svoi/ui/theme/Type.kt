@@ -5,8 +5,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import com.example.svoi.R
+import kotlin.math.max
 
 val InterFontFamily = FontFamily(
     Font(R.font.inter_regular, FontWeight.Normal),
@@ -87,3 +90,39 @@ val Typography = Typography(
         letterSpacing = 0.sp
     )
 )
+
+fun scaledTypography(base: Typography, scale: Float): Typography = Typography(
+    displayLarge = base.displayLarge.scaled(scale),
+    displayMedium = base.displayMedium.scaled(scale),
+    displaySmall = base.displaySmall.scaled(scale),
+    headlineLarge = base.headlineLarge.scaled(scale),
+    headlineMedium = base.headlineMedium.scaled(scale),
+    headlineSmall = base.headlineSmall.scaled(scale),
+    titleLarge = base.titleLarge.scaled(scale),
+    titleMedium = base.titleMedium.scaled(scale),
+    titleSmall = base.titleSmall.scaled(scale),
+    bodyLarge = base.bodyLarge.scaled(scale),
+    bodyMedium = base.bodyMedium.scaled(scale),
+    bodySmall = base.bodySmall.scaled(scale),
+    labelLarge = base.labelLarge.scaled(scale),
+    labelMedium = base.labelMedium.scaled(scale),
+    labelSmall = base.labelSmall.scaled(scale)
+)
+
+private fun TextStyle.scaled(scale: Float): TextStyle {
+    val scaledFontSize = fontSize.scaledTextUnit(scale)
+    val scaledLineHeight = if (lineHeight.isSpecified) {
+        val lineHeightValue = lineHeight.value * scale
+        val minLineHeight = if (scaledFontSize.isSpecified) scaledFontSize.value else 0f
+        max(lineHeightValue, minLineHeight).sp
+    } else {
+        lineHeight
+    }
+    return copy(
+        fontSize = scaledFontSize,
+        lineHeight = scaledLineHeight
+    )
+}
+
+private fun TextUnit.scaledTextUnit(scale: Float): TextUnit =
+    if (isSpecified) (value * scale).sp else this
