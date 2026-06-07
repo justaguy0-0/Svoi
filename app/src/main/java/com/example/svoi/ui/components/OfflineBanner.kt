@@ -33,9 +33,10 @@ import androidx.compose.ui.unit.sp
 fun OfflineBanner(
     isOnline: Boolean,
     isReachable: Boolean,
-    isUpdating: Boolean
+    isUpdating: Boolean,
+    shouldShowServerOffline: Boolean = !isReachable
 ) {
-    val showBanner = !isOnline || !isReachable || isUpdating
+    val showBanner = !isOnline || shouldShowServerOffline || isUpdating
 
     // MutableTransitionState initialised with the current value so the banner
     // appears instantly (no slide-in) when the screen is first composed while
@@ -93,7 +94,7 @@ fun OfflineBanner(
                             fontWeight = FontWeight.Medium
                         )
                     }
-                    !isReachable -> {
+                    shouldShowServerOffline -> {
                         Icon(
                             imageVector = Icons.Default.CloudOff,
                             contentDescription = null,

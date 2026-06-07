@@ -91,6 +91,7 @@ fun ProfileScreen(
     val app = LocalContext.current.applicationContext as SvoiApp
     val bannerOnline by app.isOnline.collectAsState()
     val bannerReachable by app.supabaseChecker.isReachable.collectAsState()
+    val shouldShowOfflineBanner by app.supabaseChecker.shouldShowOfflineBanner.collectAsState()
     val successMessage by viewModel.successMessage.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -147,7 +148,12 @@ fun ProfileScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            OfflineBanner(isOnline = bannerOnline, isReachable = bannerReachable, isUpdating = false)
+            OfflineBanner(
+                isOnline = bannerOnline,
+                isReachable = bannerReachable,
+                isUpdating = false,
+                shouldShowServerOffline = shouldShowOfflineBanner
+            )
 
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

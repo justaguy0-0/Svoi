@@ -175,6 +175,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val isReachable: StateFlow<Boolean> = app.supabaseChecker.isReachable
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
+    val shouldShowOfflineBanner: StateFlow<Boolean> = app.supabaseChecker.shouldShowOfflineBanner
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     // Cached at init() time so it stays stable even if SDK session expires while offline.
     // Never reset to "" during a session — once captured, it remains valid for the lifetime
     // of the ViewModel. This prevents messages from flip-flopping to "others'" side when
@@ -758,10 +761,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         // Periodic fallback: ensures correctness even if Realtime misses an event
         viewModelScope.launch {
-            val initial = userRepo.getPresences(memberIds)
-            _groupOnlineCount.value = initial.count { it.isTrulyOnline() }
+            if (app.supabaseChecker.isReachable.value) {
+                val initial = userRepo.getPresences(memberIds)
+                _groupOnlineCount.value = initial.count { it.isTrulyOnline() }
+            }
             while (true) {
                 delay(30_000L)
+                if (!app.supabaseChecker.isReachable.value) continue
                 val updated = userRepo.getPresences(memberIds)
                 _groupOnlineCount.value = updated.count { it.isTrulyOnline() }
             }
@@ -774,6 +780,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     userRepo.presenceUpdateFlowAll().collect { presence ->
                         if (presence.userId in memberIdSet) {
                             // Re-fetch all to get server-computed isTrulyOnline values
+                            if (!app.supabaseChecker.isReachable.value) return@collect
                             val updated = userRepo.getPresences(memberIds)
                             _groupOnlineCount.value = updated.count { it.isTrulyOnline() }
                         }
@@ -792,9 +799,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // Always-on polling: guarantees UI refresh even when no Realtime events arrive
         // (e.g. when the other user crashes — no more heartbeats = no events = stale UI without this)
         viewModelScope.launch {
-            _otherUserPresence.value = userRepo.getPresence(userId)
+            if (app.supabaseChecker.isReachable.value) {
+                _otherUserPresence.value = userRepo.getPresence(userId)
+            }
             while (true) {
                 delay(5_000L)
+                if (!app.supabaseChecker.isReachable.value) continue
                 val presence = userRepo.getPresence(userId)
                 if (presence != null) _otherUserPresence.value = presence
             }
@@ -1248,6 +1258,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             while (true) {
                 delay(3_000L)
+                if (app.supabaseChecker.shouldShowOfflineBanner.value) {
+                    _typingUsers.value = emptyList()
+                    continue
+                }
+                if (!app.supabaseChecker.isReachable.value) continue
                 if (chatId.isNotEmpty()) {
                     val typing = messageRepo.getTypingUsers(chatId, currentUserId)
                     _typingUsers.value = typing.map { TypingInfo(it.userId, it.displayName, it.status) }
@@ -1260,15 +1275,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun onInputTextChanged(text: String) {
         typingJob?.cancel()
         if (text.isBlank()) {
-            viewModelScope.launch { messageRepo.clearTyping(chatId, currentUserId) }
+            if (app.supabaseChecker.isReachable.value) {
+                viewModelScope.launch { messageRepo.clearTyping(chatId, currentUserId) }
+            }
             return
         }
         typingJob = viewModelScope.launch {
             delay(300L) // debounce: don't spam server on every keystroke
+            if (!app.supabaseChecker.isReachable.value) return@launch
             val displayName = profileCache[currentUserId]?.displayName ?: ""
             messageRepo.setTyping(chatId, currentUserId, displayName)
             delay(4_000L)
-            messageRepo.clearTyping(chatId, currentUserId)
+            if (app.supabaseChecker.isReachable.value) {
+                messageRepo.clearTyping(chatId, currentUserId)
+            }
         }
     }
 

@@ -131,6 +131,7 @@ fun ChatListScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isOnline by viewModel.isOnline.collectAsState()
     val isReachable by viewModel.isReachable.collectAsState()
+    val shouldShowOfflineBanner by viewModel.shouldShowOfflineBanner.collectAsState()
     val isUpdating by viewModel.isUpdating.collectAsState()
     val chatTyping by viewModel.chatTyping.collectAsState()
     val currentProfile by viewModel.currentProfile.collectAsState()
@@ -190,7 +191,7 @@ fun ChatListScreen(
                             contentDescription = "Поиск по сообщениям"
                         )
                     }
-                    if (!isOnline || !isReachable) {
+                    if (!isOnline || shouldShowOfflineBanner) {
                         Icon(
                             imageVector = if (!isOnline) Icons.Default.WifiOff else Icons.Default.CloudOff,
                             contentDescription = "Нет соединения",
@@ -218,7 +219,12 @@ fun ChatListScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = isUpdating)
+            OfflineBanner(
+                isOnline = isOnline,
+                isReachable = isReachable,
+                isUpdating = isUpdating,
+                shouldShowServerOffline = shouldShowOfflineBanner
+            )
             AnimatedVisibility(
                 visible = isVictoryDay && !bannerDismissed,
                 exit = slideOutVertically(

@@ -191,11 +191,15 @@ class UserRepository(
 
     suspend fun getPresences(userIds: List<String>): List<UserPresence> {
         if (userIds.isEmpty()) return emptyList()
+        if (!checker.isReachable.value) return emptyList()
         return try {
             supabase.from("user_presence_view")
                 .select { filter { isIn("user_id", userIds) } }
                 .decodeList<UserPresence>()
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) {
+            if (checker.isTransientNetworkFailure(e)) checker.notifyNetworkFailure(e)
+            emptyList()
+        }
     }
 
     suspend fun setOnline(online: Boolean): Boolean {
@@ -240,6 +244,7 @@ class UserRepository(
     }
 
     suspend fun getPresence(userId: String): UserPresence? {
+        if (!checker.isReachable.value) return null
         return try {
             val result = supabase.from("user_presence_view")
                 .select { filter { eq("user_id", userId) } }
@@ -247,7 +252,12 @@ class UserRepository(
             Log.d("Presence", "getPresence($userId) = $result")
             result
         } catch (e: Exception) {
-            Log.e("Presence", "getPresence($userId) FAILED: ${e.message}")
+            if (checker.isTransientNetworkFailure(e)) {
+                checker.notifyNetworkFailure(e)
+                Log.w("Presence", "getPresence($userId) temporarily unavailable (${e.javaClass.simpleName}: ${e.message})")
+            } else {
+                Log.e("Presence", "getPresence($userId) FAILED: ${e.message}")
+            }
             null
         }
     }

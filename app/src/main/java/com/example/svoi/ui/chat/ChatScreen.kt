@@ -298,6 +298,7 @@ fun ChatScreen(
     val isUpdating by viewModel.isUpdating.collectAsState()
     val isOnline by viewModel.isOnline.collectAsState()
     val isReachable by viewModel.isReachable.collectAsState()
+    val shouldShowOfflineBanner by viewModel.shouldShowOfflineBanner.collectAsState()
     val memberCount by viewModel.memberCount.collectAsState()
     val groupOnlineCount by viewModel.groupOnlineCount.collectAsState()
     val error by viewModel.error.collectAsState()
@@ -809,6 +810,7 @@ fun ChatScreen(
                 selectedCount = selectedMessageIds.size,
                 isOnline = isOnline,
                 isReachable = isReachable,
+                shouldShowOfflineBanner = shouldShowOfflineBanner,
                 isUpdating = isUpdating,
                 memberCount = memberCount,
                 groupOnlineCount = groupOnlineCount,
@@ -1170,6 +1172,7 @@ private fun ChatHeaderContainer(
     selectedCount: Int,
     isOnline: Boolean,
     isReachable: Boolean,
+    shouldShowOfflineBanner: Boolean,
     isUpdating: Boolean,
     memberCount: Int,
     groupOnlineCount: Int,
@@ -1206,6 +1209,7 @@ private fun ChatHeaderContainer(
                         typingUsers = typingUsers,
                         isOnline = isOnline,
                         isReachable = isReachable,
+                        shouldShowOfflineBanner = shouldShowOfflineBanner,
                         isUpdating = isUpdating,
                         memberCount = memberCount,
                         groupOnlineCount = groupOnlineCount,
@@ -1244,7 +1248,12 @@ private fun ChatHeaderContainer(
             )
         )
 
-        OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = isUpdating)
+        OfflineBanner(
+            isOnline = isOnline,
+            isReachable = isReachable,
+            isUpdating = isUpdating,
+            shouldShowServerOffline = shouldShowOfflineBanner
+        )
 
         PinnedMessageBanner(
             pinnedMessage = pinnedMessage,
@@ -1265,6 +1274,7 @@ private fun ChatHeaderTitle(
     typingUsers: List<TypingInfo>,
     isOnline: Boolean,
     isReachable: Boolean,
+    shouldShowOfflineBanner: Boolean,
     isUpdating: Boolean,
     memberCount: Int,
     groupOnlineCount: Int,
@@ -1301,7 +1311,7 @@ private fun ChatHeaderTitle(
         val subtitleText: String? = when {
             typingText != null -> typingText
             !isOnline -> "Нет подключения"
-            !isReachable -> "Нет доступа к серверам"
+            shouldShowOfflineBanner -> "Нет доступа к серверам"
             isUpdating && memberCount == 0 && presenceText.isBlank() -> "Обновление..."
             isGroup && memberCount > 0 -> memberCountText(memberCount).let { base ->
                 if (groupOnlineCount >= 1) "$base, ${groupOnlineCount + 1} в сети" else base
@@ -1309,7 +1319,7 @@ private fun ChatHeaderTitle(
             !isGroup && presenceText.isNotBlank() -> presenceText
             else -> null
         }
-        val isStatusAnimated = !isOnline || !isReachable ||
+        val isStatusAnimated = !isOnline || shouldShowOfflineBanner ||
             (isUpdating && memberCount == 0 && presenceText.isBlank())
         val isTyping = typingText != null
         if (subtitleText != null) {

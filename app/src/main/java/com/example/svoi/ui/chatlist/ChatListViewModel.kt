@@ -51,6 +51,9 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     val isReachable: StateFlow<Boolean> = app.supabaseChecker.isReachable
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    val shouldShowOfflineBanner: StateFlow<Boolean> = app.supabaseChecker.shouldShowOfflineBanner
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     private val _currentProfile = MutableStateFlow<com.example.svoi.data.model.Profile?>(null)
     val currentProfile: StateFlow<com.example.svoi.data.model.Profile?> = _currentProfile
 
@@ -342,6 +345,10 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             while (true) {
                 delay(3_000L)
+                if (app.supabaseChecker.shouldShowOfflineBanner.value) {
+                    _chatTyping.value = emptyMap()
+                    continue
+                }
                 if (!app.supabaseChecker.isReachable.value) continue
                 val chats = _chats.value
                 if (chats.isNotEmpty()) {

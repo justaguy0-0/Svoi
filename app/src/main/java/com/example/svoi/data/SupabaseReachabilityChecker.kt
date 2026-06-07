@@ -1,14 +1,26 @@
 package com.example.svoi.data
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.net.URL
+
+enum class ServerConnectionState {
+    CHECKING,
+    ONLINE,
+    DEGRADED,
+    OFFLINE
+}
 
 /**
  * Actively probes whether the Supabase backend is reachable, independent of OS-level
@@ -33,12 +45,19 @@ class SupabaseReachabilityChecker(
         private const val TAG = "SupabaseChecker"
         private const val PROBE_TIMEOUT_MS = 4_000
         private const val PROBE_COOLDOWN_MS = 30_000L
+        private const val OFFLINE_CONFIRMATION_DELAY_MS = 4_000L
     }
 
     private val _isReachable = MutableStateFlow(false)
+    private val _connectionState = MutableStateFlow(ServerConnectionState.CHECKING)
+    private val _shouldShowOfflineBanner = MutableStateFlow(false)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var offlineConfirmationJob: Job? = null
 
     /** True when Supabase is reachable. Starts false until probe/API confirms it. */
     val isReachable: StateFlow<Boolean> = _isReachable
+    val connectionState: StateFlow<ServerConnectionState> = _connectionState
+    val shouldShowOfflineBanner: StateFlow<Boolean> = _shouldShowOfflineBanner
 
     @Volatile private var lastProbeTime = 0L
     // Last time a real Supabase API call confirmed reachability (not the probe).
@@ -53,6 +72,10 @@ class SupabaseReachabilityChecker(
         val now = System.currentTimeMillis()
         val cacheValid = !force && now - lastProbeTime < PROBE_COOLDOWN_MS && _isReachable.value
         if (cacheValid) return true
+        if (force && !_isReachable.value) {
+            offlineConfirmationJob?.cancel()
+            setConnectionState(ServerConnectionState.CHECKING)
+        }
         return probe()
     }
 
@@ -62,6 +85,7 @@ class SupabaseReachabilityChecker(
      */
     fun markOffline() {
         _isReachable.value = false
+        setConnectionState(ServerConnectionState.OFFLINE)
         lastProbeTime = System.currentTimeMillis()
         Log.d(TAG, "markOffline: isReachable = false")
     }
@@ -71,7 +95,9 @@ class SupabaseReachabilityChecker(
      * immediately flip the state to reachable.
      */
     fun markReachable() {
+        offlineConfirmationJob?.cancel()
         _isReachable.value = true
+        setConnectionState(ServerConnectionState.ONLINE)
         lastProbeTime = System.currentTimeMillis()
         lastApiSuccessTime = System.currentTimeMillis()
         Log.d(TAG, "markReachable: isReachable = true (server confirmed)")
@@ -96,8 +122,18 @@ class SupabaseReachabilityChecker(
         while (current != null) {
             if (current is UnknownHostException || current is SocketTimeoutException) return true
             val name = current.javaClass.simpleName
+            val message = current.message.orEmpty()
             if (name.contains("Timeout", ignoreCase = true) ||
-                name.contains("UnknownHost", ignoreCase = true)
+                name.contains("UnknownHost", ignoreCase = true) ||
+                message.contains("Unable to resolve host", ignoreCase = true) ||
+                message.contains("No address associated with hostname", ignoreCase = true) ||
+                message.contains("Software caused connection abort", ignoreCase = true) ||
+                message.contains("connection abort", ignoreCase = true) ||
+                message.contains("timeout", ignoreCase = true) ||
+                message.contains("timed out", ignoreCase = true) ||
+                message.contains("stream was reset", ignoreCase = true) ||
+                message.contains("failed to connect", ignoreCase = true) ||
+                message.contains("network is unreachable", ignoreCase = true)
             ) return true
             current = current.cause
         }
@@ -105,10 +141,28 @@ class SupabaseReachabilityChecker(
     }
 
     private fun markTemporarilyUnreachable(reason: String) {
-        if (!_isReachable.value) return  // already unreachable, avoid log spam
+        if (_connectionState.value == ServerConnectionState.OFFLINE) return
         _isReachable.value = false
+        setConnectionState(ServerConnectionState.DEGRADED)
         lastProbeTime = 0L  // force re-probe on next checkNow()
-        Log.w(TAG, "temporary network failure ($reason) - marking unreachable")
+        scheduleOfflineConfirmation(reason)
+        Log.w(TAG, "temporary network failure ($reason) - connection degraded")
+    }
+
+    private fun scheduleOfflineConfirmation(reason: String) {
+        if (offlineConfirmationJob?.isActive == true) return
+        offlineConfirmationJob = scope.launch {
+            delay(OFFLINE_CONFIRMATION_DELAY_MS)
+            if (!_isReachable.value && _connectionState.value == ServerConnectionState.DEGRADED) {
+                setConnectionState(ServerConnectionState.OFFLINE)
+                Log.w(TAG, "offline confirmed after debounce ($reason)")
+            }
+        }
+    }
+
+    private fun setConnectionState(state: ServerConnectionState) {
+        _connectionState.value = state
+        _shouldShowOfflineBanner.value = state == ServerConnectionState.OFFLINE
     }
 
     private suspend fun probe(): Boolean = withContext(Dispatchers.IO) {
@@ -125,8 +179,12 @@ class SupabaseReachabilityChecker(
             conn.disconnect()
             // Any real HTTP response means the server is reachable (even 4xx errors).
             val reachable = code in 100..499
-            _isReachable.value = reachable
             lastProbeTime = System.currentTimeMillis()
+            if (reachable) {
+                markReachable()
+            } else {
+                markTemporarilyUnreachable("probe HTTP $code")
+            }
             Log.d(TAG, "probe: HTTP $code -> reachable=$reachable")
             reachable
         } catch (e: Exception) {
@@ -138,8 +196,8 @@ class SupabaseReachabilityChecker(
                 Log.d(TAG, "probe: failed but API confirmed reachable ${sinceApiSuccess}ms ago - ignoring probe failure")
                 return@withContext true
             }
-            _isReachable.value = false
-            Log.w(TAG, "probe: failed (${e.javaClass.simpleName}: ${e.message}) -> blocked")
+            markTemporarilyUnreachable("${e.javaClass.simpleName}: ${e.message}")
+            Log.w(TAG, "probe: failed (${e.javaClass.simpleName}: ${e.message}) -> degraded")
             false
         }
     }

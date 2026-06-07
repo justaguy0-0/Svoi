@@ -131,6 +131,7 @@ fun SettingsScreen(
 
     val isOnline by app.isOnline.collectAsState()
     val isReachable by app.supabaseChecker.isReachable.collectAsState()
+    val shouldShowOfflineBanner by app.supabaseChecker.shouldShowOfflineBanner.collectAsState()
 
     Scaffold(
         topBar = {
@@ -156,7 +157,12 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            OfflineBanner(isOnline = isOnline, isReachable = isReachable, isUpdating = false)
+            OfflineBanner(
+                isOnline = isOnline,
+                isReachable = isReachable,
+                isUpdating = false,
+                shouldShowServerOffline = shouldShowOfflineBanner
+            )
 
             Column(
                 modifier = Modifier
