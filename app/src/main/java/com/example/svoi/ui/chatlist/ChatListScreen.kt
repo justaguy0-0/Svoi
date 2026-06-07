@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.WifiOff
@@ -60,11 +61,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetValue
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -99,6 +105,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.Image
 import com.example.svoi.R
 import com.example.svoi.SvoiApp
+import com.example.svoi.data.local.ChatSwipeLeftAction
 import com.example.svoi.data.model.AppAnnouncement
 import com.example.svoi.data.model.AppAnnouncementType
 import com.example.svoi.data.model.ChatListItem
@@ -138,6 +145,8 @@ fun ChatListScreen(
     val modalAnnouncement by viewModel.modalAnnouncement.collectAsState()
     val scope = rememberCoroutineScope()
     val app = LocalContext.current.applicationContext as SvoiApp
+    val chatSwipeLeftAction by app.themeManager.chatSwipeLeftAction.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var selectedChat by remember { mutableStateOf<ChatListItem?>(null) }
     var showBottomSheet by remember { mutableStateOf(false) }
@@ -176,6 +185,7 @@ fun ChatListScreen(
                 onSettingsClick = onSettingsClick
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -288,10 +298,16 @@ fun ChatListScreen(
                                 fadeOutSpec = tween(150)
                             )
                         ) {
-                            ChatListItem(
+                            SwipeableChatListItem(
                                 item = chat,
+                                action = chatSwipeLeftAction,
                                 typingText = chatTyping[chat.chatId],
                                 draftText = drafts[chat.chatId],
+                                onSwipeAction = {
+                                    viewModel.performSwipeAction(chat, chatSwipeLeftAction) { message ->
+                                        scope.launch { snackbarHostState.showSnackbar(message) }
+                                    }
+                                },
                                 onClick = { onChatClick(chat.chatId) },
                                 onLongClick = {
                                     selectedChat = chat
@@ -624,6 +640,96 @@ private fun BoxScope.OnlineDot() {
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableChatListItem(
+    item: ChatListItem,
+    action: ChatSwipeLeftAction,
+    typingText: String?,
+    draftText: String?,
+    onSwipeAction: () -> Unit,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        positionalThreshold = { distance -> distance * 0.45f }
+    )
+
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+            onSwipeAction()
+            dismissState.reset()
+        }
+    }
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = true,
+        backgroundContent = {
+            ChatSwipeActionBackground(action = action, item = item)
+        },
+        content = {
+            ChatListItem(
+                item = item,
+                typingText = typingText,
+                draftText = draftText,
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+        }
+    )
+}
+
+@Composable
+private fun ChatSwipeActionBackground(
+    action: ChatSwipeLeftAction,
+    item: ChatListItem
+) {
+    val icon = when (action) {
+        ChatSwipeLeftAction.MARK_AS_READ -> Icons.Default.DoneAll
+        ChatSwipeLeftAction.TOGGLE_MUTE -> Icons.Default.NotificationsOff
+        ChatSwipeLeftAction.TOGGLE_PIN -> Icons.Default.PushPin
+    }
+    val label = when (action) {
+        ChatSwipeLeftAction.MARK_AS_READ -> "Прочитано"
+        ChatSwipeLeftAction.TOGGLE_MUTE -> if (item.isMuted) "Включить" else "Выключить"
+        ChatSwipeLeftAction.TOGGLE_PIN -> if (item.isPinned) "Открепить" else "Закрепить"
+    }
+    val color = when (action) {
+        ChatSwipeLeftAction.MARK_AS_READ -> MaterialTheme.colorScheme.primary
+        ChatSwipeLeftAction.TOGGLE_MUTE -> MaterialTheme.colorScheme.tertiary
+        ChatSwipeLeftAction.TOGGLE_PIN -> MaterialTheme.colorScheme.secondary
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(color.copy(alpha = 0.16f))
+            .padding(horizontal = SvoiDimens.ScreenHorizontalPadding),
+        contentAlignment = Alignment.CenterEnd
+    ) {
+        Row(
+            modifier = Modifier.padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = color,
+                fontWeight = FontWeight.SemiBold
+            )
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ChatListItem(
@@ -636,8 +742,14 @@ private fun ChatListItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 2.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (item.isPinned) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
+                else Color.Transparent
+            )
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = SvoiDimens.ItemVerticalPadding),
+            .padding(horizontal = 0.dp, vertical = SvoiDimens.ItemVerticalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Avatar with optional online dot
@@ -676,6 +788,15 @@ private fun ChatListItem(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (item.isPinned) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = "Закреплённый чат",
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     if (item.isMuted) {
                         Spacer(Modifier.width(4.dp))
                         Icon(

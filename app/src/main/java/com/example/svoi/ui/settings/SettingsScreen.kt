@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.AlertDialog
@@ -39,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -75,6 +77,7 @@ import coil.imageLoader
 import com.example.svoi.BuildConfig
 import com.example.svoi.SvoiApp
 import com.example.svoi.data.local.AppTextSizePreset
+import com.example.svoi.data.local.ChatSwipeLeftAction
 import com.example.svoi.data.model.AppVersion
 import com.example.svoi.data.repository.AppUpdateInstaller
 import com.example.svoi.ui.components.MainBottomBar
@@ -128,6 +131,8 @@ fun SettingsScreen(
     val app = context.applicationContext as SvoiApp
     var globalNotifMuted by remember { mutableStateOf(app.themeManager.isNotificationsMuted()) }
     var showMuteConfirmDialog by remember { mutableStateOf(false) }
+    var chatSwipeLeftAction by remember { mutableStateOf(app.themeManager.getChatSwipeLeftAction()) }
+    var showChatSwipeActionDialog by remember { mutableStateOf(false) }
 
     val updateAvailableState by app.updateAvailable.collectAsState()
     val updateAvailable = updateAvailableState?.takeIf { it.isNewerVersion() }
@@ -252,6 +257,24 @@ fun SettingsScreen(
                 }
             }
 
+            Surface(
+                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
+                shape = SvoiShapes.Card,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
+            ) {
+                Column {
+                    SectionHeader("Чаты")
+
+                    NavRow(
+                        icon = Icons.Default.PushPin,
+                        title = "Действие свайпа чата",
+                        subtitle = chatSwipeLeftAction.title,
+                        onClick = { showChatSwipeActionDialog = true }
+                    )
+                }
+            }
+
             // ── Уведомления ───────────────────────────────────────────────────
             Surface(
                 modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
@@ -345,6 +368,18 @@ fun SettingsScreen(
     }
 
     // ── Диалог подтверждения отключения уведомлений ──────────────────────────
+    if (showChatSwipeActionDialog) {
+        ChatSwipeActionDialog(
+            selected = chatSwipeLeftAction,
+            onSelect = { action ->
+                chatSwipeLeftAction = action
+                app.themeManager.setChatSwipeLeftAction(action)
+                showChatSwipeActionDialog = false
+            },
+            onDismiss = { showChatSwipeActionDialog = false }
+        )
+    }
+
     if (showMuteConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showMuteConfirmDialog = false },
@@ -401,6 +436,47 @@ fun SettingsScreen(
 }
 
 // ── Секция-заголовок ──────────────────────────────────────────────────────────
+
+@Composable
+private fun ChatSwipeActionDialog(
+    selected: ChatSwipeLeftAction,
+    onSelect: (ChatSwipeLeftAction) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Действие свайпа чата") },
+        text = {
+            Column {
+                ChatSwipeLeftAction.entries.forEach { action ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(action) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selected == action,
+                            onClick = { onSelect(action) }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = action.title,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
+    )
+}
 
 @Composable
 private fun SectionHeader(title: String) {

@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.svoi.BuildConfig
 import com.example.svoi.SvoiApp
+import com.example.svoi.data.local.ChatSwipeLeftAction
 import com.example.svoi.data.model.AppAnnouncement
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.TypingStatus
@@ -291,8 +292,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             lastMessageIsRead = false,
             lastMessageIsForwarded = msg.forwardedFromId != null
         )
-        // Move chat to top
-        _chats.value = listOf(updated) + current.filter { it.chatId != chatId }
+        updateChats((listOf(updated) + current.filter { it.chatId != chatId }).sortForChatList())
     }
 
     // Refresh when someone reads messages (unread badge update)
@@ -332,6 +332,59 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     suspend fun clearHistory(chatId: String) {
         chatRepo.clearChatHistory(chatId)
         silentRefresh(ignoreCooldown = true)
+    }
+
+    fun performSwipeAction(
+        chat: ChatListItem,
+        action: ChatSwipeLeftAction,
+        onResult: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val message = when (action) {
+                ChatSwipeLeftAction.MARK_AS_READ -> markChatAsRead(chat)
+                ChatSwipeLeftAction.TOGGLE_MUTE -> toggleChatMute(chat)
+                ChatSwipeLeftAction.TOGGLE_PIN -> toggleChatPinned(chat)
+            }
+            onResult(message)
+        }
+    }
+
+    private suspend fun markChatAsRead(chat: ChatListItem): String {
+        if (chat.unreadCount <= 0) return "Уже прочитано"
+        val incomingIds = messageRepo.getMessages(chat.chatId, limit = 500)
+            .filter { it.senderId != currentUserId }
+            .map { it.id }
+        val success = messageRepo.markMessagesAsRead(chat.chatId, incomingIds)
+        return if (success) {
+            updateChat(chat.chatId) { it.copy(unreadCount = 0) }
+            "Чат помечен прочитанным"
+        } else {
+            "Не удалось пометить чат прочитанным"
+        }
+    }
+
+    private suspend fun toggleChatMute(chat: ChatListItem): String {
+        val muted = !chat.isMuted
+        val success = chatRepo.setMuted(chat.chatId, muted)
+        return if (success) {
+            app.themeManager.setChatMuted(chat.chatId, muted)
+            updateChat(chat.chatId) { it.copy(isMuted = muted) }
+            if (muted) "Уведомления в чате выключены" else "Уведомления в чате включены"
+        } else {
+            "Не удалось изменить уведомления"
+        }
+    }
+
+    private suspend fun toggleChatPinned(chat: ChatListItem): String {
+        val pinned = !chat.isPinned
+        val pinnedAt = if (pinned) java.time.Instant.now().toString() else null
+        val success = chatRepo.setChatPinned(chat.chatId, pinned)
+        return if (success) {
+            updateChat(chat.chatId) { it.copy(isPinned = pinned, pinnedAt = pinnedAt) }
+            if (pinned) "Чат закреплён" else "Чат откреплён"
+        } else {
+            "Не удалось изменить закрепление"
+        }
     }
 
     fun signOut(onDone: () -> Unit) {
@@ -386,6 +439,23 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
 
     private fun isSilentRefreshInCooldown(): Boolean =
         System.currentTimeMillis() - lastSuccessfulFullRefreshAtMs < SILENT_REFRESH_COOLDOWN_MS
+
+    private fun updateChat(chatId: String, transform: (ChatListItem) -> ChatListItem) {
+        updateChats(_chats.value.map { chat ->
+            if (chat.chatId == chatId) transform(chat) else chat
+        }.sortForChatList())
+    }
+
+    private fun updateChats(chats: List<ChatListItem>) {
+        _chats.value = chats
+        cache.saveChatList(chats)
+    }
+
+    private fun List<ChatListItem>.sortForChatList(): List<ChatListItem> =
+        sortedWith(
+            compareByDescending<ChatListItem> { it.isPinned }
+                .thenByDescending { it.lastMessageTime }
+        )
 
     private companion object {
         const val SILENT_REFRESH_DEBOUNCE_MS = 1_200L

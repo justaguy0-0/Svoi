@@ -2,6 +2,8 @@ package com.example.svoi.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 enum class ThemeMode { LIGHT, DARK, SYSTEM }
 
@@ -52,9 +54,36 @@ enum class AppTextSizePreset(
     }
 }
 
+enum class ChatSwipeLeftAction(
+    val key: String,
+    val title: String
+) {
+    MARK_AS_READ(
+        key = "mark_as_read",
+        title = "Пометить прочитанным"
+    ),
+    TOGGLE_MUTE(
+        key = "toggle_mute",
+        title = "Выключить уведомления"
+    ),
+    TOGGLE_PIN(
+        key = "toggle_pin",
+        title = "Закрепить чат"
+    );
+
+    companion object {
+        fun fromKey(key: String?): ChatSwipeLeftAction =
+            entries.firstOrNull { it.key == key } ?: TOGGLE_PIN
+    }
+}
+
 class ThemeManager(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("svoi_settings", Context.MODE_PRIVATE)
+    private val _chatSwipeLeftAction = MutableStateFlow(
+        ChatSwipeLeftAction.fromKey(prefs.getString("chat_swipe_left_action", ChatSwipeLeftAction.TOGGLE_PIN.key))
+    )
+    val chatSwipeLeftAction: StateFlow<ChatSwipeLeftAction> = _chatSwipeLeftAction
 
     fun getThemeMode(): ThemeMode {
         val value = prefs.getString("theme_mode", ThemeMode.SYSTEM.name) ?: ThemeMode.SYSTEM.name
@@ -102,6 +131,13 @@ class ThemeManager(context: Context) {
 
     fun setVoicePlaybackSpeed(speed: VoicePlaybackSpeed) {
         prefs.edit().putString("voice_playback_speed", speed.key).apply()
+    }
+
+    fun getChatSwipeLeftAction(): ChatSwipeLeftAction = _chatSwipeLeftAction.value
+
+    fun setChatSwipeLeftAction(action: ChatSwipeLeftAction) {
+        prefs.edit().putString("chat_swipe_left_action", action.key).apply()
+        _chatSwipeLeftAction.value = action
     }
 
     fun isChatMuted(chatId: String): Boolean = prefs.getBoolean("chat_muted_$chatId", false)

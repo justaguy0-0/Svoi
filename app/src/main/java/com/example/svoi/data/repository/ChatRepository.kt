@@ -268,10 +268,16 @@ class ChatRepository(
                 lastMessageIsOwn = lastMsg?.senderId == userId,
                 lastMessageIsRead = lastMsg?.id?.let { it in readOwnMessageIds } ?: false,
                 isMuted = membership?.muted == true,
+                isPinned = membership?.isPinned == true,
+                pinnedAt = membership?.pinnedAt,
                 lastMessageIsForwarded = lastMsg?.forwardedFromId != null
             )
-        }.sortedByDescending { it.lastMessageTime }
+        }.sortedWith(chatListComparator())
     }
+
+    private fun chatListComparator(): Comparator<ChatListItem> =
+        compareByDescending<ChatListItem> { it.isPinned }
+            .thenByDescending { it.lastMessageTime }
 
     /** Set left_at = now() for current user in a personal chat (soft delete for the requester) */
     suspend fun markAsLeft(chatId: String): Boolean {
@@ -514,5 +520,24 @@ class ChatRepository(
             }
             true
         } catch (e: Exception) { false }
+    }
+
+    suspend fun setChatPinned(chatId: String, pinned: Boolean): Boolean {
+        val userId = currentUserId()
+        return try {
+            supabase.from("chat_members").update({
+                set("is_pinned", pinned)
+                set("pinned_at", if (pinned) java.time.Instant.now().toString() else null)
+            }) {
+                filter {
+                    eq("chat_id", chatId)
+                    eq("user_id", userId)
+                }
+            }
+            true
+        } catch (e: Exception) {
+            Log.e("ChatRepo", "setChatPinned FAILED: chatId=$chatId pinned=$pinned", e)
+            false
+        }
     }
 }

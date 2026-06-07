@@ -19,6 +19,8 @@ data class ChatMember(
     @SerialName("user_id") val userId: String = "",
     val role: String = "member", // "member" | "admin"
     val muted: Boolean = false,
+    @SerialName("is_pinned") val isPinned: Boolean = false,
+    @SerialName("pinned_at") val pinnedAt: String? = null,
     @SerialName("joined_at") val joinedAt: String? = null,
     @SerialName("history_from") val historyFrom: String? = null,
     @SerialName("left_at") val leftAt: String? = null
@@ -43,5 +45,7 @@ data class ChatListItem(
     val lastMessageIsOwn: Boolean = false,
     val lastMessageIsRead: Boolean = false,
     val isMuted: Boolean = false,
+    val isPinned: Boolean = false,
+    val pinnedAt: String? = null,
     val lastMessageIsForwarded: Boolean = false
 )
