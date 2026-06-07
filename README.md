@@ -10,6 +10,10 @@
 
 ---
 
+## Требования к устройству
+
+- Android 8.0 (API 26) и выше
+
 ## Возможности
 
 - 💬 Чат в реальном времени
@@ -28,13 +32,3 @@
 | Бэкенд | Supabase (self-hosted) |
 | Push | Firebase Cloud Messaging |
 | Архитектура | MVVM + Repository |
-
-```
-
-## Требования к устройству
-
-- Android 8.0 (API 26) и выше
-
----
-
-<p align="center">Сделано с ❤️ на Kotlin</p>
