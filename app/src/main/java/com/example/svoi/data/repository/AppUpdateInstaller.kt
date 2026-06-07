@@ -28,8 +28,8 @@ class AppUpdateInstaller(private val context: Context) {
         update: AppVersion,
         onProgress: suspend (Int) -> Unit
     ): File = withContext(Dispatchers.IO) {
-        val versionCode = update.versionCode ?: error("Unknown update version code")
-        val url = update.resolvedDownloadUrl
+        val versionCode = update.versionCode
+        val url = update.downloadUrl.orEmpty()
         require(url.isNotBlank()) { "Empty APK URL" }
 
         val target = apkFile(versionCode)
@@ -144,7 +144,7 @@ class AppUpdateInstaller(private val context: Context) {
     }
 
     fun cachedApk(update: AppVersion): File? {
-        val versionCode = update.versionCode ?: return null
+        val versionCode = update.versionCode
         return apkFile(versionCode).takeIf { it.length() > 0L }
     }
 

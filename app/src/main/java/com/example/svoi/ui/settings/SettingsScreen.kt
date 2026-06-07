@@ -130,7 +130,7 @@ fun SettingsScreen(
     var showMuteConfirmDialog by remember { mutableStateOf(false) }
 
     val updateAvailableState by app.updateAvailable.collectAsState()
-    val updateAvailable = updateAvailableState?.takeIf { it.isInstallableUpdate() }
+    val updateAvailable = updateAvailableState?.takeIf { it.isNewerVersion() }
     var showUpdateSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(updateAvailable) {
@@ -184,7 +184,7 @@ fun SettingsScreen(
                 UpdateBanner(
                     version = updateAvailable,
                     onClick = {
-                        if (updateAvailable.isInstallableUpdate()) {
+                        if (updateAvailable.isNewerVersion()) {
                             showUpdateSheet = true
                         }
                     }
@@ -507,13 +507,14 @@ private fun UpdateBanner(version: AppVersion, onClick: () -> Unit) {
 private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    if (!update.isInstallableUpdate()) {
+    if (!update.isNewerVersion()) {
         return
     }
     val scope = rememberCoroutineScope()
     val installer = remember(update.versionCode) {
         AppUpdateInstaller(context.applicationContext)
     }
+    val missingDownloadUrl = update.downloadUrl.isNullOrBlank()
     var downloadProgress by remember(update.versionCode) { mutableStateOf(0) }
     var isDownloading by remember(update.versionCode) { mutableStateOf(false) }
     var errorMessage by remember(update.versionCode) { mutableStateOf<String?>(null) }
@@ -531,9 +532,14 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
     }
 
     fun startInstallFlow() {
-        if (!update.isInstallableUpdate() || isDownloading) return
+        if (!update.isNewerVersion() || isDownloading) return
         errorMessage = null
         cancelRequested = false
+
+        if (update.downloadUrl.isNullOrBlank()) {
+            errorMessage = "Ссылка для скачивания обновления не указана. Попробуйте позже."
+            return
+        }
 
         val cached = cachedApk ?: installer.cachedApk(update)
         if (cached != null) {
@@ -653,7 +659,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
             }
 
             // Блок "Что нового" — показываем только если changelog не пустой
-            if (update.resolvedReleaseNotes.isNotBlank()) {
+            if (update.changelog?.isNotBlank() == true) {
                 Spacer(Modifier.height(24.dp))
 
                 Surface(
@@ -670,7 +676,7 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = update.resolvedReleaseNotes,
+                            text = update.changelog,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             lineHeight = 22.sp
@@ -706,10 +712,20 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
             }
 
+            if (missingDownloadUrl) {
+                Text(
+                    text = "Ссылка для скачивания обновления не указана. Попробуйте позже.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+
             // Кнопка установки
             Button(
                 onClick = { startInstallFlow() },
-                enabled = !isDownloading,
+                enabled = !isDownloading && !missingDownloadUrl,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(SvoiDimens.ButtonHeight),
@@ -756,13 +772,11 @@ private fun UpdateBottomSheet(update: AppVersion, onDismiss: () -> Unit) {
     }
 }
 
-private fun AppVersion.isInstallableUpdate(): Boolean =
-    versionCode != null &&
-        versionCode > BuildConfig.VERSION_CODE &&
-        resolvedDownloadUrl.isNotBlank()
+private fun AppVersion.isNewerVersion(): Boolean =
+    versionCode > BuildConfig.VERSION_CODE
 
 private fun AppVersion.displayVersionName(): String =
-    if (versionName == BuildConfig.VERSION_NAME && isInstallableUpdate()) {
+    if (versionName == BuildConfig.VERSION_NAME && isNewerVersion()) {
         "$versionName (сборка $versionCode)"
     } else {
         versionName

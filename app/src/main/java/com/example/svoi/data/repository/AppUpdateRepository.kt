@@ -17,32 +17,41 @@ class AppUpdateRepository(private val supabase: SupabaseClient) {
         return try {
             val latest = supabase.from("app_versions")
                 .select {
-                    filter {
-                        eq("is_active", true)
-                    }
                     order("version_code", Order.DESCENDING)
                     limit(1)
                 }
                 .decodeSingleOrNull<AppVersion>()
 
+            if (latest == null) {
+                Log.d("AppUpdate", "no remote version found")
+                return null
+            }
+
             val remoteCode = latest?.versionCode
             val remoteName = latest?.versionName
-            val hasDownloadUrl = latest?.resolvedDownloadUrl?.isNotBlank() == true
-            val updateAvailable = remoteCode != null &&
-                remoteCode > BuildConfig.VERSION_CODE &&
-                latest.isActive &&
-                hasDownloadUrl
+            val hasDownloadUrl = latest.downloadUrl?.isNotBlank() == true
+            val updateAvailable = latest.versionCode > BuildConfig.VERSION_CODE
+
+            Log.d(
+                "AppUpdate",
+                "remote version loaded code=${latest.versionCode}, " +
+                    "name=${latest.versionName}, " +
+                    "hasUrl=$hasDownloadUrl, " +
+                    "hasChangelog=${latest.changelog?.isNotBlank() == true}"
+            )
 
             Log.d(
                 "AppUpdate",
                 "current=${BuildConfig.VERSION_CODE}/${BuildConfig.VERSION_NAME} " +
-                    "remote=${remoteCode ?: "null"}/${remoteName ?: "null"} " +
+                    "remote=$remoteCode/$remoteName " +
                     "updateAvailable=$updateAvailable"
             )
 
-            if (latest != null && updateAvailable) {
-                val downloadUrl = latest.resolvedDownloadUrl
-                if (!downloadUrl.endsWith(".apk", ignoreCase = true)) {
+            if (updateAvailable) {
+                val downloadUrl = latest.downloadUrl
+                if (downloadUrl.isNullOrBlank()) {
+                    Log.d("AppUpdate", "update found but download_url is empty")
+                } else if (!downloadUrl.endsWith(".apk", ignoreCase = true)) {
                     Log.d("AppUpdate", "APK URL does not end with .apk: $downloadUrl")
                 }
                 latest
@@ -50,14 +59,14 @@ class AppUpdateRepository(private val supabase: SupabaseClient) {
                 Log.d(
                     "AppUpdate",
                     "no update (currentCode=${BuildConfig.VERSION_CODE}, " +
-                        "remoteCode=${remoteCode ?: "null"}, " +
+                        "remoteCode=$remoteCode, " +
                         "currentName=${BuildConfig.VERSION_NAME}, " +
-                        "remoteName=${remoteName ?: "null"})"
+                        "remoteName=$remoteName)"
                 )
                 null
             }
         } catch (e: Exception) {
-            Log.w("AppUpdate", "Update check failed: ${e.message}")
+            Log.w("AppUpdate", "failed to check update: ${e.message}")
             null
         }
     }
