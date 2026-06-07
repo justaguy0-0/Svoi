@@ -73,6 +73,7 @@ fun MainBottomBar(
                         if (vs.isPlaying) app.globalVoicePlayer.pause()
                         else app.globalVoicePlayer.resume()
                     },
+                    onSpeedChange = { speed -> app.globalVoicePlayer.setPlaybackSpeed(speed) },
                     onClose = { app.globalVoicePlayer.stop() }
                 )
             }

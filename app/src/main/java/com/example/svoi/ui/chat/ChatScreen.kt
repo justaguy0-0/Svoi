@@ -4806,6 +4806,7 @@ private fun MiniPlayerOverlay(state: GlobalVoiceState?, player: GlobalVoicePlaye
             GlobalVoiceMiniPlayer(
                 state = vs,
                 onPlayPause = { if (vs.isPlaying) player.pause() else player.resume() },
+                onSpeedChange = { speed -> player.setPlaybackSpeed(speed) },
                 onClose = { player.stop() }
             )
         }

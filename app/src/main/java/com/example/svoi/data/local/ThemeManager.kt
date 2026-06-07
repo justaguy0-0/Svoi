@@ -95,6 +95,15 @@ class ThemeManager(context: Context) {
         prefs.edit().putString("text_size_preset", preset.key).apply()
     }
 
+    fun getVoicePlaybackSpeed(): VoicePlaybackSpeed {
+        val value = prefs.getString("voice_playback_speed", VoicePlaybackSpeed.NORMAL.key)
+        return VoicePlaybackSpeed.fromKey(value)
+    }
+
+    fun setVoicePlaybackSpeed(speed: VoicePlaybackSpeed) {
+        prefs.edit().putString("voice_playback_speed", speed.key).apply()
+    }
+
     fun isChatMuted(chatId: String): Boolean = prefs.getBoolean("chat_muted_$chatId", false)
 
     fun setChatMuted(chatId: String, muted: Boolean) {

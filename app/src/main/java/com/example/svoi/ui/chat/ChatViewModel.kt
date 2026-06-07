@@ -19,6 +19,7 @@ import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.ReactionGroup
 import com.example.svoi.data.model.UserPresence
 import com.example.svoi.data.model.isTrulyOnline
+import com.example.svoi.ui.voice.VoiceQueueItem
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -412,8 +413,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         markAsReadAfterBaseline = false
         pendingReadReceiptIds.clear()
         _myReadMessageIds.value = emptySet()
-
-        app.globalVoicePlayer.onCompletion = { finishedId -> playNextVoiceAfter(finishedId) }
 
         dismissChatNotification(chatId)
 
@@ -1346,7 +1345,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch { messageRepo.clearTyping(chatId, currentUserId) }
         }
         voiceRecorder.cancel()
-        app.globalVoicePlayer.onCompletion = null
     }
 
     fun setReplyTo(message: Message?) { _replyTo.value = message }
@@ -2093,16 +2091,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // ── Voice playback methods ────────────────────────────────────────────────
 
-    private fun playNextVoiceAfter(messageId: String) {
-        val msgs = _messages.value
-        val idx = msgs.indexOfFirst { it.message.id == messageId }
-        if (idx < 0) return
-        val next = msgs.drop(idx + 1).firstOrNull {
-            it.message.type == "voice" && it.message.fileUrl != null
-        } ?: return
-        playVoice(next.message.id, next.message.fileUrl!!, next.message.duration ?: 0)
-    }
-
     fun playVoice(messageId: String, url: String, durationSec: Int) {
         val item = _messages.value.find { it.message.id == messageId }
         // Mark as listened when the recipient presses play (mirrors Telegram behaviour)
@@ -2115,7 +2103,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         val title = item?.senderProfile?.displayName ?: "Голосовое сообщение"
-        app.globalVoicePlayer.play(messageId, url, durationSec, title)
+        val queue = _messages.value.mapNotNull { messageItem ->
+            val message = messageItem.message
+            val voiceUrl = message.fileUrl ?: return@mapNotNull null
+            if (message.type != "voice") return@mapNotNull null
+            VoiceQueueItem(
+                messageId = message.id,
+                chatId = message.chatId,
+                url = voiceUrl,
+                title = messageItem.senderProfile?.displayName ?: "Голосовое сообщение",
+                durationSec = message.duration ?: 0
+            )
+        }
+        app.globalVoicePlayer.play(messageId, url, durationSec, title, queue)
     }
 
     fun pauseVoice() = app.globalVoicePlayer.pause()
