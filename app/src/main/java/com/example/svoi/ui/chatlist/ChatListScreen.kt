@@ -1,4 +1,4 @@
-package com.example.svoi.ui.chatlist
+﻿package com.example.svoi.ui.chatlist
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -350,6 +350,33 @@ fun ChatListScreen(
                     TextButton(
                         onClick = {
                             showBottomSheet = false
+                            viewModel.performSwipeAction(chat, ChatSwipeLeftAction.TOGGLE_PIN) { message ->
+                                scope.launch { snackbarHostState.showSnackbar(message) }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PushPin,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                if (chat.isPinned) "Открепить чат" else "Закрепить чат",
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            showBottomSheet = false
                             showClearConfirm = true
                         },
                         modifier = Modifier
@@ -669,6 +696,7 @@ private fun SwipeableChatListItem(
 
     Box(modifier = Modifier.fillMaxWidth()) {
         ChatSwipeActionBackground(
+            modifier = Modifier.matchParentSize(),
             action = action,
             item = item,
             progress = swipeProgress
@@ -702,6 +730,7 @@ private fun SwipeableChatListItem(
 
 @Composable
 private fun ChatSwipeActionBackground(
+    modifier: Modifier = Modifier,
     action: ChatSwipeLeftAction,
     item: ChatListItem,
     progress: Float
@@ -713,7 +742,7 @@ private fun ChatSwipeActionBackground(
     }
     val label = when (action) {
         ChatSwipeLeftAction.MARK_AS_READ -> "Прочитано"
-        ChatSwipeLeftAction.TOGGLE_MUTE -> if (item.isMuted) "Включить" else "Выключить"
+        ChatSwipeLeftAction.TOGGLE_MUTE -> "Без звука"
         ChatSwipeLeftAction.TOGGLE_PIN -> if (item.isPinned) "Открепить" else "Закрепить"
     }
     val color = when (action) {
@@ -723,11 +752,10 @@ private fun ChatSwipeActionBackground(
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = modifier
             .background(color.copy(alpha = 0.16f * progress))
             .alpha(progress)
-            .padding(horizontal = SvoiDimens.ScreenHorizontalPadding),
+            .padding(end = 20.dp),
         contentAlignment = Alignment.CenterEnd
     ) {
         Row(

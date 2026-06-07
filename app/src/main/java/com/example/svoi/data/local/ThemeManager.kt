@@ -19,32 +19,32 @@ enum class AppTextSizePreset(
 ) {
     COMPACT(
         key = "compact",
-        title = "РљРѕРјРїР°РєС‚РЅС‹Р№",
-        description = "Р‘РѕР»СЊС€Рµ С‚РµРєСЃС‚Р° РЅР° СЌРєСЂР°РЅРµ",
+        title = "Компактный",
+        description = "Больше текста на экране",
         scale = 0.92f
     ),
     NORMAL(
         key = "normal",
-        title = "РћР±С‹С‡РЅС‹Р№",
-        description = "РЎС‚Р°РЅРґР°СЂС‚РЅС‹Р№ СЂР°Р·РјРµСЂ",
+        title = "Обычный",
+        description = "Стандартный размер",
         scale = 1.00f
     ),
     COMFORTABLE(
         key = "comfortable",
-        title = "РљРѕРјС„РѕСЂС‚РЅС‹Р№",
-        description = "Р§СѓС‚СЊ РєСЂСѓРїРЅРµРµ РѕР±С‹С‡РЅРѕРіРѕ",
+        title = "Комфортный",
+        description = "Чуть крупнее обычного",
         scale = 1.08f
     ),
     LARGE(
         key = "large",
-        title = "РљСЂСѓРїРЅС‹Р№",
-        description = "Р”Р»СЏ Р»СѓС‡С€РµР№ С‡РёС‚Р°РµРјРѕСЃС‚Рё",
+        title = "Крупный",
+        description = "Для лучшей читаемости",
         scale = 1.16f
     ),
     EXTRA_LARGE(
         key = "extra_large",
-        title = "РћС‡РµРЅСЊ РєСЂСѓРїРЅС‹Р№",
-        description = "РњР°РєСЃРёРјР°Р»СЊРЅС‹Р№ СЂР°Р·РјРµСЂ",
+        title = "Очень крупный",
+        description = "Максимальный размер",
         scale = 1.25f
     );
 
