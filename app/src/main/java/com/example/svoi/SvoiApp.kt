@@ -4,6 +4,9 @@ import android.app.Application
 import android.util.Log
 import androidx.emoji2.bundled.BundledEmojiCompatConfig
 import androidx.emoji2.text.EmojiCompat
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import coil.Coil
 import coil.ImageLoader
 import com.example.svoi.data.ImageProgressInterceptor
@@ -45,12 +48,28 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 
 class SvoiApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                updateAppForeground(true, "process.onStart")
+            }
+
+            override fun onResume(owner: LifecycleOwner) {
+                updateAppForeground(true, "process.onResume")
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                if (updateAppForeground(false, "process.onStop")) {
+                    heartbeatScope.launch { setOfflinePresenceForBackground() }
+                }
+            }
+        })
         EmojiCompat.init(BundledEmojiCompatConfig(this))
         // Coil: increased timeout + download progress interceptor for large media files.
         Coil.setImageLoader(
@@ -95,7 +114,7 @@ class SvoiApp : Application() {
                 if (!online) {
                     isCurrentlyOnline = false
                     supabaseChecker.markOffline()
-                } else if (!isCurrentlyOnline) {
+                } else if (!isCurrentlyOnline && isAppInForeground.value) {
                     // Just came online — probe immediately
                     isCurrentlyOnline = true
                     supabaseChecker.checkNow(force = true)
@@ -107,7 +126,9 @@ class SvoiApp : Application() {
                 // Probe every 10s when blocked (PROBE_COOLDOWN_MS=30s suppresses actual
                 // HTTP calls when reachable, so effectively ~30s max when online).
                 delay(10_000L)
-                supabaseChecker.checkNow()
+                if (isAppInForeground.value) {
+                    supabaseChecker.checkNow()
+                }
             }
         }
     }
@@ -157,6 +178,9 @@ class SvoiApp : Application() {
     private val _isOnline = MutableStateFlow(true)
     val isOnline: StateFlow<Boolean> = _isOnline
 
+    private val _isAppInForeground = MutableStateFlow(false)
+    val isAppInForeground: StateFlow<Boolean> = _isAppInForeground
+
     fun setUpdateAvailable(version: AppVersion?) {
         _updateAvailable.value = version
     }
@@ -168,11 +192,38 @@ class SvoiApp : Application() {
     private var fcmRetryJob: Job? = null
     private var lastOnlinePresenceAtMs: Long = 0L
 
+    fun updateAppForeground(foreground: Boolean, source: String): Boolean {
+        if (_isAppInForeground.value == foreground) return false
+        _isAppInForeground.value = foreground
+        supabaseChecker.setAppInForeground(foreground)
+        Log.d("AppLifecycle", "foreground=$foreground source=$source")
+        if (foreground) {
+            startPresenceHeartbeat()
+            heartbeatScope.launch {
+                supabaseChecker.checkNow(force = true)
+            }
+            Log.d("Realtime", "resumed because app foreground")
+        } else {
+            stopPresenceHeartbeat()
+            Log.d("Realtime", "paused because app background")
+        }
+        return true
+    }
+
+    suspend fun setOfflinePresenceForBackground() {
+        if (!authRepository.isLoggedIn()) return
+        try {
+            withTimeout(1_500) { userRepository.setOnline(false) }
+        } catch (_: Exception) {
+        }
+    }
+
     fun startPresenceHeartbeat() {
+        if (!isAppInForeground.value) return
         heartbeatJob?.cancel()
         heartbeatJob = heartbeatScope.launch {
             while (true) {
-                if (authRepository.isLoggedIn() && supabaseChecker.isReachable.value) {
+                if (isAppInForeground.value && authRepository.isLoggedIn() && supabaseChecker.isReachable.value) {
                     val now = System.currentTimeMillis()
                     if (now - lastOnlinePresenceAtMs >= PRESENCE_ONLINE_MIN_UPDATE_MS) {
                         val updated = userRepository.setOnline(true)

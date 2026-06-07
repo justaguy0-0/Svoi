@@ -60,6 +60,8 @@ class SupabaseReachabilityChecker(
     val shouldShowOfflineBanner: StateFlow<Boolean> = _shouldShowOfflineBanner
 
     @Volatile private var lastProbeTime = 0L
+    @Volatile private var isAppInForeground = true
+    @Volatile private var onlineGeneration = 0L
     // Last time a real Supabase API call confirmed reachability (not the probe).
     // Used to ignore probe failures that arrive AFTER API calls already succeeded.
     @Volatile private var lastApiSuccessTime = 0L
@@ -69,6 +71,10 @@ class SupabaseReachabilityChecker(
      * (older than [PROBE_COOLDOWN_MS]) or if [force] = true.
      */
     suspend fun checkNow(force: Boolean = false): Boolean {
+        if (!isAppInForeground) {
+            Log.d(TAG, "checkNow: skipped because app background")
+            return _isReachable.value
+        }
         val now = System.currentTimeMillis()
         val cacheValid = !force && now - lastProbeTime < PROBE_COOLDOWN_MS && _isReachable.value
         if (cacheValid) return true
@@ -84,6 +90,13 @@ class SupabaseReachabilityChecker(
      * without spending a probe attempt.
      */
     fun markOffline() {
+        if (!isAppInForeground) {
+            _isReachable.value = false
+            setConnectionState(ServerConnectionState.DEGRADED)
+            lastProbeTime = System.currentTimeMillis()
+            Log.d(TAG, "markOffline: app background, banner suppressed")
+            return
+        }
         _isReachable.value = false
         setConnectionState(ServerConnectionState.OFFLINE)
         lastProbeTime = System.currentTimeMillis()
@@ -96,6 +109,7 @@ class SupabaseReachabilityChecker(
      */
     fun markReachable() {
         offlineConfirmationJob?.cancel()
+        onlineGeneration++
         _isReachable.value = true
         setConnectionState(ServerConnectionState.ONLINE)
         lastProbeTime = System.currentTimeMillis()
@@ -114,7 +128,22 @@ class SupabaseReachabilityChecker(
 
     fun notifyNetworkFailure(error: Throwable) {
         if (!isTransientNetworkFailure(error)) return
+        if (!isAppInForeground) {
+            Log.d(TAG, "ignoring transient failure while background (${error.javaClass.simpleName}: ${error.message})")
+            return
+        }
         markTemporarilyUnreachable("${error.javaClass.simpleName}: ${error.message}")
+    }
+
+    fun setAppInForeground(foreground: Boolean) {
+        isAppInForeground = foreground
+        if (!foreground) {
+            offlineConfirmationJob?.cancel()
+            _shouldShowOfflineBanner.value = false
+            Log.d(TAG, "offline debounce cancelled because app background")
+        } else if (!_isReachable.value) {
+            setConnectionState(ServerConnectionState.CHECKING)
+        }
     }
 
     fun isTransientNetworkFailure(error: Throwable): Boolean {
@@ -141,6 +170,10 @@ class SupabaseReachabilityChecker(
     }
 
     private fun markTemporarilyUnreachable(reason: String) {
+        if (!isAppInForeground) {
+            Log.d(TAG, "ignoring transient failure while background ($reason)")
+            return
+        }
         if (_connectionState.value == ServerConnectionState.OFFLINE) return
         _isReachable.value = false
         setConnectionState(ServerConnectionState.DEGRADED)
@@ -151,8 +184,17 @@ class SupabaseReachabilityChecker(
 
     private fun scheduleOfflineConfirmation(reason: String) {
         if (offlineConfirmationJob?.isActive == true) return
+        val generation = onlineGeneration
         offlineConfirmationJob = scope.launch {
             delay(OFFLINE_CONFIRMATION_DELAY_MS)
+            if (!isAppInForeground) {
+                Log.d(TAG, "offline debounce cancelled because app background")
+                return@launch
+            }
+            if (generation != onlineGeneration) {
+                Log.d(TAG, "offline debounce cancelled because online generation changed")
+                return@launch
+            }
             if (!_isReachable.value && _connectionState.value == ServerConnectionState.DEGRADED) {
                 setConnectionState(ServerConnectionState.OFFLINE)
                 Log.w(TAG, "offline confirmed after debounce ($reason)")

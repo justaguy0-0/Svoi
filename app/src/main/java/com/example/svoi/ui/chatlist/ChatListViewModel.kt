@@ -9,7 +9,6 @@ import com.example.svoi.SvoiApp
 import com.example.svoi.data.local.ChatSwipeLeftAction
 import com.example.svoi.data.model.AppAnnouncement
 import com.example.svoi.data.model.ChatListItem
-import com.example.svoi.data.model.TypingStatus
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.isTrulyOnline
 import kotlinx.coroutines.Job
@@ -106,9 +105,24 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private var refreshPending = false
     private var refreshIgnoreCooldownRequested = false
     private var lastSuccessfulFullRefreshAtMs = 0L
-    private var realtimeObserversStarted = false
+    private val realtimeObserverJobs = mutableListOf<Job>()
 
     init {
+        viewModelScope.launch {
+            app.isAppInForeground.collect { foreground ->
+                if (foreground) {
+                    app.supabaseChecker.checkNow(force = true)
+                    startRealtimeObserversOnce()
+                    silentRefresh(ignoreCooldown = true)
+                } else {
+                    stopRealtimeObservers()
+                    refreshJob?.cancel()
+                    refreshPending = false
+                    _chatTyping.value = emptyMap()
+                    Log.d("Typing", "chat list typing polling stopped because app background")
+                }
+            }
+        }
         // Watch for OS-level network changes.
         // On reconnect: probe Supabase immediately and reload if reachable.
         // If probe fails, reachable observer below handles reload when reachable.
@@ -116,7 +130,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             isOnline.collect { online ->
                 if (!online) {
                     wasOffline = true
-                } else if (wasOffline) {
+                } else if (wasOffline && app.isAppInForeground.value) {
                     wasOffline = false
                     app.supabaseChecker.checkNow(force = true)
                     // If still blocked, reload fires automatically when the probe eventually succeeds.
@@ -130,8 +144,8 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             var wasReachable = app.supabaseChecker.isReachable.value
             app.supabaseChecker.isReachable.collect { reachable ->
                 if (reachable) {
-                    startRealtimeObserversOnce()
-                    loadModalAnnouncementOnce()
+                    if (app.isAppInForeground.value) startRealtimeObserversOnce()
+                    if (app.isAppInForeground.value) loadModalAnnouncementOnce()
                     if (!wasReachable) {
                         silentRefresh(ignoreCooldown = true)
                     }
@@ -150,7 +164,6 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
             if (fresh != null) _currentProfile.value = fresh
         }
         startRealtimeObserversOnce()
-        startTypingPolling()
         loadModalAnnouncementOnce()
     }
 
@@ -181,6 +194,12 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
 
             // 3. Guard: skip server fetch if Supabase is blocked (internet up but service blocked).
             // Use cached state (instant) instead of checkNow() which can block up to 4s on probe.
+            if (!app.isAppInForeground.value) {
+                initialLoad = false
+                _isUpdating.value = false
+                _isLoading.value = false
+                return@launch
+            }
             val supabaseReachable = app.supabaseChecker.isReachable.value
             if (!supabaseReachable) {
                 initialLoad = false
@@ -217,6 +236,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 val skipCooldown = refreshIgnoreCooldownRequested
                 refreshPending = false
                 refreshIgnoreCooldownRequested = false
+                if (!app.isAppInForeground.value) return@launch
                 if (!app.supabaseChecker.isReachable.value) return@launch
                 if (!skipCooldown && isSilentRefreshInCooldown()) return@launch
                 refreshMutex.withLock {
@@ -234,14 +254,22 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun startRealtimeObserversOnce() {
-        if (realtimeObserversStarted || !app.supabaseChecker.isReachable.value) return
-        realtimeObserversStarted = true
-        observeNewMessages()
-        observeReadReceipts()
-        observePresenceUpdates()
+        if (realtimeObserverJobs.any { it.isActive }) return
+        if (!app.isAppInForeground.value || !app.supabaseChecker.isReachable.value) return
+        Log.d("Realtime", "chat list realtime resumed")
+        realtimeObserverJobs += observeNewMessages()
+        realtimeObserverJobs += observeReadReceipts()
+        realtimeObserverJobs += observePresenceUpdates()
     }
 
-    private fun observeNewMessages() {
+    private fun stopRealtimeObservers() {
+        if (realtimeObserverJobs.isEmpty()) return
+        realtimeObserverJobs.forEach { it.cancel() }
+        realtimeObserverJobs.clear()
+        Log.d("Realtime", "chat list realtime paused because app background")
+    }
+
+    private fun observeNewMessages(): Job =
         viewModelScope.launch {
             try {
                 messageRepo.messageInsertFlowAll().collect { msg ->
@@ -252,7 +280,6 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 }
             } catch (_: Exception) {}
         }
-    }
 
     private fun applyNewMessageOptimistic(msg: Message) {
         val current = _chats.value
@@ -296,7 +323,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     }
 
     // Refresh when someone reads messages (unread badge update)
-    private fun observeReadReceipts() {
+    private fun observeReadReceipts(): Job =
         viewModelScope.launch {
             try {
                 messageRepo.messageReadInsertFlowAll().collect { read ->
@@ -304,12 +331,11 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 }
             } catch (_: Exception) {}
         }
-    }
 
     // Update online indicator in-memory when presence changes — no server roundtrip.
     // Previously called silentRefresh() here, which fired getChatsForUser every ~1.5s
     // (two users × 3s heartbeat = one presence event per 1.5s).
-    private fun observePresenceUpdates() {
+    private fun observePresenceUpdates(): Job =
         viewModelScope.launch {
             try {
                 userRepo.presenceUpdateFlowAll().collect { presence ->
@@ -322,7 +348,6 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 }
             } catch (_: Exception) {}
         }
-    }
 
     suspend fun deleteChat(chatId: String) {
         chatRepo.deleteChat(chatId)
@@ -394,48 +419,6 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun startTypingPolling() {
-        viewModelScope.launch {
-            while (true) {
-                delay(3_000L)
-                if (app.supabaseChecker.shouldShowOfflineBanner.value) {
-                    _chatTyping.value = emptyMap()
-                    continue
-                }
-                if (!app.supabaseChecker.isReachable.value) continue
-                val chats = _chats.value
-                if (chats.isNotEmpty()) {
-                    val chatIds = chats.map { it.chatId }
-                    val typingByChat = messageRepo.getTypingForChats(chatIds, currentUserId)
-                    val result = mutableMapOf<String, String>()
-                    for (chat in chats) {
-                        val users = typingByChat[chat.chatId] ?: continue
-                        val text = typingText(users, chat.isGroup) ?: continue
-                        result[chat.chatId] = text
-                    }
-                    _chatTyping.value = result
-                }
-            }
-        }
-    }
-
-    private fun typingText(users: List<TypingStatus>, isGroup: Boolean): String? {
-        if (users.isEmpty()) return null
-        val uploading = users.filter { it.status == "uploading_media" }
-        if (uploading.isNotEmpty()) {
-            return if (!isGroup) "Загружает медиа..."
-            else when (uploading.size) {
-                1 -> "${uploading[0].displayName} загружает медиа..."
-                else -> "${uploading[0].displayName} и ещё ${uploading.size - 1} загружают медиа..."
-            }
-        }
-        return if (!isGroup) "Печатает..."
-        else when (users.size) {
-            1 -> "${users[0].displayName} печатает..."
-            2 -> "${users[0].displayName} и ${users[1].displayName} печатают..."
-            else -> "${users[0].displayName}, ${users[1].displayName} и ещё ${users.size - 2} печатают..."
-        }
-    }
 
     private fun isSilentRefreshInCooldown(): Boolean =
         System.currentTimeMillis() - lastSuccessfulFullRefreshAtMs < SILENT_REFRESH_COOLDOWN_MS

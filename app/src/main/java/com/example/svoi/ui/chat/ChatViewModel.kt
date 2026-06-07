@@ -231,6 +231,33 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var typingJob: Job? = null
     private val activeUploadCount = AtomicInteger(0)
     private var historyFrom: String? = null  // null = see all; timestamp = restricted to messages after join
+    private var messageInsertJob: Job? = null
+    private var messageUpdateJob: Job? = null
+    private var readReceiptJob: Job? = null
+    private var voiceListenJob: Job? = null
+    private var reactionInsertJob: Job? = null
+    private var reactionDeleteJob: Job? = null
+    private var typingPollingJob: Job? = null
+    private var personalPresencePollingJob: Job? = null
+    private var personalPresenceRealtimeJob: Job? = null
+    private var groupPresencePollingJob: Job? = null
+    private var groupPresenceRealtimeJob: Job? = null
+    private var chatDeletionWatchJob: Job? = null
+    private var currentGroupPresenceMemberIds: List<String> = emptyList()
+
+    init {
+        viewModelScope.launch {
+            app.isAppInForeground.collect { foreground ->
+                if (foreground) {
+                    Log.d("Realtime", "chat realtime resumed")
+                    app.supabaseChecker.checkNow(force = true)
+                    resumeForegroundNetworkJobs()
+                } else {
+                    pauseForegroundNetworkJobs()
+                }
+            }
+        }
+    }
 
     // ── Voice recording ───────────────────────────────────────────────────────
     private val voiceRecorder = VoiceRecorder(getApplication())
@@ -255,8 +282,59 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         "(https?://[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+|www\\.[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+)"
     )
 
+    private fun pauseForegroundNetworkJobs() {
+        messageInsertJob?.cancel()
+        messageUpdateJob?.cancel()
+        readReceiptJob?.cancel()
+        voiceListenJob?.cancel()
+        reactionInsertJob?.cancel()
+        reactionDeleteJob?.cancel()
+        typingPollingJob?.cancel()
+        personalPresencePollingJob?.cancel()
+        personalPresenceRealtimeJob?.cancel()
+        groupPresencePollingJob?.cancel()
+        groupPresenceRealtimeJob?.cancel()
+        chatDeletionWatchJob?.cancel()
+        messageInsertJob = null
+        messageUpdateJob = null
+        readReceiptJob = null
+        voiceListenJob = null
+        reactionInsertJob = null
+        reactionDeleteJob = null
+        typingPollingJob = null
+        personalPresencePollingJob = null
+        personalPresenceRealtimeJob = null
+        groupPresencePollingJob = null
+        groupPresenceRealtimeJob = null
+        chatDeletionWatchJob = null
+        typingJob?.cancel()
+        _typingUsers.value = emptyList()
+        Log.d("Typing", "polling stopped because app background")
+        Log.d("Realtime", "chat realtime paused because app background")
+    }
+
+    private fun resumeForegroundNetworkJobs() {
+        if (chatId.isEmpty()) return
+        observeNewMessages()
+        observeUpdatedMessages()
+        observeReadReceipts()
+        observeVoiceListens()
+        observeReactions()
+        startTypingPolling()
+        startChatDeletionWatch()
+        otherUserIdVal?.let { startPresencePolling(it) }
+        if (currentGroupPresenceMemberIds.isNotEmpty()) startGroupPresencePolling(currentGroupPresenceMemberIds)
+        if (app.supabaseChecker.isReachable.value) {
+            viewModelScope.launch { loadMessages(scrollAfter = false) }
+        }
+    }
+
+    private fun canUseForegroundNetwork(): Boolean =
+        app.isAppInForeground.value && app.supabaseChecker.isReachable.value
+
     fun ensureOgFetched(url: String) {
         if (url in ogAttempted) return
+        if (!app.isAppInForeground.value) return
         ogAttempted.add(url)
         viewModelScope.launch(Dispatchers.IO) {
             val data = fetchOgData(url)
@@ -276,9 +354,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      * (via LaunchedEffect in the Compose tree). Already-attempted URLs are skipped.
      */
     private suspend fun prefetchOgForMessages(messages: List<Message>) {
-        if (!isOnline.value) return
+        if (!isOnline.value || !app.isAppInForeground.value) return
         val urls = messages
-            .filter { it.type == "text" || it.type == null }
+            .filter { it.type == "text" }
             .mapNotNull { msg -> msg.content?.let { urlRegex.find(it)?.value } }
             .distinct()
             .filter { it !in ogAttempted }
@@ -582,11 +660,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // Flush outbox immediately if online, then watch for network recovery
-            if (isOnline.value) flushOutbox()
+            if (isOnline.value && app.isAppInForeground.value) flushOutbox()
             launch {
                 var wasOnline = isOnline.value
                 isOnline.collect { online ->
-                    if (online && !wasOnline) flushOutbox()
+                    if (online && !wasOnline && app.isAppInForeground.value) flushOutbox()
                     wasOnline = online
                 }
             }
@@ -642,9 +720,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Poll every 8s to detect group deletion or partner leaving a personal chat */
     private fun startChatDeletionWatch() {
-        viewModelScope.launch {
+        chatDeletionWatchJob?.cancel()
+        if (!app.isAppInForeground.value) return
+        chatDeletionWatchJob = viewModelScope.launch {
             while (true) {
                 delay(8_000L)
+                if (!canUseForegroundNetwork()) continue
                 if (_isGroup.value) {
                     val exists = chatRepo.getChat(chatId) != null
                     if (!exists) {
@@ -756,30 +837,38 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
      *  Realtime subscription for instant updates + 30s periodic poll as fallback. */
     private fun startGroupPresencePolling(memberIds: List<String>) {
         if (memberIds.isEmpty()) return
+        currentGroupPresenceMemberIds = memberIds
+        groupPresencePollingJob?.cancel()
+        groupPresenceRealtimeJob?.cancel()
+        if (!app.isAppInForeground.value) {
+            Log.d("Presence", "group presence polling paused because app background")
+            return
+        }
         val memberIdSet = memberIds.toHashSet()
 
         // Periodic fallback: ensures correctness even if Realtime misses an event
-        viewModelScope.launch {
+        groupPresencePollingJob = viewModelScope.launch {
             if (app.supabaseChecker.isReachable.value) {
                 val initial = userRepo.getPresences(memberIds)
                 _groupOnlineCount.value = initial.count { it.isTrulyOnline() }
             }
             while (true) {
                 delay(30_000L)
-                if (!app.supabaseChecker.isReachable.value) continue
+                if (!canUseForegroundNetwork()) continue
                 val updated = userRepo.getPresences(memberIds)
                 _groupOnlineCount.value = updated.count { it.isTrulyOnline() }
             }
         }
 
         // Realtime: instant update whenever any group member's presence row changes
-        viewModelScope.launch {
+        groupPresenceRealtimeJob = viewModelScope.launch {
             while (true) {
+                if (!app.isAppInForeground.value) return@launch
                 try {
                     userRepo.presenceUpdateFlowAll().collect { presence ->
                         if (presence.userId in memberIdSet) {
                             // Re-fetch all to get server-computed isTrulyOnline values
-                            if (!app.supabaseChecker.isReachable.value) return@collect
+                            if (!canUseForegroundNetwork()) return@collect
                             val updated = userRepo.getPresences(memberIds)
                             _groupOnlineCount.value = updated.count { it.isTrulyOnline() }
                         }
@@ -787,7 +876,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.e("Presence", "Group presence Realtime failed, retry in 3s: ${e.message}")
+                    if (!app.isAppInForeground.value) {
+                        Log.d("Presence", "Group presence Realtime paused because app background")
+                        return@launch
+                    }
+                    Log.w("Presence", "Group presence Realtime failed, retry in 3s: ${e.message}")
                     delay(3_000L)
                 }
             }
@@ -795,22 +888,27 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startPresencePolling(userId: String) {
-        // Always-on polling: guarantees UI refresh even when no Realtime events arrive
-        // (e.g. when the other user crashes — no more heartbeats = no events = stale UI without this)
-        viewModelScope.launch {
+        personalPresencePollingJob?.cancel()
+        personalPresenceRealtimeJob?.cancel()
+        if (!app.isAppInForeground.value) {
+            Log.d("Presence", "presence polling paused because app background")
+            return
+        }
+        personalPresencePollingJob = viewModelScope.launch {
             if (app.supabaseChecker.isReachable.value) {
                 _otherUserPresence.value = userRepo.getPresence(userId)
             }
             while (true) {
                 delay(5_000L)
-                if (!app.supabaseChecker.isReachable.value) continue
+                if (!canUseForegroundNetwork()) continue
                 val presence = userRepo.getPresence(userId)
                 if (presence != null) _otherUserPresence.value = presence
             }
         }
         // Realtime on top: instant updates when presence changes. Retry on failure.
-        viewModelScope.launch {
+        personalPresenceRealtimeJob = viewModelScope.launch {
             while (true) {
+                if (!app.isAppInForeground.value) return@launch
                 try {
                     userRepo.presenceUpdateFlow(userId).collect { presence ->
                         Log.d("Presence", "realtime update for $userId: $presence")
@@ -819,7 +917,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.e("Presence", "Realtime presence failed, retry in 3s: ${e.message}")
+                    if (!app.isAppInForeground.value) {
+                        Log.d("Presence", "Realtime presence paused because app background")
+                        return@launch
+                    }
+                    Log.w("Presence", "Realtime presence failed, retry in 3s: ${e.message}")
                     delay(3_000L)
                 }
             }
@@ -1038,8 +1140,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun observeNewMessages() {
-        viewModelScope.launch {
-            messageRepo.messageInsertFlow(chatId).collect { newMsg ->
+        if (messageInsertJob?.isActive == true || !app.isAppInForeground.value) return
+        messageInsertJob = viewModelScope.launch {
+            try {
+                messageRepo.messageInsertFlow(chatId).collect { newMsg ->
                 // New incoming message — clear typing indicator for that user
                 if (newMsg.senderId != currentUserId) {
                     _typingUsers.value = _typingUsers.value.filter { it.userId != newMsg.senderId }
@@ -1105,22 +1209,29 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
                 // Не помечаем прочитанным здесь — это делает ChatScreen когда пользователь внизу
                 cache.saveMessages(chatId, updated.map { it.message })
+                }
+            } catch (_: Exception) {
             }
         }
     }
 
     private fun observeUpdatedMessages() {
-        viewModelScope.launch {
-            messageRepo.messageUpdateFlow(chatId).collect { updated ->
-                _messages.value = _messages.value.map { item ->
-                    if (item.message.id == updated.id) item.copy(message = updated) else item
+        if (messageUpdateJob?.isActive == true || !app.isAppInForeground.value) return
+        messageUpdateJob = viewModelScope.launch {
+            try {
+                messageRepo.messageUpdateFlow(chatId).collect { updated ->
+                    _messages.value = _messages.value.map { item ->
+                        if (item.message.id == updated.id) item.copy(message = updated) else item
+                    }
                 }
+            } catch (_: Exception) {
             }
         }
     }
 
     private fun observeReadReceipts() {
-        viewModelScope.launch {
+        if (readReceiptJob?.isActive == true || !app.isAppInForeground.value) return
+        readReceiptJob = viewModelScope.launch {
             try {
                 messageRepo.messageReadFlow(chatId).collect { read ->
                     // Only update if it's one of our messages being read
@@ -1138,6 +1249,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // Realtime unavailable — fall back to polling
                 while (true) {
                     delay(10_000L)
+                    if (!canUseForegroundNetwork()) continue
                     val unreadOwnIds = _messages.value.filter { it.isOwn && !it.isRead }.map { it.message.id }
                     if (unreadOwnIds.isNotEmpty()) {
                         val readIds = messageRepo.getReadMessageIds(unreadOwnIds)
@@ -1200,7 +1312,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun observeReactions() {
         // React to inserts
-        viewModelScope.launch {
+        if (reactionInsertJob?.isActive != true && app.isAppInForeground.value) reactionInsertJob = viewModelScope.launch {
             try {
                 messageRepo.reactionInsertFlow().collect { reaction ->
                     if (reaction.userId != currentUserId) {
@@ -1210,7 +1322,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             } catch (_: Exception) {}
         }
         // React to deletes — we don't get the old record, so refresh all visible messages
-        viewModelScope.launch {
+        if (reactionDeleteJob?.isActive != true && app.isAppInForeground.value) reactionDeleteJob = viewModelScope.launch {
             try {
                 messageRepo.reactionDeleteFlow().collect {
                     // Refresh reactions for all currently visible messages that have reactions
@@ -1236,7 +1348,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun observeVoiceListens() {
-        viewModelScope.launch {
+        if (voiceListenJob?.isActive == true || !app.isAppInForeground.value) return
+        voiceListenJob = viewModelScope.launch {
             try {
                 messageRepo.voiceListenInsertFlow().collect { listen ->
                     // Update own voice message: someone else just listened to it
@@ -1254,9 +1367,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startTypingPolling() {
-        viewModelScope.launch {
+        typingPollingJob?.cancel()
+        if (!app.isAppInForeground.value || chatId.isEmpty()) {
+            Log.d("Typing", "polling stopped because app background")
+            return
+        }
+        typingPollingJob = viewModelScope.launch {
             while (true) {
                 delay(3_000L)
+                if (!app.isAppInForeground.value) {
+                    _typingUsers.value = emptyList()
+                    Log.d("Typing", "polling stopped because app background")
+                    return@launch
+                }
                 if (app.supabaseChecker.shouldShowOfflineBanner.value) {
                     _typingUsers.value = emptyList()
                     continue
@@ -1274,18 +1397,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun onInputTextChanged(text: String) {
         typingJob?.cancel()
         if (text.isBlank()) {
-            if (app.supabaseChecker.isReachable.value) {
+            if (canUseForegroundNetwork()) {
                 viewModelScope.launch { messageRepo.clearTyping(chatId, currentUserId) }
             }
             return
         }
         typingJob = viewModelScope.launch {
             delay(300L) // debounce: don't spam server on every keystroke
-            if (!app.supabaseChecker.isReachable.value) return@launch
+            if (!canUseForegroundNetwork()) return@launch
             val displayName = profileCache[currentUserId]?.displayName ?: ""
             messageRepo.setTyping(chatId, currentUserId, displayName)
             delay(4_000L)
-            if (app.supabaseChecker.isReachable.value) {
+            if (canUseForegroundNetwork()) {
                 messageRepo.clearTyping(chatId, currentUserId)
             }
         }
@@ -1342,7 +1465,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         if (chatId.isNotEmpty()) {
-            viewModelScope.launch { messageRepo.clearTyping(chatId, currentUserId) }
+            if (canUseForegroundNetwork()) {
+                viewModelScope.launch { messageRepo.clearTyping(chatId, currentUserId) }
+            }
         }
         voiceRecorder.cancel()
     }
@@ -1362,7 +1487,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         // Edit flow: no pending UI, just send
         if (editing != null) {
             viewModelScope.launch {
-                messageRepo.clearTyping(chatId, currentUserId)
+                if (canUseForegroundNetwork()) messageRepo.clearTyping(chatId, currentUserId)
                 typingJob?.cancel()
                 messageRepo.editMessage(editing.id, trimmed)
                 _editingMessage.value = null
@@ -1397,7 +1522,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 return@launch
             }
-            messageRepo.clearTyping(chatId, currentUserId)
+            if (canUseForegroundNetwork()) messageRepo.clearTyping(chatId, currentUserId)
             typingJob?.cancel()
 
             val sent = messageRepo.sendTextMessage(chatId, currentUserId, trimmed, replyId, silent, mentionedIds)
@@ -1576,7 +1701,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             val displayName = myProfile?.displayName ?: ""
             if (activeUploadCount.incrementAndGet() == 1) {
-                viewModelScope.launch { messageRepo.setTyping(chatId, myId, displayName, "uploading_media") }
+                if (canUseForegroundNetwork()) {
+                    viewModelScope.launch { messageRepo.setTyping(chatId, myId, displayName, "uploading_media") }
+                }
             }
 
             viewModelScope.launch(Dispatchers.IO) {
@@ -1605,7 +1732,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 } finally {
                     _isSending.value = false
                     _uploadProgresses.value = emptyList()
-                    if (activeUploadCount.decrementAndGet() == 0) {
+                    if (activeUploadCount.decrementAndGet() == 0 && canUseForegroundNetwork()) {
                         messageRepo.clearTyping(chatId, myId)
                     }
                 }
@@ -1640,7 +1767,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         val displayName = profileCache[myId]?.displayName ?: ""
         if (activeUploadCount.incrementAndGet() == 1) {
-            viewModelScope.launch { messageRepo.setTyping(chatId, myId, displayName, "uploading_media") }
+            if (canUseForegroundNetwork()) {
+                viewModelScope.launch { messageRepo.setTyping(chatId, myId, displayName, "uploading_media") }
+            }
         }
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -1668,7 +1797,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     mimeType = mimeType, originalFileName = name
                 ))
             } finally {
-                if (activeUploadCount.decrementAndGet() == 0) {
+                if (activeUploadCount.decrementAndGet() == 0 && canUseForegroundNetwork()) {
                     messageRepo.clearTyping(chatId, myId)
                 }
             }
@@ -1826,7 +1955,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val myId = currentUserId
         if (activeUploadCount.incrementAndGet() == 1) {
             val displayName = profileCache[myId]?.displayName ?: ""
-            viewModelScope.launch { messageRepo.setTyping(chatId, myId, displayName, "uploading_media") }
+            if (canUseForegroundNetwork()) {
+                viewModelScope.launch { messageRepo.setTyping(chatId, myId, displayName, "uploading_media") }
+            }
         }
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -1859,7 +1990,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 _isSending.value = false
                 _uploadProgresses.value = emptyList()
-                if (activeUploadCount.decrementAndGet() == 0) {
+                if (activeUploadCount.decrementAndGet() == 0 && canUseForegroundNetwork()) {
                     messageRepo.clearTyping(chatId, myId)
                 }
             }

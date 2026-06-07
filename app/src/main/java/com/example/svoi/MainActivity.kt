@@ -25,7 +25,6 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 
 class MainActivity : ComponentActivity() {
 
@@ -144,7 +143,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        app.startPresenceHeartbeat()
+        app.updateAppForeground(true, "activity.onResume")
         // If the SDK session was lost after the initial restore (e.g. blocked internet cleared),
         // silently re-import now that connectivity may have restored.
         // Guard: only after initialRestoreCompleted to avoid concurrent importSession() calls
@@ -152,7 +151,7 @@ class MainActivity : ComponentActivity() {
         if (initialRestoreCompleted && !app.authRepository.isLoggedIn() && app.prefs.hasSession()) {
             lifecycleScope.launch {
                 if (app.authRepository.tryRestoreSessionSilently()) {
-                    app.startPresenceHeartbeat()
+                    app.updateAppForeground(true, "activity.sessionRestored")
                 }
             }
         }
@@ -160,7 +159,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        app.stopPresenceHeartbeat()
     }
 
     override fun onStop() {
@@ -169,12 +167,10 @@ class MainActivity : ComponentActivity() {
         // the network request completes before the process can be suspended.
         // Android lifecycle guarantees onStop() always completes before onResume() runs,
         // so there is no race condition between setOnline(false) and setOnline(true).
-        runBlocking {
-            try {
-                if (app.authRepository.isLoggedIn()) {
-                    withTimeout(1_500) { app.userRepository.setOnline(false) }
-                }
-            } catch (_: Exception) {}
+        if (app.updateAppForeground(false, "activity.onStop")) {
+            runBlocking {
+                app.setOfflinePresenceForBackground()
+            }
         }
     }
 }
