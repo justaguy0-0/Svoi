@@ -358,21 +358,11 @@ fun ChatListScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PushPin,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                if (chat.isPinned) "Открепить чат" else "Закрепить чат",
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+                        Text(
+                            if (chat.isPinned) "Открепить чат" else "Закрепить чат",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                     TextButton(
                         onClick = {
@@ -791,11 +781,12 @@ private fun ChatListItem(
     val rowModifier = if (item.isPinned) {
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 2.dp)
-            .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.14f))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 0.dp, vertical = SvoiDimens.ItemVerticalPadding)
+            .padding(
+                horizontal = SvoiDimens.ScreenHorizontalPadding,
+                vertical = SvoiDimens.ItemVerticalPadding
+            )
     } else {
         Modifier
             .fillMaxWidth()
