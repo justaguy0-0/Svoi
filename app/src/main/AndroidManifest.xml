@@ -51,6 +51,12 @@
             android:name="com.canhub.cropper.CropImageActivity"
             android:theme="@style/Theme.Svoi.Cropper" />
 
+        <activity
+            android:name=".ui.video.FullscreenVideoActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@style/Theme.Svoi" />
+
     </application>
 
 </manifest>

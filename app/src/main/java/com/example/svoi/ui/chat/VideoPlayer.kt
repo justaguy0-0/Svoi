@@ -1,23 +1,22 @@
 package com.example.svoi.ui.chat
 
+import android.app.Activity
 import android.view.ViewGroup
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
@@ -40,8 +39,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -53,6 +50,7 @@ import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
+import com.example.svoi.ui.video.FullscreenVideoActivity
 
 // ── Shared video state passed via CompositionLocal ─────────────────────────────
 
@@ -263,73 +261,43 @@ fun FullscreenVideoPlayer(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val ownsPlayer = sharedPlayer == null
-    val player = remember(sharedPlayer, context) {
-        sharedPlayer ?: ExoPlayer.Builder(context).build()
-    }
-
-    LaunchedEffect(player, url, startPosition) {
-        val currentUri = player.currentMediaItem?.localConfiguration?.uri?.toString()
-        if (currentUri != url) {
-            player.setMediaItem(MediaItem.fromUri(url))
-            player.prepare()
-        }
-        if (startPosition > 0L) player.seekTo(startPosition)
-        player.play()
-    }
-
-    DisposableEffect(player, ownsPlayer) {
-        onDispose {
-            if (ownsPlayer) player.release()
-        }
-    }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        ) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        this.player = player
-                        useController = true
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.systemBars)
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val data = result.data
+        if (result.resultCode == Activity.RESULT_OK && data != null) {
+            val returnedUrl = data.getStringExtra(FullscreenVideoActivity.EXTRA_VIDEO_URL)
+            val returnedPosition = data.getLongExtra(
+                FullscreenVideoActivity.EXTRA_CURRENT_POSITION_MS,
+                startPosition
             )
-
-            // Close button
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .size(40.dp)
-                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Закрыть",
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
+            val returnedPlayWhenReady = data.getBooleanExtra(
+                FullscreenVideoActivity.EXTRA_PLAY_WHEN_READY,
+                true
+            )
+            if (returnedUrl == url) {
+                sharedPlayer?.seekTo(returnedPosition.coerceAtLeast(0L))
+                if (returnedPlayWhenReady) {
+                    sharedPlayer?.play()
+                } else {
+                    sharedPlayer?.pause()
+                }
             }
         }
+        onDismiss()
+    }
+
+    LaunchedEffect(url) {
+        val launchPosition = sharedPlayer?.currentPosition?.coerceAtLeast(0L)
+            ?: startPosition.coerceAtLeast(0L)
+        sharedPlayer?.pause()
+        launcher.launch(
+            FullscreenVideoActivity.createIntent(
+                context = context,
+                videoUrl = url,
+                startPositionMs = launchPosition,
+                playWhenReady = true
+            )
+        )
     }
 }

@@ -898,8 +898,6 @@ fun ChatScreen(
             sharedPlayer = exoPlayer,
             onDismiss = {
                 fullscreenVideoUrl = null
-                if (activeVideoUrl != null) exoPlayer.play()
-                else exoPlayer.pause()
             }
         )
     }
