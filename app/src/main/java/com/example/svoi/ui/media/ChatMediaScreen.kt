@@ -580,6 +580,10 @@ internal fun MediaImageLightbox(
     onDownload: (String) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = startIndex, pageCount = { urls.size })
+    var isCurrentPhotoZoomed by remember { mutableStateOf(false) }
+    LaunchedEffect(pagerState.currentPage) {
+        isCurrentPhotoZoomed = false
+    }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
@@ -587,10 +591,21 @@ internal fun MediaImageLightbox(
         Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.95f))) {
             HorizontalPager(
                 state = pagerState,
+                userScrollEnabled = !isCurrentPhotoZoomed,
                 modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)
             ) { page ->
-                SubcomposeAsyncImage(
-                    model = urls[page],
+                val url = urls[page]
+                ZoomableLightboxImage(
+                    pageKey = url,
+                    modifier = Modifier.fillMaxSize(),
+                    onZoomChanged = { zoomed ->
+                        if (page == pagerState.currentPage) {
+                            isCurrentPhotoZoomed = zoomed
+                        }
+                    }
+                ) {
+                    SubcomposeAsyncImage(
+                    model = url,
                     contentDescription = "Изображение",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
@@ -605,6 +620,7 @@ internal fun MediaImageLightbox(
                             modifier = Modifier.align(Alignment.Center).size(48.dp))
                     }
                 )
+                }
             }
             if (urls.size > 1) {
                 Text(

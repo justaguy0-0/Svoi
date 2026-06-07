@@ -186,6 +186,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import com.example.svoi.ui.components.EmojiPicker
+import com.example.svoi.ui.media.ZoomableLightboxImage
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -4510,6 +4511,10 @@ private fun ImageLightbox(
         initialPage = state.startIndex,
         pageCount = { state.urls.size }
     )
+    var isCurrentPhotoZoomed by remember { mutableStateOf(false) }
+    LaunchedEffect(pagerState.currentPage) {
+        isCurrentPhotoZoomed = false
+    }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -4525,6 +4530,7 @@ private fun ImageLightbox(
             // Swipeable pager
             HorizontalPager(
                 state = pagerState,
+                userScrollEnabled = !isCurrentPhotoZoomed,
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.systemBars)
@@ -4534,7 +4540,16 @@ private fun ImageLightbox(
                     Uri.parse(url) else url
                 val dlProgress by remember(url) { ImageDownloadProgress.flowFor(url) }.collectAsState()
                 DisposableEffect(url) { onDispose { ImageDownloadProgress.release(url) } }
-                SubcomposeAsyncImage(
+                ZoomableLightboxImage(
+                    pageKey = url,
+                    modifier = Modifier.fillMaxSize(),
+                    onZoomChanged = { zoomed ->
+                        if (page == pagerState.currentPage) {
+                            isCurrentPhotoZoomed = zoomed
+                        }
+                    }
+                ) {
+                    SubcomposeAsyncImage(
                     model = model,
                     contentDescription = "Изображение",
                     modifier = Modifier.fillMaxSize(),
@@ -4583,6 +4598,7 @@ private fun ImageLightbox(
                             )
                         }
                         else -> SubcomposeAsyncImageContent()
+                    }
                     }
                 }
             }
