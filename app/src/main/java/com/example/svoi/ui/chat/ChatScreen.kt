@@ -431,8 +431,8 @@ fun ChatScreen(
     var pendingForwardMessageId by remember { mutableStateOf<String?>(null) }
 
     // Video playback state
-    val exoPlayer = rememberChatExoPlayer()
     var activeVideoUrl by remember { mutableStateOf<String?>(null) }
+    val exoPlayer = rememberChatExoPlayer(activeVideoUrl)
     var isVideoMuted by remember { mutableStateOf(true) }
     var fullscreenVideoUrl by remember { mutableStateOf<String?>(null) }
     // Cached aspect ratios per URL (populated on first play when real size is known)
@@ -647,7 +647,7 @@ fun ChatScreen(
             .collect {
                 if (!currentAutoPlay) {
                     activeVideoUrl = null
-                    exoPlayer.pause()
+                    exoPlayer?.pause()
                     return@collect
                 }
                 val layoutInfo = listState.layoutInfo
@@ -660,7 +660,7 @@ fun ChatScreen(
                     if (visible.toFloat() / info.size >= 0.5f) e.item.message.fileUrl else null
                 }
                 activeVideoUrl = firstVideoUrl
-                if (firstVideoUrl == null) exoPlayer.pause()
+                if (firstVideoUrl == null) exoPlayer?.pause()
             }
     }
 
@@ -1534,7 +1534,7 @@ private fun ChatContentContainer(
     cachedVoiceIds: Set<String>,
     messages: List<MessageUiItem>,
     myReadMessageIds: Set<String>,
-    exoPlayer: ExoPlayer,
+    exoPlayer: ExoPlayer?,
     globalVoiceState: GlobalVoiceState?,
     scope: CoroutineScope,
     inputValue: TextFieldValue,
@@ -1665,7 +1665,7 @@ private fun MessageListContainer(
     messages: List<MessageUiItem>,
     myReadMessageIds: Set<String>,
     wallpaper: ChatWallpaper,
-    exoPlayer: ExoPlayer,
+    exoPlayer: ExoPlayer?,
     globalVoiceState: GlobalVoiceState?,
     scope: CoroutineScope,
     onShowLightbox: (LightboxState) -> Unit,
@@ -2397,7 +2397,7 @@ private fun ChatMessageBox(
     messages: List<MessageUiItem>,
     myReadMessageIds: Set<String>,
     wallpaper: ChatWallpaper,
-    exoPlayer: ExoPlayer,
+    exoPlayer: ExoPlayer?,
     globalVoiceState: GlobalVoiceState?,
     scope: CoroutineScope,
     onShowLightbox: (LightboxState) -> Unit,
@@ -2595,7 +2595,7 @@ private fun ChatMessageBox(
                                             onUserClick = { userId -> onUserClick(userId) },
                                             onVideoTap = { url ->
                                                 if (!isSelectionMode) {
-                                                    exoPlayer.pause()
+                                                    exoPlayer?.pause()
                                                     onShowFullscreenVideo(url)
                                                 }
                                             },
@@ -2949,8 +2949,8 @@ private fun PhotoGrid(
 ) {
     val count = urls.size
     val maxVisible = 4
-    val visibleUrls = urls.take(maxVisible)
-    val extraCount = (count - maxVisible).coerceAtLeast(0)
+    val visibleUrls = remember(urls) { urls.take(maxVisible) }
+    val extraCount = remember(count) { (count - maxVisible).coerceAtLeast(0) }
     val gap = 2.dp
 
     // Helper: one photo cell
@@ -3907,18 +3907,16 @@ private fun VideoMessageContent(
     onVideoSizeDetected: (url: String, ratio: Float) -> Unit
 ) {
     if (msg.fileUrl != null) {
-        if (exoPlayer != null) {
-            InlineVideoPlayer(
-                url = msg.fileUrl,
-                isActive = isActiveVideo,
-                exoPlayer = exoPlayer,
-                isMuted = isMuted,
-                aspectRatio = videoAspectRatio,
-                onTap = { onVideoTap(msg.fileUrl) },
-                onMuteToggle = onVideoMuteToggle,
-                onVideoSizeDetected = { ratio -> onVideoSizeDetected(msg.fileUrl, ratio) }
-            )
-        }
+        InlineVideoPlayer(
+            url = msg.fileUrl,
+            isActive = isActiveVideo,
+            exoPlayer = exoPlayer,
+            isMuted = isMuted,
+            aspectRatio = videoAspectRatio,
+            onTap = { onVideoTap(msg.fileUrl) },
+            onMuteToggle = onVideoMuteToggle,
+            onVideoSizeDetected = { ratio -> onVideoSizeDetected(msg.fileUrl, ratio) }
+        )
     } else {
         Box(
             modifier = Modifier

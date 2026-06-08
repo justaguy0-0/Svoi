@@ -243,6 +243,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                     return@launch
                 }
                 if (isRecentFullRefresh()) {
+                    Log.d("ChatScreen", "skip full chat refresh, fresh enough")
                     Log.d("ChatRepo", "refresh skipped, throttled")
                     return@launch
                 }

@@ -1,6 +1,7 @@
 package com.example.svoi.ui.chat
 
 import android.app.Activity
+import android.util.Log
 import android.view.ViewGroup
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -67,9 +68,11 @@ val LocalVideoPlayback = compositionLocalOf<VideoPlaybackState?> { null }
 // ── ExoPlayer lifecycle management ────────────────────────────────────────────
 
 @Composable
-fun rememberChatExoPlayer(): ExoPlayer {
+fun rememberChatExoPlayer(activeVideoUrl: String?): ExoPlayer? {
+    if (activeVideoUrl == null) return null
     val context = LocalContext.current
     val player = remember {
+        Log.d("VideoPlayer", "create inline player url=$activeVideoUrl")
         ExoPlayer.Builder(context).build().apply {
             repeatMode = Player.REPEAT_MODE_ONE
             volume = 0f // muted by default
@@ -83,6 +86,7 @@ fun rememberChatExoPlayer(): ExoPlayer {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            Log.d("VideoPlayer", "release inline player reason=dispose url=$activeVideoUrl")
             player.release()
         }
     }
@@ -95,7 +99,7 @@ fun rememberChatExoPlayer(): ExoPlayer {
 fun InlineVideoPlayer(
     url: String,
     isActive: Boolean,
-    exoPlayer: ExoPlayer,
+    exoPlayer: ExoPlayer?,
     isMuted: Boolean,
     aspectRatio: Float,          // cached aspect ratio (16/9 until real size is known)
     onTap: () -> Unit,
@@ -104,6 +108,7 @@ fun InlineVideoPlayer(
     modifier: Modifier = Modifier
 ) {
     var isBuffering by remember { mutableStateOf(false) }
+    val inlinePlayer = if (isActive) exoPlayer else null
 
     // Animate aspect ratio changes smoothly (portrait ↔ landscape transition)
     val animatedRatio by animateFloatAsState(
@@ -113,26 +118,26 @@ fun InlineVideoPlayer(
     )
 
     // Start/stop playback
-    LaunchedEffect(isActive, url) {
-        if (isActive) {
-            val currentUri = exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
+    LaunchedEffect(inlinePlayer, url) {
+        inlinePlayer?.let { player ->
+            val currentUri = player.currentMediaItem?.localConfiguration?.uri?.toString()
             if (currentUri != url) {
-                exoPlayer.setMediaItem(MediaItem.fromUri(url))
-                exoPlayer.prepare()
+                player.setMediaItem(MediaItem.fromUri(url))
+                player.prepare()
             }
-            exoPlayer.volume = if (isMuted) 0f else 1f
-            exoPlayer.play()
+            player.volume = if (isMuted) 0f else 1f
+            player.play()
         }
     }
 
     // Sync mute state
-    LaunchedEffect(isMuted, isActive) {
-        if (isActive) exoPlayer.volume = if (isMuted) 0f else 1f
+    LaunchedEffect(isMuted, inlinePlayer) {
+        inlinePlayer?.volume = if (isMuted) 0f else 1f
     }
 
     // Buffering indicator + real video size detection
-    DisposableEffect(exoPlayer, isActive) {
-        if (!isActive) return@DisposableEffect onDispose {}
+    DisposableEffect(inlinePlayer) {
+        val player = inlinePlayer ?: return@DisposableEffect onDispose {}
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 isBuffering = state == Player.STATE_BUFFERING
@@ -150,8 +155,8 @@ fun InlineVideoPlayer(
                 }
             }
         }
-        exoPlayer.addListener(listener)
-        onDispose { exoPlayer.removeListener(listener) }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
     }
 
     Box(
@@ -166,12 +171,12 @@ fun InlineVideoPlayer(
                 .fillMaxWidth()
                 .aspectRatio(animatedRatio.coerceAtLeast(0.1f))
         ) {
-            if (isActive) {
+            if (inlinePlayer != null) {
                 // Live PlayerView
                 AndroidView(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
-                            player = exoPlayer
+                            player = inlinePlayer
                             useController = false
                             layoutParams = ViewGroup.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -179,10 +184,13 @@ fun InlineVideoPlayer(
                             )
                         }
                     },
-                    update = { view -> view.player = exoPlayer },
+                    update = { view -> view.player = inlinePlayer },
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
+                LaunchedEffect(url) {
+                    Log.d("VideoPlayer", "preview only, no ExoPlayer created")
+                }
                 // Thumbnail frame extracted from the video via Coil VideoFrameDecoder
                 val context = LocalContext.current
                 AsyncImage(
@@ -225,7 +233,7 @@ fun InlineVideoPlayer(
             }
 
             // Mute/unmute button (only when active)
-            if (isActive) {
+            if (inlinePlayer != null) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)

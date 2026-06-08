@@ -47,6 +47,7 @@ class SupabaseReachabilityChecker(
         private const val TAG = "SupabaseChecker"
         private const val PROBE_TIMEOUT_MS = 4_000
         private const val PROBE_COOLDOWN_MS = 30_000L
+        private const val FORCE_PROBE_MIN_INTERVAL_MS = 3_000L
         private const val OFFLINE_CONFIRMATION_DELAY_MS = 4_000L
     }
 
@@ -88,6 +89,10 @@ class SupabaseReachabilityChecker(
                 return@withLock _isReachable.value
             }
             val now = System.currentTimeMillis()
+            if (_isReachable.value && now - lastProbeTime < FORCE_PROBE_MIN_INTERVAL_MS) {
+                Log.d(TAG, "probe skipped, cooldown")
+                return@withLock true
+            }
             val cacheValid = !force && now - lastProbeTime < PROBE_COOLDOWN_MS && _isReachable.value
             if (cacheValid) return@withLock true
             if (force && !_isReachable.value) {
