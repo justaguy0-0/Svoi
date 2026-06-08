@@ -238,6 +238,14 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                 refreshIgnoreCooldownRequested = false
                 if (!app.isAppInForeground.value) return@launch
                 if (!app.supabaseChecker.isReachable.value) return@launch
+                if (refreshMutex.isLocked) {
+                    Log.d("ChatRepo", "refresh skipped, already in flight")
+                    return@launch
+                }
+                if (isRecentFullRefresh()) {
+                    Log.d("ChatRepo", "refresh skipped, throttled")
+                    return@launch
+                }
                 if (!skipCooldown && isSilentRefreshInCooldown()) return@launch
                 refreshMutex.withLock {
                     if (!skipCooldown && isSilentRefreshInCooldown()) return@withLock
@@ -342,7 +350,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                     val online = presence.isTrulyOnline()
                     _chats.value = _chats.value.map { chat ->
                         if (!chat.isGroup && chat.otherUserId == presence.userId)
-                            chat.copy(isOtherOnline = online)
+                            chat.copy(isOtherOnline = online && !chat.otherHideOnlineStatus)
                         else chat
                     }
                 }
@@ -423,6 +431,9 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private fun isSilentRefreshInCooldown(): Boolean =
         System.currentTimeMillis() - lastSuccessfulFullRefreshAtMs < SILENT_REFRESH_COOLDOWN_MS
 
+    private fun isRecentFullRefresh(): Boolean =
+        System.currentTimeMillis() - lastSuccessfulFullRefreshAtMs < FULL_REFRESH_MIN_INTERVAL_MS
+
     private fun updateChat(chatId: String, transform: (ChatListItem) -> ChatListItem) {
         updateChats(_chats.value.map { chat ->
             if (chat.chatId == chatId) transform(chat) else chat
@@ -443,5 +454,6 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
     private companion object {
         const val SILENT_REFRESH_DEBOUNCE_MS = 1_200L
         const val SILENT_REFRESH_COOLDOWN_MS = 2_500L
+        const val FULL_REFRESH_MIN_INTERVAL_MS = 2_500L
     }
 }

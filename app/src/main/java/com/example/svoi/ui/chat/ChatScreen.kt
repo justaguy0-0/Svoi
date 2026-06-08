@@ -230,7 +230,6 @@ import com.example.svoi.data.model.PinnedMessage
 import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.ReactionGroup
 import com.example.svoi.data.model.UserPresence
-import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.OfflineBanner
 import com.example.svoi.ui.theme.BubbleOther
@@ -242,8 +241,8 @@ import com.example.svoi.ui.theme.DarkBubbleOtherText
 import com.example.svoi.ui.theme.Online
 import com.example.svoi.ui.theme.SvoiShapes
 import com.example.svoi.ui.theme.TextSecondary
+import com.example.svoi.util.OnlineStatusFormatter
 import com.example.svoi.util.toDateSeparator
-import com.example.svoi.util.toLastSeen
 import com.example.svoi.util.toMessageTime
 import com.example.svoi.util.toReadableSize
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -290,6 +289,7 @@ fun ChatScreen(
     val chatName by viewModel.chatName.collectAsState()
     val isGroup by viewModel.isGroup.collectAsState()
     val presence by viewModel.otherUserPresence.collectAsState()
+    val otherUserProfile by viewModel.otherUserProfile.collectAsState()
     val pinnedMessage by viewModel.pinnedMessage.collectAsState()
     val pinnedContent by viewModel.pinnedMessageContent.collectAsState()
     val replyTo by viewModel.replyTo.collectAsState()
@@ -775,14 +775,19 @@ fun ChatScreen(
         editingMessage?.let { inputValue = TextFieldValue(it.content ?: "") }
     }
 
-    val presenceText = remember(presence) {
-        val p = presence
-        when {
-            p == null -> ""
-            p.isTrulyOnline() -> "в сети"
-            !p.lastSeen.isNullOrBlank() -> p.lastSeen!!.toLastSeen()
-            else -> ""
-        }
+    val presenceText = remember(presence, otherUserProfile, otherUserId) {
+        OnlineStatusFormatter.format(
+            presence = presence,
+            profile = otherUserProfile,
+            viewedUserId = otherUserId
+        ) ?: ""
+    }
+    val isPresenceExactOnline = remember(presence, otherUserProfile, otherUserId) {
+        OnlineStatusFormatter.isExactOnlineVisible(
+            presence = presence,
+            profile = otherUserProfile,
+            viewedUserId = otherUserId
+        )
     }
 
     Scaffold(
@@ -803,6 +808,7 @@ fun ChatScreen(
                 isGroup = isGroup,
                 presence = presence,
                 presenceText = presenceText,
+                isPresenceExactOnline = isPresenceExactOnline,
                 pinnedMessage = pinnedMessage,
                 pinnedContent = pinnedContent,
                 typingUsers = typingUsers,
@@ -1165,6 +1171,7 @@ private fun ChatHeaderContainer(
     isGroup: Boolean,
     presence: UserPresence?,
     presenceText: String,
+    isPresenceExactOnline: Boolean,
     pinnedMessage: PinnedMessage?,
     pinnedContent: Message?,
     typingUsers: List<TypingInfo>,
@@ -1206,6 +1213,7 @@ private fun ChatHeaderContainer(
                         isGroup = isGroup,
                         presence = presence,
                         presenceText = presenceText,
+                        isPresenceExactOnline = isPresenceExactOnline,
                         typingUsers = typingUsers,
                         isOnline = isOnline,
                         isReachable = isReachable,
@@ -1271,6 +1279,7 @@ private fun ChatHeaderTitle(
     isGroup: Boolean,
     presence: UserPresence?,
     presenceText: String,
+    isPresenceExactOnline: Boolean,
     typingUsers: List<TypingInfo>,
     isOnline: Boolean,
     isReachable: Boolean,
@@ -1343,7 +1352,7 @@ private fun ChatHeaderTitle(
                     style = MaterialTheme.typography.bodySmall,
                     color = when {
                         isTyping -> MaterialTheme.colorScheme.primary
-                        !isGroup && presence?.isTrulyOnline() == true -> Online
+                        !isGroup && isPresenceExactOnline -> Online
                         else -> TextSecondary
                     }
                 )

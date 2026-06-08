@@ -14,8 +14,20 @@ data class Profile(
     @SerialName("bg_color") val bgColor: String = "#5C6BC0",
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
-    @SerialName("hidden_from_search") val hiddenFromSearch: Boolean = false
+    @SerialName("hidden_from_search") val hiddenFromSearch: Boolean = false,
+    @SerialName("hide_online_status") val hideOnlineStatus: Boolean = false,
+    @SerialName("hidden_online_style") val hiddenOnlineStyle: String = HiddenOnlineStyle.APPROXIMATE.dbValue
 )
+
+enum class HiddenOnlineStyle(val dbValue: String) {
+    APPROXIMATE("approximate"),
+    MYSTERY("mystery");
+
+    companion object {
+        fun fromDb(value: String?): HiddenOnlineStyle =
+            values().firstOrNull { it.dbValue == value } ?: APPROXIMATE
+    }
+}
 
 @Serializable
 data class UserPresence(

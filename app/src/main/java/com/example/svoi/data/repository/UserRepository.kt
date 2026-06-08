@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -38,14 +40,31 @@ class UserRepository(
     private val supabase: SupabaseClient,
     private val checker: SupabaseReachabilityChecker
 ) {
+    private data class TimedProfile(val profile: Profile, val savedAtMs: Long)
+    private data class TimedPresence(val presence: UserPresence, val savedAtMs: Long)
+
+    private val profileCache = mutableMapOf<String, TimedProfile>()
+    private val presenceCache = mutableMapOf<String, TimedPresence>()
+    private val profileMutex = Mutex()
+    private val presenceMutex = Mutex()
 
     suspend fun getProfile(userId: String): Profile? {
-        return try {
-            supabase.from("profiles")
-                .select { filter { eq("id", userId) } }
-                .decodeSingleOrNull<Profile>()
-        } catch (e: Exception) {
-            null
+        if (userId.isBlank()) return null
+        return profileMutex.withLock {
+            val now = System.currentTimeMillis()
+            profileCache[userId]?.takeIf { now - it.savedAtMs < PROFILE_CACHE_TTL_MS }?.let {
+                Log.d("OnlinePrivacy", "cache hit userId=$userId")
+                return@withLock it.profile
+            }
+            Log.d("OnlinePrivacy", "cache miss userId=$userId")
+            try {
+                supabase.from("profiles")
+                    .select { filter { eq("id", userId) } }
+                    .decodeSingleOrNull<Profile>()
+                    ?.also { profileCache[userId] = TimedProfile(it, System.currentTimeMillis()) }
+            } catch (e: Exception) {
+                null
+            }
         }
     }
 
@@ -126,6 +145,34 @@ class UserRepository(
         }
     }
 
+    suspend fun updateOnlinePrivacy(
+        hideOnlineStatus: Boolean,
+        hiddenOnlineStyle: String
+    ): String? {
+        return try {
+            val userId = supabase.auth.currentUserOrNull()?.id ?: return "Не авторизован"
+            supabase.from("profiles").update({
+                set("hide_online_status", hideOnlineStatus)
+                set("hidden_online_style", hiddenOnlineStyle)
+            }) {
+                filter { eq("id", userId) }
+            }
+            val cached = profileCache[userId]?.profile
+            if (cached != null) {
+                profileCache[userId] = TimedProfile(
+                    cached.copy(
+                        hideOnlineStatus = hideOnlineStatus,
+                        hiddenOnlineStyle = hiddenOnlineStyle
+                    ),
+                    System.currentTimeMillis()
+                )
+            }
+            null
+        } catch (e: Exception) {
+            e.message
+        }
+    }
+
     suspend fun updateProfile(
         displayName: String,
         statusText: String,
@@ -180,12 +227,36 @@ class UserRepository(
 
     suspend fun getProfiles(userIds: List<String>): List<Profile> {
         if (userIds.isEmpty()) return emptyList()
-        return try {
-            supabase.from("profiles")
-                .select { filter { isIn("id", userIds) } }
-                .decodeList<Profile>()
-        } catch (e: Exception) {
-            emptyList()
+        val distinctIds = userIds.distinct().filter { it.isNotBlank() }
+        if (distinctIds.isEmpty()) return emptyList()
+        return profileMutex.withLock {
+            val now = System.currentTimeMillis()
+            val cached = distinctIds.mapNotNull { id ->
+                profileCache[id]
+                    ?.takeIf { now - it.savedAtMs < PROFILE_CACHE_TTL_MS }
+                    ?.profile
+            }
+            val cachedIds = cached.map { it.id }.toSet()
+            val missing = distinctIds.filter { it !in cachedIds }
+            if (missing.isNotEmpty()) {
+                Log.d("OnlinePrivacy", "cache miss ${missing.size}/${distinctIds.size} profiles")
+            } else {
+                Log.d("OnlinePrivacy", "cache hit ${distinctIds.size} profiles")
+            }
+            val fresh = try {
+                if (missing.isEmpty()) emptyList()
+                else supabase.from("profiles")
+                    .select { filter { isIn("id", missing) } }
+                    .decodeList<Profile>()
+                    .also { profiles ->
+                        val savedAt = System.currentTimeMillis()
+                        profiles.forEach { profileCache[it.id] = TimedProfile(it, savedAt) }
+                    }
+            } catch (e: Exception) {
+                emptyList()
+            }
+            val byId = (cached + fresh).associateBy { it.id }
+            distinctIds.mapNotNull { byId[it] }
         }
     }
 
@@ -245,21 +316,35 @@ class UserRepository(
 
     suspend fun getPresence(userId: String): UserPresence? {
         if (!checker.isReachable.value) return null
-        return try {
-            val result = supabase.from("user_presence_view")
-                .select { filter { eq("user_id", userId) } }
-                .decodeSingleOrNull<UserPresence>()
-            Log.d("Presence", "getPresence($userId) = $result")
-            result
-        } catch (e: Exception) {
-            if (checker.isTransientNetworkFailure(e)) {
-                checker.notifyNetworkFailure(e)
-                Log.w("Presence", "getPresence($userId) temporarily unavailable (${e.javaClass.simpleName}: ${e.message})")
-            } else {
-                Log.e("Presence", "getPresence($userId) FAILED: ${e.message}")
+        if (userId.isBlank()) return null
+        return presenceMutex.withLock {
+            val now = System.currentTimeMillis()
+            presenceCache[userId]?.takeIf { now - it.savedAtMs < PRESENCE_CACHE_TTL_MS }?.let {
+                Log.d("Presence", "skip duplicate getPresence userId=$userId")
+                return@withLock it.presence
             }
-            null
+            try {
+                val result = supabase.from("user_presence_view")
+                    .select { filter { eq("user_id", userId) } }
+                    .decodeSingleOrNull<UserPresence>()
+                if (result != null) presenceCache[userId] = TimedPresence(result, System.currentTimeMillis())
+                Log.d("Presence", "getPresence($userId) = $result")
+                result
+            } catch (e: Exception) {
+                if (checker.isTransientNetworkFailure(e)) {
+                    checker.notifyNetworkFailure(e)
+                    Log.w("Presence", "getPresence($userId) temporarily unavailable (${e.javaClass.simpleName}: ${e.message})")
+                } else {
+                    Log.e("Presence", "getPresence($userId) FAILED: ${e.message}")
+                }
+                null
+            }
         }
+    }
+
+    private companion object {
+        const val PROFILE_CACHE_TTL_MS = 60_000L
+        const val PRESENCE_CACHE_TTL_MS = 1_500L
     }
 
     /** Realtime flow — fires whenever any user_presence row is updated */

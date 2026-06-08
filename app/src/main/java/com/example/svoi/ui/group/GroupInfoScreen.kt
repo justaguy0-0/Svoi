@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.chat.FullscreenVideoPlayer
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.media.ChatMediaViewModel
@@ -45,7 +44,7 @@ import com.example.svoi.ui.theme.OnlineGreen
 import com.example.svoi.ui.theme.SvoiDimens
 import com.example.svoi.ui.theme.SvoiShapes
 import com.example.svoi.ui.theme.groupAvatarColor
-import com.example.svoi.util.toLastSeen
+import com.example.svoi.util.OnlineStatusFormatter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.material3.SnackbarHost
@@ -299,7 +298,12 @@ fun GroupInfoScreen(
 
                         items(members, key = { it.member.userId }) { item ->
                             val isSelf = item.member.userId == currentUserId
-                            val isOnline = item.presence?.isTrulyOnline() == true
+                            val isOnline = OnlineStatusFormatter.isExactOnlineVisible(
+                                presence = item.presence,
+                                profile = item.profile,
+                                viewerUserId = currentUserId,
+                                viewedUserId = item.member.userId
+                            )
                             MemberRow(
                                 item = item,
                                 isOnline = isOnline,
@@ -499,13 +503,12 @@ private fun MemberRow(
                 )
             }
             if (!isSelf) {
-                val presenceText = remember(item.presence) {
-                    when {
-                        item.presence?.isTrulyOnline() == true -> "в сети"
-                        !item.presence?.lastSeen.isNullOrBlank() ->
-                            item.presence!!.lastSeen!!.toLastSeen()
-                        else -> null
-                    }
+                val presenceText = remember(item.presence, item.profile) {
+                    OnlineStatusFormatter.format(
+                        presence = item.presence,
+                        profile = item.profile,
+                        viewedUserId = item.member.userId
+                    )
                 }
                 if (presenceText != null) {
                     Text(

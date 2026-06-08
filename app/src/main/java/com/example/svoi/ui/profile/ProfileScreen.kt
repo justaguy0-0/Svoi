@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
 import com.example.svoi.SvoiApp
+import com.example.svoi.data.model.HiddenOnlineStyle
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.components.EmojiPicker
 import com.example.svoi.ui.components.MainBottomBar
@@ -330,6 +331,89 @@ fun ProfileScreen(
                 }
             }
 
+            Spacer(Modifier.height(12.dp))
+
+            androidx.compose.material3.Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = SvoiShapes.Card,
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 1.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(SvoiDimens.CardPadding),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = "Приватность",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "Скрывать статус в сети",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = "Когда включено, другие пользователи не увидят ваш точный онлайн и время последнего появления.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = profile?.hideOnlineStatus ?: false,
+                            onCheckedChange = { viewModel.setOnlinePrivacy(it) },
+                            enabled = isOnline
+                        )
+                    }
+
+                    if (profile?.hideOnlineStatus == true) {
+                        val selectedStyle = HiddenOnlineStyle.fromDb(profile?.hiddenOnlineStyle)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "Вид скрытого статуса",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            OnlinePrivacyStyleOption(
+                                title = "Примерная активность",
+                                description = "Показывает мягкий приблизительный статус без точного времени.",
+                                preview = "●●● Активен недавно",
+                                selected = selectedStyle == HiddenOnlineStyle.APPROXIMATE,
+                                enabled = isOnline,
+                                onClick = {
+                                    viewModel.setOnlinePrivacy(
+                                        hideOnlineStatus = true,
+                                        style = HiddenOnlineStyle.APPROXIMATE
+                                    )
+                                }
+                            )
+                            OnlinePrivacyStyleOption(
+                                title = "Загадочный сигнал",
+                                description = "Показывает скрытый декоративный статус вместо активности.",
+                                preview = "[???]",
+                                selected = selectedStyle == HiddenOnlineStyle.MYSTERY,
+                                enabled = isOnline,
+                                onClick = {
+                                    viewModel.setOnlinePrivacy(
+                                        hideOnlineStatus = true,
+                                        style = HiddenOnlineStyle.MYSTERY
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
         }
         } // else
@@ -507,5 +591,54 @@ fun ProfileScreen(
                 TextButton(onClick = { showLogoutDialog = false }) { Text("Отмена") }
             }
         )
+    }
+}
+
+@Composable
+private fun OnlinePrivacyStyleOption(
+    title: String,
+    description: String,
+    preview: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val borderColor = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+    }
+    androidx.compose.material3.Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(SvoiShapes.Card)
+            .clickable(enabled = enabled, onClick = onClick)
+            .border(1.dp, borderColor, SvoiShapes.Card),
+        shape = SvoiShapes.Card,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        }
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(text = title, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = preview,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }

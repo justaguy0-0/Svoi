@@ -57,7 +57,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import com.example.svoi.data.model.isTrulyOnline
 import com.example.svoi.ui.chat.FullscreenVideoPlayer
 import com.example.svoi.ui.components.Avatar
 import com.example.svoi.ui.media.ChatMediaViewModel
@@ -70,6 +69,7 @@ import com.example.svoi.ui.media.addVoiceSections
 import com.example.svoi.ui.theme.OnlineGreen
 import com.example.svoi.ui.theme.SvoiDimens
 import com.example.svoi.ui.theme.SvoiShapes
+import com.example.svoi.util.OnlineStatusFormatter
 import com.example.svoi.util.toRegistrationDate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -215,7 +215,10 @@ fun UserProfileScreen(
                                 size = SvoiDimens.AvatarXLarge,
                                 fontSize = 44.sp
                             )
-                            val isOnline = presence?.isTrulyOnline() == true
+                            val isOnline = OnlineStatusFormatter.isExactOnlineVisible(
+                                presence = presence,
+                                profile = profile
+                            )
                             if (isOnline) {
                                 Box(
                                     modifier = Modifier
@@ -236,9 +239,16 @@ fun UserProfileScreen(
 
                         Spacer(Modifier.height(4.dp))
 
-                        val isOnline = presence?.isTrulyOnline() == true
+                        val isOnline = OnlineStatusFormatter.isExactOnlineVisible(
+                            presence = presence,
+                            profile = profile
+                        )
+                        val presenceText = OnlineStatusFormatter.format(
+                            presence = presence,
+                            profile = profile
+                        ) ?: "не в сети"
                         Text(
-                            text = if (isOnline) "в сети" else "не в сети",
+                            text = presenceText,
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (isOnline) OnlineGreen else MaterialTheme.colorScheme.onSurfaceVariant
                         )

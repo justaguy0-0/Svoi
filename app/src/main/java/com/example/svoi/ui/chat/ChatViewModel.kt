@@ -95,6 +95,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _otherUserPresence = MutableStateFlow<UserPresence?>(null)
     val otherUserPresence: StateFlow<UserPresence?> = _otherUserPresence
 
+    private val _otherUserProfile = MutableStateFlow<Profile?>(null)
+    val otherUserProfile: StateFlow<Profile?> = _otherUserProfile
+
     /** Number of group members (excluding self) currently online. 0 = nobody or not a group. */
     private val _groupOnlineCount = MutableStateFlow(0)
     val groupOnlineCount: StateFlow<Int> = _groupOnlineCount
@@ -240,6 +243,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var typingPollingJob: Job? = null
     private var personalPresencePollingJob: Job? = null
     private var personalPresenceRealtimeJob: Job? = null
+    private var activePresenceUserId: String? = null
     private var groupPresencePollingJob: Job? = null
     private var groupPresenceRealtimeJob: Job? = null
     private var chatDeletionWatchJob: Job? = null
@@ -292,6 +296,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         typingPollingJob?.cancel()
         personalPresencePollingJob?.cancel()
         personalPresenceRealtimeJob?.cancel()
+        activePresenceUserId = null
         groupPresencePollingJob?.cancel()
         groupPresenceRealtimeJob?.cancel()
         chatDeletionWatchJob?.cancel()
@@ -811,6 +816,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _isPartnerLeft.value = true
             }
             val other = profiles.firstOrNull { it.id != myId }
+            _otherUserProfile.value = other
             _chatName.value = other?.displayName ?: "Пользователь"
             other?.let { otherProfile ->
                 otherUserIdVal = otherProfile.id
@@ -819,6 +825,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         } else {
             _chatName.value = chat.name ?: "Группа"
+            _otherUserProfile.value = null
             // Poll presence for active members (excluding self) so we can show "X в сети" in the header
             val otherMemberIds = members.filter { it.userId != myId && it.leftAt == null }.map { it.userId }
             startGroupPresencePolling(otherMemberIds)
@@ -835,6 +842,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Tracks online count for group members (excluding self).
      *  Realtime subscription for instant updates + 30s periodic poll as fallback. */
+    private fun countVisibleOnlineGroupMembers(presences: List<UserPresence>): Int =
+        presences.count { presence ->
+            val profile = profileCache[presence.userId]
+            profile?.hideOnlineStatus != true && presence.isTrulyOnline()
+        }
+
     private fun startGroupPresencePolling(memberIds: List<String>) {
         if (memberIds.isEmpty()) return
         currentGroupPresenceMemberIds = memberIds
@@ -850,13 +863,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         groupPresencePollingJob = viewModelScope.launch {
             if (app.supabaseChecker.isReachable.value) {
                 val initial = userRepo.getPresences(memberIds)
-                _groupOnlineCount.value = initial.count { it.isTrulyOnline() }
+                _groupOnlineCount.value = countVisibleOnlineGroupMembers(initial)
             }
             while (true) {
                 delay(30_000L)
                 if (!canUseForegroundNetwork()) continue
                 val updated = userRepo.getPresences(memberIds)
-                _groupOnlineCount.value = updated.count { it.isTrulyOnline() }
+                _groupOnlineCount.value = countVisibleOnlineGroupMembers(updated)
             }
         }
 
@@ -870,7 +883,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             // Re-fetch all to get server-computed isTrulyOnline values
                             if (!canUseForegroundNetwork()) return@collect
                             val updated = userRepo.getPresences(memberIds)
-                            _groupOnlineCount.value = updated.count { it.isTrulyOnline() }
+                            _groupOnlineCount.value = countVisibleOnlineGroupMembers(updated)
                         }
                     }
                 } catch (e: kotlinx.coroutines.CancellationException) {
@@ -888,10 +901,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startPresencePolling(userId: String) {
+        if (activePresenceUserId == userId &&
+            (personalPresencePollingJob?.isActive == true || personalPresenceRealtimeJob?.isActive == true)
+        ) {
+            Log.d("Presence", "skip duplicate presence polling userId=$userId")
+            return
+        }
         personalPresencePollingJob?.cancel()
         personalPresenceRealtimeJob?.cancel()
+        activePresenceUserId = userId
         if (!app.isAppInForeground.value) {
             Log.d("Presence", "presence polling paused because app background")
+            activePresenceUserId = null
             return
         }
         personalPresencePollingJob = viewModelScope.launch {

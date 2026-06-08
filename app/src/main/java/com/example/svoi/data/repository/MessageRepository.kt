@@ -37,6 +37,8 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 
 @Serializable
@@ -124,6 +126,10 @@ private data class ForwardMessageInsert(
 )
 
 class MessageRepository(private val supabase: SupabaseClient) {
+    private data class TimedReadIds(val ids: Set<String>, val savedAtMs: Long)
+
+    private val readIdsCache = mutableMapOf<String, TimedReadIds>()
+    private val readIdsMutex = Mutex()
 
     private fun currentUserId() = supabase.auth.currentUserOrNull()?.id ?: ""
 
@@ -542,17 +548,27 @@ class MessageRepository(private val supabase: SupabaseClient) {
     /** Returns set of message IDs (from the given list) that have been read by someone */
     suspend fun getReadMessageIds(messageIds: List<String>): Set<String> {
         if (messageIds.isEmpty()) return emptySet()
-        return try {
-            val rows = supabase.from("message_reads")
-                .select {
-                    filter { isIn("message_id", messageIds) }
-                }
-                .decodeList<MessageRead>()
-            Log.d("ReadReceipts", "getReadMessageIds(${messageIds.size} ids) → ${rows.size} rows")
-            rows.map { it.messageId }.toSet()
-        } catch (e: Exception) {
-            Log.e("ReadReceipts", "getReadMessageIds FAILED: ${e.message}", e)
-            emptySet()
+        val distinctIds = messageIds.distinct().sorted()
+        val cacheKey = distinctIds.joinToString("|")
+        return readIdsMutex.withLock {
+            val now = System.currentTimeMillis()
+            readIdsCache[cacheKey]?.takeIf { now - it.savedAtMs < READ_IDS_CACHE_TTL_MS }?.let {
+                Log.d("ReadReceipts", "skip duplicate read ids request (${distinctIds.size} ids)")
+                return@withLock it.ids
+            }
+            try {
+                val rows = supabase.from("message_reads")
+                    .select {
+                        filter { isIn("message_id", distinctIds) }
+                    }
+                    .decodeList<MessageRead>()
+                Log.d("ReadReceipts", "getReadMessageIds(${distinctIds.size} ids) → ${rows.size} rows")
+                rows.map { it.messageId }.toSet()
+                    .also { readIdsCache[cacheKey] = TimedReadIds(it, System.currentTimeMillis()) }
+            } catch (e: Exception) {
+                Log.e("ReadReceipts", "getReadMessageIds FAILED: ${e.message}", e)
+                emptySet()
+            }
         }
     }
 
@@ -823,5 +839,9 @@ class MessageRepository(private val supabase: SupabaseClient) {
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    private companion object {
+        const val READ_IDS_CACHE_TTL_MS = 2_000L
     }
 }

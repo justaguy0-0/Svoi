@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.svoi.SvoiApp
+import com.example.svoi.data.model.HiddenOnlineStyle
 import com.example.svoi.data.model.Profile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -138,6 +139,25 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                     _profile.value = reverted
                     cache.saveOwnProfile(reverted)
                 }
+                _error.value = "Не удалось сохранить настройку"
+            }
+        }
+    }
+
+    fun setOnlinePrivacy(hideOnlineStatus: Boolean, style: HiddenOnlineStyle? = null) {
+        val current = _profile.value ?: return
+        val nextStyle = style?.dbValue ?: HiddenOnlineStyle.fromDb(current.hiddenOnlineStyle).dbValue
+        val updated = current.copy(
+            hideOnlineStatus = hideOnlineStatus,
+            hiddenOnlineStyle = nextStyle
+        )
+        _profile.value = updated
+        cache.saveOwnProfile(updated)
+        viewModelScope.launch {
+            val err = userRepo.updateOnlinePrivacy(hideOnlineStatus, nextStyle)
+            if (err != null) {
+                _profile.value = current
+                cache.saveOwnProfile(current)
                 _error.value = "Не удалось сохранить настройку"
             }
         }

@@ -9,6 +9,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
@@ -53,6 +55,7 @@ class SupabaseReachabilityChecker(
     private val _shouldShowOfflineBanner = MutableStateFlow(false)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var offlineConfirmationJob: Job? = null
+    private val probeMutex = Mutex()
 
     /** True when Supabase is reachable. Starts false until probe/API confirms it. */
     val isReachable: StateFlow<Boolean> = _isReachable
@@ -75,14 +78,24 @@ class SupabaseReachabilityChecker(
             Log.d(TAG, "checkNow: skipped because app background")
             return _isReachable.value
         }
-        val now = System.currentTimeMillis()
-        val cacheValid = !force && now - lastProbeTime < PROBE_COOLDOWN_MS && _isReachable.value
-        if (cacheValid) return true
-        if (force && !_isReachable.value) {
-            offlineConfirmationJob?.cancel()
-            setConnectionState(ServerConnectionState.CHECKING)
+        if (probeMutex.isLocked) {
+            Log.d(TAG, "probe skipped, already in flight")
+            return _isReachable.value
         }
-        return probe()
+        return probeMutex.withLock {
+            if (!isAppInForeground) {
+                Log.d(TAG, "checkNow: skipped because app background")
+                return@withLock _isReachable.value
+            }
+            val now = System.currentTimeMillis()
+            val cacheValid = !force && now - lastProbeTime < PROBE_COOLDOWN_MS && _isReachable.value
+            if (cacheValid) return@withLock true
+            if (force && !_isReachable.value) {
+                offlineConfirmationJob?.cancel()
+                setConnectionState(ServerConnectionState.CHECKING)
+            }
+            probe()
+        }
     }
 
     /**

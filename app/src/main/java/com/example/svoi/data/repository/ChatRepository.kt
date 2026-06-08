@@ -199,7 +199,8 @@ class ChatRepository(
             val otherMember = chatMembers.firstOrNull { it.userId != userId }
             val otherProfile = otherMember?.userId?.let { profileMap[it] }
             val isOtherOnline = if (chat.type == "personal") {
-                otherMember?.userId?.let { presenceMap[it]?.isTrulyOnline() } ?: false
+                otherProfile?.hideOnlineStatus != true &&
+                    (otherMember?.userId?.let { presenceMap[it]?.isTrulyOnline() } ?: false)
             } else false
 
             val displayName = if (chat.type == "group") {
@@ -265,6 +266,7 @@ class ChatRepository(
                 otherUserId = otherMember?.userId,
                 myRole = membership?.role ?: "member",
                 isOtherOnline = isOtherOnline,
+                otherHideOnlineStatus = otherProfile?.hideOnlineStatus == true,
                 lastMessageIsOwn = lastMsg?.senderId == userId,
                 lastMessageIsRead = lastMsg?.id?.let { it in readOwnMessageIds } ?: false,
                 isMuted = membership?.muted == true,
