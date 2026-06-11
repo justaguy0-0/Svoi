@@ -5,8 +5,6 @@ import android.util.Log
 import android.view.ViewGroup
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -110,12 +108,7 @@ fun InlineVideoPlayer(
     var isBuffering by remember { mutableStateOf(false) }
     val inlinePlayer = if (isActive) exoPlayer else null
 
-    // Animate aspect ratio changes smoothly (portrait ↔ landscape transition)
-    val animatedRatio by animateFloatAsState(
-        targetValue = aspectRatio,
-        animationSpec = tween(300),
-        label = "aspect_ratio"
-    )
+    val fixedAspectRatio = remember(url) { aspectRatio.coerceIn(0.75f, 1.8f) }
 
     // Start/stop playback
     LaunchedEffect(inlinePlayer, url) {
@@ -169,7 +162,7 @@ fun InlineVideoPlayer(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(animatedRatio.coerceAtLeast(0.1f))
+                .aspectRatio(fixedAspectRatio)
         ) {
             if (inlinePlayer != null) {
                 // Live PlayerView
@@ -197,6 +190,8 @@ fun InlineVideoPlayer(
                     model = ImageRequest.Builder(context)
                         .data(url)
                         .decoderFactory(VideoFrameDecoder.Factory())
+                        .memoryCacheKey(url)
+                        .diskCacheKey(url)
                         .crossfade(true)
                         .build(),
                     contentDescription = null,

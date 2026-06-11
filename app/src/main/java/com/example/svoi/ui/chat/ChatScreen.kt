@@ -222,6 +222,7 @@ import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
+import coil.request.ImageRequest
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
@@ -705,24 +706,6 @@ fun ChatScreen(
         }
         if (!isRevealingToMessage) {
             chatReady = true
-
-            // Corrective snaps: images may still expand a few frames after reveal.
-            // Re-snap to the target position at increasing intervals until settled.
-            // Stop immediately if the user has started scrolling manually.
-            val snapUnreadIdx = currentDisplayEntries.indexOfFirst { it is ChatEntry.UnreadDivider }
-            val snapOffset = if (snapUnreadIdx >= 0) -(screenHeightPx / 2) else 0
-            launch {
-                for (delayMs in listOf(80L, 250L, 500L)) {
-                    delay(delayMs)
-                    if (listState.isScrollInProgress) break
-                    val snapTarget = if (snapUnreadIdx >= 0) snapUnreadIdx
-                                     else currentDisplayEntries.size - 1
-                    if (snapTarget >= 0) {
-                        try { listState.scrollToItem(snapTarget, scrollOffset = snapOffset) }
-                        catch (_: Exception) {}
-                    }
-                }
-            }
         }
         // After initial scroll, allow markAsRead to fire when user reaches the bottom
         initialScrollDone = true
@@ -2598,39 +2581,9 @@ private fun ChatMessageBox(
                                                 }
                                             },
                                             onVideoMuteToggle = onVideoMuteToggle,
-                                            onImageRatioLoaded = { url, ratio ->
-                                                if (imageRatioCache[url] != null) return@MessageItem
-                                                imageRatioCache[url] = ratio
-                                                if (!initialScrollDone || !isNearBottom) return@MessageItem
-                                                val isRecentPhoto = currentDisplayEntries
-                                                    .takeLast(4)
-                                                    .filterIsInstance<ChatEntry.Msg>()
-                                                    .any { e ->
-                                                        e.item.message.fileUrl == url ||
-                                                        e.item.message.photoUrls?.contains(url) == true ||
-                                                        e.item.pendingLocalUris.contains(url)
-                                                    }
-                                                if (!isRecentPhoto) return@MessageItem
-                                                scope.launch {
-                                                    delay(150)
-                                                    val last = currentDisplayEntries.size - 1
-                                                    if (last >= 0) listState.animateScrollToItem(last)
-                                                }
-                                            },
+                                            onImageRatioLoaded = { _, _ -> },
                                             onVideoSizeDetected = { url, ratio ->
-                                                val prevRatio = videoAspectRatios[url] ?: (16f / 9f)
-                                                videoAspectRatios[url] = ratio
-                                                if (ratio < 1f && prevRatio >= 1f) {
-                                                    scope.launch {
-                                                        delay(350L)
-                                                        val total = currentDisplayEntries.size
-                                                        val lastVisible = listState.layoutInfo
-                                                            .visibleItemsInfo.lastOrNull()?.index ?: -1
-                                                        if (total > 0 && lastVisible >= total - 4) {
-                                                            listState.animateScrollToItem(total - 1)
-                                                        }
-                                                    }
-                                                }
+                                                videoAspectRatios.putIfAbsent(url, ratio)
                                             },
                                             onVoicePlay = { msgId, url, dur -> viewModel.playVoice(msgId, url, dur) },
                                             onVoicePause = { viewModel.pauseVoice() },
@@ -2951,11 +2904,7 @@ private fun PhotoGrid(
     val visibleUrls = remember(urls) { urls.take(maxVisible) }
     val extraCount = remember(count) { (count - maxVisible).coerceAtLeast(0) }
     val gap = 2.dp
-    LaunchedEffect(allowRemoteLoad, urls) {
-        if (allowRemoteLoad && urls.isNotEmpty()) {
-            Log.d("PhotoGrid", "stable media list size=${urls.size}, no reload if already cached")
-        }
-    }
+    val context = LocalContext.current
 
     // Helper: one photo cell
     @Composable
@@ -2970,6 +2919,14 @@ private fun PhotoGrid(
         val model: Any = remember(url) {
             if (isLocal) Uri.parse(url) else url
         }
+        val imageRequest = remember(url, model, canLoad) {
+            if (!canLoad) null
+            else ImageRequest.Builder(context)
+                .data(model)
+                .memoryCacheKey(url)
+                .diskCacheKey(url)
+                .build()
+        }
         val progress = uploadProgresses.getOrNull(idx)
         Box(
             modifier = modifier
@@ -2981,7 +2938,7 @@ private fun PhotoGrid(
         ) {
             if (canLoad) {
                 SubcomposeAsyncImage(
-                model = model,
+                model = imageRequest,
                 contentDescription = "Фото",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
@@ -3048,10 +3005,20 @@ private fun PhotoGrid(
             val model: Any = remember(url) {
                 if (isLocal) Uri.parse(url) else url
             }
+            val imageRequest = remember(url, model, canLoad) {
+                if (!canLoad) null
+                else ImageRequest.Builder(context)
+                    .data(model)
+                    .memoryCacheKey(url)
+                    .diskCacheKey(url)
+                    .build()
+            }
             val progress = uploadProgresses.getOrNull(0)
-            var imageRatio by remember(url) { mutableStateOf(cachedImageRatio) }
+            val fixedRatio = remember(url) {
+                cachedImageRatio?.coerceIn(0.75f, 1.6f) ?: (4f / 3f)
+            }
+            var imageLoaded by remember(url) { mutableStateOf(false) }
             var loadError by remember(url) { mutableStateOf(false) }
-            val clampedRatio = imageRatio?.coerceIn(0.5f, 2.0f)
             val dlProgress by remember(url, canLoad) {
                 if (canLoad) ImageDownloadProgress.flowFor(url) else MutableStateFlow(0f)
             }.collectAsState()
@@ -3060,35 +3027,33 @@ private fun PhotoGrid(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .widthIn(min = 120.dp, max = 260.dp)
-                    .then(
-                        if (clampedRatio != null)
-                            Modifier.aspectRatio(clampedRatio)
-                        else
-                            Modifier.height(180.dp)
-                    )
+                    .aspectRatio(fixedRatio)
                     .combinedClickable(onClick = { onPhotoClick(url, urls) }, onLongClick = onLongClick)
             ) {
                 if (canLoad) {
                     AsyncImage(
-                    model = model,
+                    model = imageRequest,
                     contentDescription = "Фото",
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit,
+                    contentScale = ContentScale.Crop,
                     onSuccess = { state ->
+                        imageLoaded = true
                         loadError = false
                         val d = state.result.drawable
                         if (d.intrinsicWidth > 0 && d.intrinsicHeight > 0) {
                             val ratio = d.intrinsicWidth.toFloat() / d.intrinsicHeight.toFloat()
-                            imageRatio = ratio
                             onImageRatioLoaded(url, ratio)
                         }
                     },
-                    onError = { loadError = true }
+                    onError = {
+                        imageLoaded = false
+                        loadError = true
+                    }
                 )
                 } else {
                     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant))
                 }
-                if (canLoad && imageRatio == null && !loadError) {
+                if (canLoad && !imageLoaded && !loadError) {
                     val indicatorColor = if (isOwn) Color.White.copy(0.7f) else MaterialTheme.colorScheme.primary
                     Box(Modifier.fillMaxSize(), Alignment.Center) {
                         if (dlProgress > 0f) {
