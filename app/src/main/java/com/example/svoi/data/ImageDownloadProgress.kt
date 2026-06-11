@@ -52,9 +52,13 @@ class NoCacheInterceptor : Interceptor {
  *  - IOException with message "Canceled" (Coil intentionally cancelled the request)
  * Only retries: 5xx server errors and genuine network IOExceptions (timeouts, resets).
  */
-class RetryInterceptor(private val maxRetries: Int = 2) : Interceptor {
+class RetryInterceptor(
+    private val maxRetries: Int = 2,
+    private val shouldSkipRetry: () -> Boolean = { false }
+) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+        val requestUrl = request.url.toString()
         var attempt = 0
         var lastException: Exception? = null
         while (attempt <= maxRetries) {
@@ -64,19 +68,36 @@ class RetryInterceptor(private val maxRetries: Int = 2) : Interceptor {
                 // 2xx/3xx = success/redirect/cache — return as-is
                 // 4xx = client error — no point retrying
                 if (code < 500 || attempt == maxRetries) return response
-                Log.w("RetryInterceptor", "attempt $attempt: HTTP $code for ${request.url.toString().takeLast(60)}, retrying")
+                Log.w("RetryInterceptor", "attempt $attempt: HTTP $code for ${requestUrl.takeLast(60)}, retrying")
                 response.close()
             } catch (e: Exception) {
                 // "Canceled" = Coil cancelled intentionally (composable left composition) — don't retry
                 if (e.message == "Canceled") throw e
                 lastException = e
-                Log.w("RetryInterceptor", "attempt $attempt: ${e::class.simpleName}: ${e.message} for ${request.url.toString().takeLast(60)}")
+                Log.w("RetryInterceptor", "attempt $attempt: ${e::class.simpleName}: ${e.message} for ${requestUrl.takeLast(60)}")
+                if (attempt == 0 && isMediaRequest(requestUrl) && shouldSkipRetry()) {
+                    Log.d("RetryInterceptor", "skip media retry while network checking/degraded startup for ${requestUrl.takeLast(60)}")
+                    throw e
+                }
                 if (attempt == maxRetries) throw e
                 Thread.sleep(1500L)
             }
             attempt++
         }
         throw lastException ?: IllegalStateException("RetryInterceptor: exhausted retries")
+    }
+
+    private fun isMediaRequest(url: String): Boolean {
+        val path = url.substringBefore('?').lowercase()
+        return "chat-media" in path ||
+            path.endsWith(".jpg") ||
+            path.endsWith(".jpeg") ||
+            path.endsWith(".png") ||
+            path.endsWith(".webp") ||
+            path.endsWith(".gif") ||
+            path.endsWith(".mp4") ||
+            path.endsWith(".mov") ||
+            path.endsWith(".webm")
     }
 }
 

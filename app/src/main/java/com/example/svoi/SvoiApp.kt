@@ -38,6 +38,7 @@ import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
+import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.storage.Storage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -79,7 +80,10 @@ class SvoiApp : Application() {
                         .connectTimeout(30, TimeUnit.SECONDS)
                         .readTimeout(120, TimeUnit.SECONDS)
                         .addInterceptor(NoCacheInterceptor())
-                        .addInterceptor(RetryInterceptor(maxRetries = 2))
+                        .addInterceptor(RetryInterceptor(
+                            maxRetries = 2,
+                            shouldSkipRetry = { supabaseChecker.isStartupNetworkUnstable() }
+                        ))
                         .addNetworkInterceptor(ImageProgressInterceptor())
                         .build()
                 )
@@ -131,6 +135,13 @@ class SvoiApp : Application() {
                 }
             }
         }
+        heartbeatScope.launch {
+            supabase.realtime.status.collect { status ->
+                if (status == Realtime.Status.CONNECTED) {
+                    supabaseChecker.markRealtimeConnected()
+                }
+            }
+        }
     }
 
     val supabase by lazy {
@@ -146,7 +157,7 @@ class SvoiApp : Application() {
     val cacheManager by lazy { CacheManager(this) }
     val networkMonitor by lazy { NetworkMonitor(this) }
     val supabaseChecker by lazy {
-        SupabaseReachabilityChecker("${BuildConfig.SUPABASE_URL}/rest/v1/", BuildConfig.SUPABASE_ANON_KEY)
+        SupabaseReachabilityChecker(this, "${BuildConfig.SUPABASE_URL}/rest/v1/", BuildConfig.SUPABASE_ANON_KEY)
     }
     val themeManager by lazy { ThemeManager(this) }
     val wallpaperManager by lazy { WallpaperManager(this) }

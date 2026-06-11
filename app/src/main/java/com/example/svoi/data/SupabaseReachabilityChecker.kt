@@ -1,5 +1,8 @@
 package com.example.svoi.data
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +42,7 @@ enum class ServerConnectionState {
  * startup from launching a burst of Supabase requests before DNS is ready.
  */
 class SupabaseReachabilityChecker(
+    context: Context,
     private val probeUrl: String,
     private val anonKey: String
 ) {
@@ -49,8 +53,13 @@ class SupabaseReachabilityChecker(
         private const val PROBE_COOLDOWN_MS = 30_000L
         private const val FORCE_PROBE_MIN_INTERVAL_MS = 3_000L
         private const val OFFLINE_CONFIRMATION_DELAY_MS = 4_000L
+        private const val STARTUP_WARMUP_MS = 12_000L
+        private const val STARTUP_OFFLINE_CONFIRMATION_DELAY_MS = 15_000L
+        private const val NETWORK_RETRY_DELAY_MS = 1_500L
     }
 
+    private val connectivityManager =
+        context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private val _isReachable = MutableStateFlow(false)
     private val _connectionState = MutableStateFlow(ServerConnectionState.CHECKING)
     private val _shouldShowOfflineBanner = MutableStateFlow(false)
@@ -66,6 +75,8 @@ class SupabaseReachabilityChecker(
     @Volatile private var lastProbeTime = 0L
     @Volatile private var isAppInForeground = true
     @Volatile private var onlineGeneration = 0L
+    @Volatile private var foregroundStartedAtMs = System.currentTimeMillis()
+    @Volatile private var networkRetryJob: Job? = null
     // Last time a real Supabase API call confirmed reachability (not the probe).
     // Used to ignore probe failures that arrive AFTER API calls already succeeded.
     @Volatile private var lastApiSuccessTime = 0L
@@ -95,6 +106,15 @@ class SupabaseReachabilityChecker(
             }
             val cacheValid = !force && now - lastProbeTime < PROBE_COOLDOWN_MS && _isReachable.value
             if (cacheValid) return@withLock true
+            if (shouldWaitForValidatedNetwork()) {
+                val readiness = networkReadiness()
+                Log.d(TAG, "waiting for validated network (internet=${readiness.hasInternet}, validated=${readiness.isValidated})")
+                _isReachable.value = false
+                setConnectionState(ServerConnectionState.CHECKING)
+                scheduleNetworkRetry()
+                scheduleOfflineConfirmation("network not validated during startup")
+                return@withLock false
+            }
             if (force && !_isReachable.value) {
                 offlineConfirmationJob?.cancel()
                 setConnectionState(ServerConnectionState.CHECKING)
@@ -115,6 +135,14 @@ class SupabaseReachabilityChecker(
             Log.d(TAG, "markOffline: app background, banner suppressed")
             return
         }
+        if (isStartupWarmupActive()) {
+            _isReachable.value = false
+            setConnectionState(ServerConnectionState.CHECKING)
+            lastProbeTime = System.currentTimeMillis()
+            scheduleOfflineConfirmation("OS network unavailable during startup")
+            Log.d(TAG, "startup warmup active: suppressing OS offline")
+            return
+        }
         _isReachable.value = false
         setConnectionState(ServerConnectionState.OFFLINE)
         lastProbeTime = System.currentTimeMillis()
@@ -125,14 +153,24 @@ class SupabaseReachabilityChecker(
      * Call this after a successful Supabase API response to skip the next probe and
      * immediately flip the state to reachable.
      */
-    fun markReachable() {
+    fun markReachable(reason: String = "api") {
+        if (offlineConfirmationJob != null) {
+            Log.d(TAG, "offline debounce cancelled by $reason")
+        }
         offlineConfirmationJob?.cancel()
+        offlineConfirmationJob = null
+        networkRetryJob?.cancel()
+        networkRetryJob = null
         onlineGeneration++
         _isReachable.value = true
         setConnectionState(ServerConnectionState.ONLINE)
         lastProbeTime = System.currentTimeMillis()
         lastApiSuccessTime = System.currentTimeMillis()
-        Log.d(TAG, "markReachable: isReachable = true (server confirmed)")
+        Log.d(TAG, "markReachable reason=$reason")
+    }
+
+    fun markRealtimeConnected() {
+        markReachable(reason = "realtime connected")
     }
 
     /**
@@ -157,10 +195,18 @@ class SupabaseReachabilityChecker(
         isAppInForeground = foreground
         if (!foreground) {
             offlineConfirmationJob?.cancel()
+            offlineConfirmationJob = null
+            networkRetryJob?.cancel()
+            networkRetryJob = null
             _shouldShowOfflineBanner.value = false
             Log.d(TAG, "offline debounce cancelled because app background")
         } else if (!_isReachable.value) {
+            foregroundStartedAtMs = System.currentTimeMillis()
+            onlineGeneration++
+            offlineConfirmationJob?.cancel()
+            offlineConfirmationJob = null
             setConnectionState(ServerConnectionState.CHECKING)
+            Log.d(TAG, "startup warmup active for ${STARTUP_WARMUP_MS}ms")
         }
     }
 
@@ -193,6 +239,15 @@ class SupabaseReachabilityChecker(
             return
         }
         if (_connectionState.value == ServerConnectionState.OFFLINE) return
+        if (isStartupWarmupActive()) {
+            _isReachable.value = false
+            setConnectionState(ServerConnectionState.CHECKING)
+            lastProbeTime = 0L
+            scheduleNetworkRetry()
+            scheduleOfflineConfirmation(reason)
+            Log.d(TAG, "startup warmup: ignoring transient DNS failure ($reason)")
+            return
+        }
         _isReachable.value = false
         setConnectionState(ServerConnectionState.DEGRADED)
         lastProbeTime = 0L  // force re-probe on next checkNow()
@@ -203,17 +258,34 @@ class SupabaseReachabilityChecker(
     private fun scheduleOfflineConfirmation(reason: String) {
         if (offlineConfirmationJob?.isActive == true) return
         val generation = onlineGeneration
+        val delayMs = if (isStartupWarmupActive()) {
+            STARTUP_OFFLINE_CONFIRMATION_DELAY_MS
+        } else {
+            OFFLINE_CONFIRMATION_DELAY_MS
+        }
+        if (delayMs == STARTUP_OFFLINE_CONFIRMATION_DELAY_MS) {
+            Log.d(TAG, "startup offline debounce scheduled ${STARTUP_OFFLINE_CONFIRMATION_DELAY_MS}ms")
+        }
         offlineConfirmationJob = scope.launch {
-            delay(OFFLINE_CONFIRMATION_DELAY_MS)
+            delay(delayMs)
             if (!isAppInForeground) {
                 Log.d(TAG, "offline debounce cancelled because app background")
+                return@launch
+            }
+            if (isStartupWarmupActive()) {
+                Log.d(TAG, "offline debounce cancelled because startup warmup still active")
                 return@launch
             }
             if (generation != onlineGeneration) {
                 Log.d(TAG, "offline debounce cancelled because online generation changed")
                 return@launch
             }
-            if (!_isReachable.value && _connectionState.value == ServerConnectionState.DEGRADED) {
+            val readiness = networkReadiness()
+            val canConfirmOffline =
+                _connectionState.value == ServerConnectionState.DEGRADED ||
+                    !readiness.hasInternet ||
+                    !readiness.isValidated
+            if (!_isReachable.value && canConfirmOffline) {
                 setConnectionState(ServerConnectionState.OFFLINE)
                 Log.w(TAG, "offline confirmed after debounce ($reason)")
             }
@@ -223,6 +295,53 @@ class SupabaseReachabilityChecker(
     private fun setConnectionState(state: ServerConnectionState) {
         _connectionState.value = state
         _shouldShowOfflineBanner.value = state == ServerConnectionState.OFFLINE
+    }
+
+    fun isStartupNetworkUnstable(): Boolean {
+        val readiness = networkReadiness()
+        return isAppInForeground &&
+            !_isReachable.value &&
+            (isStartupWarmupActive() || _connectionState.value == ServerConnectionState.CHECKING) &&
+            (!readiness.isValidated || !readiness.hasInternet)
+    }
+
+    private fun isStartupWarmupActive(): Boolean =
+        isAppInForeground && System.currentTimeMillis() - foregroundStartedAtMs < STARTUP_WARMUP_MS
+
+    private fun shouldWaitForValidatedNetwork(): Boolean {
+        if (!isStartupWarmupActive()) return false
+        val readiness = networkReadiness()
+        return !readiness.hasInternet || !readiness.isValidated
+    }
+
+    private fun scheduleNetworkRetry() {
+        if (networkRetryJob?.isActive == true) return
+        networkRetryJob = scope.launch {
+            delay(NETWORK_RETRY_DELAY_MS)
+            if (isAppInForeground && !_isReachable.value) {
+                checkNow(force = true)
+            }
+        }
+    }
+
+    private data class NetworkReadiness(
+        val hasInternet: Boolean,
+        val isValidated: Boolean
+    )
+
+    private fun networkReadiness(): NetworkReadiness {
+        val network = connectivityManager.activeNetwork ?: return NetworkReadiness(
+            hasInternet = false,
+            isValidated = false
+        )
+        val caps = connectivityManager.getNetworkCapabilities(network) ?: return NetworkReadiness(
+            hasInternet = false,
+            isValidated = false
+        )
+        return NetworkReadiness(
+            hasInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
+            isValidated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        )
     }
 
     private suspend fun probe(): Boolean = withContext(Dispatchers.IO) {
@@ -241,7 +360,7 @@ class SupabaseReachabilityChecker(
             val reachable = code in 100..499
             lastProbeTime = System.currentTimeMillis()
             if (reachable) {
-                markReachable()
+                markReachable(reason = "probe/http")
             } else {
                 markTemporarilyUnreachable("probe HTTP $code")
             }
