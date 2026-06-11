@@ -41,7 +41,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 data class TypingInfo(val userId: String, val displayName: String, val status: String = "typing")
 data class StagedMedia(val uri: Uri, val isVideo: Boolean)
@@ -67,6 +66,8 @@ data class VoicePlayState(
     val durationMs: Int,
     val downloadProgress: Float = -1f
 )
+
+private const val OG_FAILURE_TTL_MS = 30 * 60 * 1_000L
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -274,6 +275,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // ── Open Graph preview cache ───────────────────────────────────────────────
     val ogCache = mutableStateMapOf<String, OgData>()
     private val ogAttempted = mutableSetOf<String>()
+    private val ogFailedAtMs = mutableMapOf<String, Long>()
 
     // ── Pagination state ───────────────────────────────────────────────────────
     private val _isLoadingMore = MutableStateFlow(false)
@@ -281,11 +283,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _hasMoreMessages = MutableStateFlow(true)
     val hasMoreMessages: StateFlow<Boolean> = _hasMoreMessages
-    // Same pattern as URL_REGEX in ChatScreen — used to pre-fetch OG during loading
-    private val urlRegex = Regex(
-        "(https?://[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+|www\\.[\\w\\-.~:/?#\\[\\]@!$&'()*+,;=%]+)"
-    )
-
     private fun pauseForegroundNetworkJobs() {
         messageInsertJob?.cancel()
         messageUpdateJob?.cancel()
@@ -338,6 +335,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         app.isAppInForeground.value && app.supabaseChecker.isReachable.value
 
     fun ensureOgFetched(url: String) {
+        if (url in ogCache) return
+        val failedAt = ogFailedAtMs[url]
+        if (failedAt != null && System.currentTimeMillis() - failedAt < OG_FAILURE_TTL_MS) {
+            Log.d("OgFetch", "skip cached failed url: $url")
+            return
+        }
         if (url in ogAttempted) return
         if (!app.isAppInForeground.value) return
         ogAttempted.add(url)
@@ -346,50 +349,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (data != null) {
                 withContext(Dispatchers.Main) { ogCache[url] = data }
                 cache.saveOgData(ogCache.toMap())
+            } else {
+                ogFailedAtMs[url] = System.currentTimeMillis()
+                ogAttempted.remove(url)
             }
         }
-    }
-
-    /**
-     * Pre-fetches OG data for all text messages with links, in parallel, during the invisible
-     * loading phase (while the spinner is shown). This prevents layout shifts after the chat
-     * appears — by the time the spinner hides, OG cards are already ready.
-     *
-     * Max wait: 4 seconds. If some sites don't respond in time, they'll load lazily as usual
-     * (via LaunchedEffect in the Compose tree). Already-attempted URLs are skipped.
-     */
-    private suspend fun prefetchOgForMessages(messages: List<Message>) {
-        if (!isOnline.value || !app.isAppInForeground.value) return
-        val urls = messages
-            .filter { it.type == "text" }
-            .mapNotNull { msg -> msg.content?.let { urlRegex.find(it)?.value } }
-            .distinct()
-            .filter { it !in ogAttempted }
-        if (urls.isEmpty()) return
-
-        // Mark as attempted on main thread to prevent duplicate fetches from LaunchedEffect
-        withContext(Dispatchers.Main) { urls.forEach { ogAttempted.add(it) } }
-
-        // Fetch in parallel, cap total wait to 4 seconds so slow sites don't delay chat reveal
-        withTimeoutOrNull(4_000L) {
-            coroutineScope {
-                urls.map { url ->
-                    async(Dispatchers.IO) {
-                        val data = fetchOgData(url)
-                        if (data != null) withContext(Dispatchers.Main) { ogCache[url] = data }
-                    }
-                }.forEach { it.await() }
-            }
-        }
-        // Persist updated OG cache so previews render immediately on next visit
-        if (ogCache.isNotEmpty()) cache.saveOgData(ogCache.toMap())
     }
 
     private suspend fun fetchOgData(url: String): OgData? = withContext(Dispatchers.IO) {
         try {
             val conn = URL(url).openConnection() as HttpURLConnection
-            conn.connectTimeout = 5_000
-            conn.readTimeout   = 5_000
+            conn.connectTimeout = 2_500
+            conn.readTimeout   = 2_500
             conn.instanceFollowRedirects = true
             conn.setRequestProperty("User-Agent",
                 "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36")
@@ -821,14 +792,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             other?.let { otherProfile ->
                 otherUserIdVal = otherProfile.id
                 _otherUserId.value = otherProfile.id
-                startPresencePolling(otherProfile.id)
+                viewModelScope.launch {
+                    delay(350L)
+                    startPresencePolling(otherProfile.id)
+                }
             }
         } else {
             _chatName.value = chat.name ?: "Группа"
             _otherUserProfile.value = null
             // Poll presence for active members (excluding self) so we can show "X в сети" in the header
             val otherMemberIds = members.filter { it.userId != myId && it.leftAt == null }.map { it.userId }
-            startGroupPresencePolling(otherMemberIds)
+            viewModelScope.launch {
+                delay(350L)
+                startGroupPresencePolling(otherMemberIds)
+            }
         }
 
         cache.saveChatInfo(CachedChatInfo(
@@ -995,10 +972,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         cache.saveMessages(chatId, raw)
         cache.saveProfiles(profileCache.values)
 
-        // Pre-fetch OG data in background — must NOT block loadMessages() return,
-        // otherwise the 2.5s fallback fires and revealFromCache() resets _firstUnreadIndex=-1
-        // before serverJob completes, breaking the unread scroll logic.
-        viewModelScope.launch { prefetchOgForMessages(raw) }
+        // OG previews are fetched lazily from visible messages after the first chat frame.
     }
 
     private suspend fun enrichMessages(raw: List<Message>): List<MessageUiItem> = coroutineScope {

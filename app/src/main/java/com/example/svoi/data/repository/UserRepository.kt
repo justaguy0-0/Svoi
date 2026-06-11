@@ -53,10 +53,10 @@ class UserRepository(
         return profileMutex.withLock {
             val now = System.currentTimeMillis()
             profileCache[userId]?.takeIf { now - it.savedAtMs < PROFILE_CACHE_TTL_MS }?.let {
-                Log.d("OnlinePrivacy", "cache hit userId=$userId")
+                Log.d("OnlinePrivacy", "app cache hit userId=$userId")
                 return@withLock it.profile
             }
-            Log.d("OnlinePrivacy", "cache miss userId=$userId")
+            Log.d("OnlinePrivacy", "app cache miss userId=$userId")
             try {
                 supabase.from("profiles")
                     .select { filter { eq("id", userId) } }
@@ -157,16 +157,14 @@ class UserRepository(
             }) {
                 filter { eq("id", userId) }
             }
-            val cached = profileCache[userId]?.profile
-            if (cached != null) {
-                profileCache[userId] = TimedProfile(
-                    cached.copy(
-                        hideOnlineStatus = hideOnlineStatus,
-                        hiddenOnlineStyle = hiddenOnlineStyle
-                    ),
-                    System.currentTimeMillis()
-                )
-            }
+            val cached = profileCache[userId]?.profile ?: Profile(id = userId)
+            profileCache[userId] = TimedProfile(
+                cached.copy(
+                    hideOnlineStatus = hideOnlineStatus,
+                    hiddenOnlineStyle = hiddenOnlineStyle
+                ),
+                System.currentTimeMillis()
+            )
             null
         } catch (e: Exception) {
             e.message
@@ -239,9 +237,9 @@ class UserRepository(
             val cachedIds = cached.map { it.id }.toSet()
             val missing = distinctIds.filter { it !in cachedIds }
             if (missing.isNotEmpty()) {
-                Log.d("OnlinePrivacy", "cache miss ${missing.size}/${distinctIds.size} profiles")
+                Log.d("OnlinePrivacy", "app cache miss ${missing.size}/${distinctIds.size} profiles")
             } else {
-                Log.d("OnlinePrivacy", "cache hit ${distinctIds.size} profiles")
+                Log.d("OnlinePrivacy", "app cache hit ${distinctIds.size} profiles")
             }
             val fresh = try {
                 if (missing.isEmpty()) emptyList()

@@ -4,6 +4,7 @@ import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import com.canhub.cropper.CropImageContract
 import com.canhub.cropper.CropImageContractOptions
 import com.canhub.cropper.CropImageOptions
@@ -221,8 +222,6 @@ import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
-import coil.imageLoader
-import coil.request.ImageRequest
 import com.example.svoi.data.model.ChatListItem
 import com.example.svoi.data.model.Message
 import com.example.svoi.data.model.MessageUiItem
@@ -248,6 +247,7 @@ import com.example.svoi.util.toReadableSize
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -382,6 +382,16 @@ fun ChatScreen(
         label = "chatReveal"
     )
     LaunchedEffect(isLoading) { if (isLoading) chatReady = false }
+    var mediaLoadAllowed by remember(chatId) { mutableStateOf(false) }
+    LaunchedEffect(chatId, chatReady) {
+        if (!chatReady) {
+            mediaLoadAllowed = false
+            return@LaunchedEffect
+        }
+        Log.d("ChatScreen", "defer media load")
+        delay(250L)
+        mediaLoadAllowed = true
+    }
 
     // True when opening chat with a target message — suppress normal reveal until positioned.
     var isRevealingToMessage by remember { mutableStateOf(initialMessageId != null) }
@@ -694,26 +704,6 @@ fun ChatScreen(
             }
         }
         if (!isRevealingToMessage) {
-            // Pre-load images so they're in Coil memory cache before the loader fades out
-            val imageUrls = currentDisplayEntries
-                .takeLast(25)
-                .filterIsInstance<ChatEntry.Msg>()
-                .flatMap { entry ->
-                    val msg = entry.item.message
-                    when (msg.type) {
-                        "photo" -> listOfNotNull(msg.fileUrl)
-                        "album" -> msg.photoUrls.orEmpty()
-                        else    -> emptyList()
-                    }
-                }
-            if (imageUrls.isNotEmpty()) {
-                val jobs = imageUrls.map { url ->
-                    context.imageLoader.enqueue(
-                        ImageRequest.Builder(context).data(url).build()
-                    )
-                }
-                withTimeoutOrNull(1_500L) { jobs.forEach { it.job.join() } }
-            }
             chatReady = true
 
             // Corrective snaps: images may still expand a few frames after reveal.
@@ -861,6 +851,7 @@ fun ChatScreen(
             isVideoMuted = isVideoMuted,
             videoAspectRatios = videoAspectRatios,
             imageRatioCache = imageRatioCache,
+            mediaLoadAllowed = mediaLoadAllowed,
             initialScrollDone = initialScrollDone,
             isNearBottom = isNearBottom,
             highlightedMessageId = highlightedMessageId,
@@ -1526,6 +1517,7 @@ private fun ChatContentContainer(
     isVideoMuted: Boolean,
     videoAspectRatios: MutableMap<String, Float>,
     imageRatioCache: MutableMap<String, Float>,
+    mediaLoadAllowed: Boolean,
     initialScrollDone: Boolean,
     isNearBottom: Boolean,
     highlightedMessageId: String?,
@@ -1580,6 +1572,7 @@ private fun ChatContentContainer(
                 isVideoMuted = isVideoMuted,
                 videoAspectRatios = videoAspectRatios,
                 imageRatioCache = imageRatioCache,
+                mediaLoadAllowed = mediaLoadAllowed,
                 initialScrollDone = initialScrollDone,
                 isNearBottom = isNearBottom,
                 highlightedMessageId = highlightedMessageId,
@@ -1656,6 +1649,7 @@ private fun MessageListContainer(
     isVideoMuted: Boolean,
     videoAspectRatios: MutableMap<String, Float>,
     imageRatioCache: MutableMap<String, Float>,
+    mediaLoadAllowed: Boolean,
     initialScrollDone: Boolean,
     isNearBottom: Boolean,
     highlightedMessageId: String?,
@@ -1694,6 +1688,7 @@ private fun MessageListContainer(
         isVideoMuted = isVideoMuted,
         videoAspectRatios = videoAspectRatios,
         imageRatioCache = imageRatioCache,
+        mediaLoadAllowed = mediaLoadAllowed,
         initialScrollDone = initialScrollDone,
         isNearBottom = isNearBottom,
         highlightedMessageId = highlightedMessageId,
@@ -2388,6 +2383,7 @@ private fun ChatMessageBox(
     isVideoMuted: Boolean,
     videoAspectRatios: MutableMap<String, Float>,
     imageRatioCache: MutableMap<String, Float>,
+    mediaLoadAllowed: Boolean,
     initialScrollDone: Boolean,
     isNearBottom: Boolean,
     highlightedMessageId: String?,
@@ -2558,7 +2554,8 @@ private fun ChatMessageBox(
                                             itemIsActiveVideo,
                                             itemIsVideoMuted,
                                             itemVoicePlayState,
-                                            itemIsVoiceCached
+                                            itemIsVoiceCached,
+                                            mediaLoadAllowed
                                         ) {
                                             MessageItemRuntimeState(
                                                 isHighlighted = itemIsHighlighted,
@@ -2569,6 +2566,7 @@ private fun ChatMessageBox(
                                                 isVideoMuted = itemIsVideoMuted,
                                                 voicePlayState = itemVoicePlayState,
                                                 isVoiceCached = itemIsVoiceCached,
+                                                mediaLoadAllowed = mediaLoadAllowed,
                                             )
                                         }
                                         MessageItem(
@@ -2945,13 +2943,19 @@ private fun PhotoGrid(
     onTap: () -> Unit,
     onLongClick: () -> Unit,
     onImageRatioLoaded: (url: String, ratio: Float) -> Unit = { _, _ -> },
-    cachedImageRatio: Float? = null
+    cachedImageRatio: Float? = null,
+    allowRemoteLoad: Boolean = true
 ) {
     val count = urls.size
     val maxVisible = 4
     val visibleUrls = remember(urls) { urls.take(maxVisible) }
     val extraCount = remember(count) { (count - maxVisible).coerceAtLeast(0) }
     val gap = 2.dp
+    LaunchedEffect(allowRemoteLoad, urls) {
+        if (allowRemoteLoad && urls.isNotEmpty()) {
+            Log.d("PhotoGrid", "stable media list size=${urls.size}, no reload if already cached")
+        }
+    }
 
     // Helper: one photo cell
     @Composable
@@ -2961,8 +2965,10 @@ private fun PhotoGrid(
         modifier: Modifier,
         showExtra: Boolean = false
     ) {
+        val isLocal = remember(url) { url.startsWith("content://") || url.startsWith("file://") }
+        val canLoad = isLocal || allowRemoteLoad
         val model: Any = remember(url) {
-            if (url.startsWith("content://") || url.startsWith("file://")) Uri.parse(url) else url
+            if (isLocal) Uri.parse(url) else url
         }
         val progress = uploadProgresses.getOrNull(idx)
         Box(
@@ -2973,7 +2979,8 @@ private fun PhotoGrid(
                     onLongClick = onLongClick
                 )
         ) {
-            SubcomposeAsyncImage(
+            if (canLoad) {
+                SubcomposeAsyncImage(
                 model = model,
                 contentDescription = "Фото",
                 modifier = Modifier.fillMaxSize(),
@@ -2990,6 +2997,9 @@ private fun PhotoGrid(
                     ) { Icon(Icons.Default.BrokenImage, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.5f), modifier = Modifier.size(24.dp)) }
                     else -> SubcomposeAsyncImageContent()
                 }
+            }
+            } else {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant))
             }
             if (isPending) {
                 Box(
@@ -3033,15 +3043,19 @@ private fun PhotoGrid(
         1 -> {
             // Single photo — adaptive aspect ratio
             val url = urls[0]
+            val isLocal = remember(url) { url.startsWith("content://") || url.startsWith("file://") }
+            val canLoad = isLocal || allowRemoteLoad
             val model: Any = remember(url) {
-                if (url.startsWith("content://") || url.startsWith("file://")) Uri.parse(url) else url
+                if (isLocal) Uri.parse(url) else url
             }
             val progress = uploadProgresses.getOrNull(0)
             var imageRatio by remember(url) { mutableStateOf(cachedImageRatio) }
             var loadError by remember(url) { mutableStateOf(false) }
             val clampedRatio = imageRatio?.coerceIn(0.5f, 2.0f)
-            val dlProgress by remember(url) { ImageDownloadProgress.flowFor(url) }.collectAsState()
-            DisposableEffect(url) { onDispose { ImageDownloadProgress.release(url) } }
+            val dlProgress by remember(url, canLoad) {
+                if (canLoad) ImageDownloadProgress.flowFor(url) else MutableStateFlow(0f)
+            }.collectAsState()
+            DisposableEffect(url, canLoad) { onDispose { if (canLoad) ImageDownloadProgress.release(url) } }
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -3054,7 +3068,8 @@ private fun PhotoGrid(
                     )
                     .combinedClickable(onClick = { onPhotoClick(url, urls) }, onLongClick = onLongClick)
             ) {
-                AsyncImage(
+                if (canLoad) {
+                    AsyncImage(
                     model = model,
                     contentDescription = "Фото",
                     modifier = Modifier.fillMaxSize(),
@@ -3070,7 +3085,10 @@ private fun PhotoGrid(
                     },
                     onError = { loadError = true }
                 )
-                if (imageRatio == null && !loadError) {
+                } else {
+                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant))
+                }
+                if (canLoad && imageRatio == null && !loadError) {
                     val indicatorColor = if (isOwn) Color.White.copy(0.7f) else MaterialTheme.colorScheme.primary
                     Box(Modifier.fillMaxSize(), Alignment.Center) {
                         if (dlProgress > 0f) {
@@ -3351,6 +3369,7 @@ private fun MessageItem(
     val videoAspectRatio = state.videoAspectRatio
     val voicePlayState = runtimeState.voicePlayState
     val isVoiceCached = runtimeState.isVoiceCached
+    val mediaLoadAllowed = runtimeState.mediaLoadAllowed
     val ogData = state.ogData
     val msg = item.message
     if (msg.deletedForAll) {
@@ -3671,6 +3690,7 @@ private fun MessageItem(
                                     isSelectionMode = isSelectionMode,
                                     textColor = textColor,
                                     cachedImageRatio = state.imageRatio,
+                                    mediaLoadAllowed = mediaLoadAllowed,
                                     onPhotoClick = onPhotoClick,
                                     onTap = onTap,
                                     onLongClick = onLongClick,
@@ -3761,6 +3781,7 @@ private fun MessageItem(
                                     isOwn = item.isOwn,
                                     textColor = textColor,
                                     ogData = ogData,
+                                    ogFetchAllowed = mediaLoadAllowed,
                                     onTap = onTap,
                                     onFetchOg = onFetchOg
                                 )
@@ -3850,16 +3871,26 @@ private fun PhotoMessageContent(
     isSelectionMode: Boolean,
     textColor: Color,
     cachedImageRatio: Float?,
+    mediaLoadAllowed: Boolean,
     onPhotoClick: (url: String, albumUrls: List<String>) -> Unit,
     onTap: () -> Unit,
     onLongClick: () -> Unit,
     onImageRatioLoaded: (url: String, ratio: Float) -> Unit
 ) {
-    val photos: List<String> = when {
-        item.isPending || item.isFailed -> item.pendingLocalUris
-        msg.type == "album" -> msg.photoUrls ?: emptyList()
-        msg.fileUrl != null -> listOf(msg.fileUrl)
-        else -> emptyList()
+    val photos: List<String> = remember(
+        item.isPending,
+        item.isFailed,
+        item.pendingLocalUris,
+        msg.type,
+        msg.photoUrls,
+        msg.fileUrl
+    ) {
+        when {
+            item.isPending || item.isFailed -> item.pendingLocalUris
+            msg.type == "album" -> msg.photoUrls ?: emptyList()
+            msg.fileUrl != null -> listOf(msg.fileUrl)
+            else -> emptyList()
+        }
     }
     if (photos.isNotEmpty()) {
         PhotoGrid(
@@ -3875,7 +3906,8 @@ private fun PhotoMessageContent(
             onTap = onTap,
             onLongClick = onLongClick,
             onImageRatioLoaded = onImageRatioLoaded,
-            cachedImageRatio = cachedImageRatio
+            cachedImageRatio = cachedImageRatio,
+            allowRemoteLoad = mediaLoadAllowed
         )
         if (!msg.content.isNullOrBlank()) {
             Spacer(Modifier.height(4.dp))
@@ -4016,6 +4048,7 @@ private fun TextMessageContent(
     isOwn: Boolean,
     textColor: Color,
     ogData: OgData?,
+    ogFetchAllowed: Boolean,
     onTap: () -> Unit,
     onFetchOg: (String) -> Unit
 ) {
@@ -4029,7 +4062,9 @@ private fun TextMessageContent(
     val firstUrl = remember(msg.content) {
         msg.content?.let { URL_REGEX.find(it)?.value }
     }
-    LaunchedEffect(firstUrl) {
+    LaunchedEffect(firstUrl, ogFetchAllowed) {
+        if (!ogFetchAllowed) return@LaunchedEffect
+        delay(250L)
         firstUrl?.let { onFetchOg(it) }
     }
     if (ogData != null) {

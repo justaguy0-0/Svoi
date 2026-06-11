@@ -88,10 +88,6 @@ class ImageProgressInterceptor : Interceptor {
         val contentLength = body.contentLength()
         if (contentLength <= 0L) return response
         val url = request.url.toString()
-        val urlTail = url.takeLast(60)
-        Log.d("ImageProgress", "download start: ${contentLength / 1024}KB  $urlTail")
-        var lastLoggedPct = -1
-        val downloadStart = System.currentTimeMillis()
         val tracked = object : ForwardingSource(body.source()) {
             private var totalRead = 0L
             override fun read(sink: Buffer, byteCount: Long): Long {
@@ -100,12 +96,6 @@ class ImageProgressInterceptor : Interceptor {
                     totalRead += n
                     val progress = (totalRead.toFloat() / contentLength).coerceIn(0f, 1f)
                     ImageDownloadProgress.update(url, progress)
-                    val pct = (progress * 100).toInt()
-                    if (pct / 10 > lastLoggedPct / 10) {
-                        lastLoggedPct = pct
-                        val elapsed = System.currentTimeMillis() - downloadStart
-                        Log.d("ImageProgress", "progress $pct% (${totalRead / 1024}/${contentLength / 1024}KB) in ${elapsed}ms  $urlTail")
-                    }
                 }
                 return n
             }

@@ -22,4 +22,5 @@ data class MessageItemRuntimeState(
     val isVideoMuted: Boolean = true,
     val voicePlayState: VoicePlayState? = null,
     val isVoiceCached: Boolean = false,
+    val mediaLoadAllowed: Boolean = true,
 )

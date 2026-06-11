@@ -243,7 +243,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
                     return@launch
                 }
                 if (isRecentFullRefresh()) {
-                    Log.d("ChatScreen", "skip full chat refresh, fresh enough")
+                    Log.d("ChatScreen", "skip chat list refresh, fresh enough")
                     Log.d("ChatRepo", "refresh skipped, throttled")
                     return@launch
                 }
@@ -454,7 +454,7 @@ class ChatListViewModel(application: Application) : AndroidViewModel(application
 
     private companion object {
         const val SILENT_REFRESH_DEBOUNCE_MS = 1_200L
-        const val SILENT_REFRESH_COOLDOWN_MS = 2_500L
-        const val FULL_REFRESH_MIN_INTERVAL_MS = 2_500L
+        const val SILENT_REFRESH_COOLDOWN_MS = 10_000L
+        const val FULL_REFRESH_MIN_INTERVAL_MS = 12_000L
     }
 }
