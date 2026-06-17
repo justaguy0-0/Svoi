@@ -21,25 +21,38 @@ import kotlinx.serialization.json.put
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
+import io.github.jan.supabase.storage.UploadStatus
+import io.github.jan.supabase.storage.createOrContinueUpload
 import io.github.jan.supabase.storage.storage
+import io.github.jan.supabase.storage.uploadAsFlow
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.decodeRecord
 import io.github.jan.supabase.realtime.postgresChangeFlow
 import io.github.jan.supabase.realtime.realtime
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import java.io.File
+import java.io.FileNotFoundException
+
+private const val RESUMABLE_UPLOAD_ATTEMPTS = 3
+private const val RESUMABLE_VERIFY_ATTEMPTS = 3
+private const val RESUMABLE_VERIFY_DELAY_MS = 500L
+private const val RESUMABLE_SETTLE_DELAY_MS = 1_000L
 
 @Serializable
 private data class MessageReadInsert(
@@ -765,6 +778,144 @@ class MessageRepository(private val supabase: SupabaseClient) {
                 "${BuildConfig.SUPABASE_STORAGE_URL}/storage/v1/object/public/chat-media/$path"
             }
         } catch (_: Exception) { null }
+    }
+
+    /** Upload a file from disk without loading the whole content into memory. */
+    suspend fun uploadFileFromDisk(
+        chatId: String,
+        fileName: String,
+        file: File,
+        onProgress: ((Float) -> Unit)? = null
+    ): String? {
+        val timeoutMs = minOf(maxOf(90_000L, file.length() / 8L + 30_000L), 30 * 60_000L)
+        return try {
+            withTimeout(timeoutMs) {
+                val path = "$chatId/${java.util.UUID.randomUUID()}/$fileName"
+                supabase.storage.from("chat-media").uploadAsFlow(path, file).collect { status ->
+                    when (status) {
+                        is UploadStatus.Progress -> {
+                            val contentLength = status.contentLength
+                            if (contentLength > 0L) {
+                                onProgress?.invoke(
+                                    (status.totalBytesSend.toFloat() / contentLength.toFloat())
+                                        .coerceIn(0f, 1f)
+                                )
+                            }
+                        }
+                        is UploadStatus.Success -> onProgress?.invoke(1f)
+                    }
+                }
+                "${BuildConfig.SUPABASE_STORAGE_URL}/storage/v1/object/public/chat-media/$path"
+            }
+        } catch (_: Exception) { null }
+    }
+
+    /** Upload a large file with Supabase resumable/TUS upload. */
+    suspend fun uploadFileResumable(
+        chatId: String,
+        fileName: String,
+        file: File,
+        onProgress: ((Float) -> Unit)? = null
+    ): String? {
+        val path = "$chatId/${java.util.UUID.randomUUID()}/$fileName"
+        val timeoutMs = minOf(maxOf(120_000L, file.length() / 8L + 60_000L), 30 * 60_000L)
+        Log.d("VideoUpload", "strategy=resumable fileSize=${file.length()}")
+
+        repeat(RESUMABLE_UPLOAD_ATTEMPTS) { attempt ->
+            if (!file.exists()) {
+                Log.d("VideoUpload", "failed ENOENT temp missing path=${file.absolutePath}")
+                Log.d("VideoUpload", "retry will recreate temp from original Uri")
+                return null
+            }
+            try {
+                val verified = withTimeout(timeoutMs) {
+                    val bucket = supabase.storage.from("chat-media")
+                    val upload = bucket.resumable.createOrContinueUpload(path, file)
+                    Log.d("VideoUpload", "resumable started objectPath=$path")
+                    val completed = coroutineScope {
+                        var lastLoggedPercent = -1
+                        val progressJob = launch {
+                            upload.stateFlow.collect { state ->
+                                val progress = state.progress.coerceIn(0f, 1f)
+                                onProgress?.invoke(progress)
+                                val percent = (progress * 100).toInt()
+                                if (percent != lastLoggedPercent && percent % 10 == 0) {
+                                    lastLoggedPercent = percent
+                                    Log.d("VideoUpload", "progress percent=$percent path=$path")
+                                }
+                            }
+                        }
+                        try {
+                            upload.startOrResumeUploading()
+                            val completedState = upload.stateFlow.first { state -> state.isDone }
+                            if (completedState.status !is UploadStatus.Success) {
+                                Log.d("VideoUpload", "failed before completion errorType=${completedState.status::class.simpleName}")
+                                return@coroutineScope false
+                            }
+                            onProgress?.invoke(1f)
+                            Log.d("VideoUpload", "terminal state=${completedState.status::class.simpleName} path=$path")
+                            true
+                        } finally {
+                            progressJob.cancel()
+                        }
+                    }
+                    if (!completed) return@withTimeout false
+                    Log.d("VideoUpload", "before verify temp exists=${file.exists()} path=${file.absolutePath}")
+                    Log.d("VideoUpload", "verifying object exists path=$path")
+                    if (!verifyStorageObjectExists(path)) {
+                        Log.d("VideoUpload", "failed before completion errorType=ObjectNotFoundAfterCompletion")
+                        return@withTimeout false
+                    }
+                    Log.d("VideoUpload", "object verified=true path=$path")
+                    delay(RESUMABLE_SETTLE_DELAY_MS)
+                    true
+                }
+                if (verified) {
+                    Log.d("VideoUpload", "final message created only after upload success")
+                    return "${BuildConfig.SUPABASE_STORAGE_URL}/storage/v1/object/public/chat-media/$path"
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (isMissingTempFileError(e)) {
+                    Log.d("VideoUpload", "failed ENOENT temp missing path=${file.absolutePath}")
+                    Log.d("VideoUpload", "retry will recreate temp from original Uri")
+                    return null
+                }
+                Log.d("VideoUpload", "failed before completion errorType=${e::class.simpleName}")
+                if (attempt < RESUMABLE_UPLOAD_ATTEMPTS - 1) {
+                    delay(1_000L * (attempt + 1))
+                }
+            }
+        }
+
+        return null
+    }
+
+    private fun isMissingTempFileError(error: Throwable): Boolean {
+        var current: Throwable? = error
+        while (current != null) {
+            if (current is FileNotFoundException) return true
+            val message = current.message.orEmpty()
+            if ("ENOENT" in message || "No such file or directory" in message) return true
+            current = current.cause
+        }
+        return false
+    }
+
+    private suspend fun verifyStorageObjectExists(path: String): Boolean {
+        repeat(RESUMABLE_VERIFY_ATTEMPTS) { attempt ->
+            val exists = try {
+                supabase.storage.from("chat-media").exists(path)
+            } catch (_: Exception) {
+                false
+            }
+            if (exists) return true
+            if (attempt < RESUMABLE_VERIFY_ATTEMPTS - 1) {
+                delay(RESUMABLE_VERIFY_DELAY_MS)
+            }
+        }
+        return false
     }
 
     /** Like [uploadFile] but fires [onProgress] continuously 0→0.9 during the upload

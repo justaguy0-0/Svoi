@@ -149,7 +149,11 @@ class SvoiApp : Application() {
             install(Auth)
             install(Postgrest)
             install(Realtime)
-            install(Storage)
+            install(Storage) {
+                resumable {
+                    defaultChunkSize = 6L * 1024 * 1024
+                }
+            }
         }
     }
 

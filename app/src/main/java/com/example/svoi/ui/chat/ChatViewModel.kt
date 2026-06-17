@@ -25,6 +25,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import java.io.BufferedReader
+import java.io.File
+import java.io.IOException
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -68,6 +70,8 @@ data class VoicePlayState(
 )
 
 private const val OG_FAILURE_TTL_MS = 30 * 60 * 1_000L
+private const val VIDEO_UPLOAD_BUFFER_SIZE = 64 * 1024
+private const val VIDEO_RESUMABLE_THRESHOLD_BYTES = 20L * 1024 * 1024
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -1602,26 +1606,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // ── Staged media & files ──────────────────────────────────────────────────
 
     fun addStagedMedia(uris: List<Uri>, context: Context) {
-        val maxFileSize = 50L * 1024 * 1024
-        val oversized = mutableListOf<Long>() // sizes in MB
         val validItems = mutableListOf<StagedMedia>()
 
         for (uri in uris) {
             val mimeType = context.contentResolver.getType(uri) ?: ""
-            val fileSize = getUriFileSize(uri, context)
-            if (fileSize > maxFileSize) {
-                oversized.add(fileSize / (1024 * 1024))
-            } else {
-                validItems.add(StagedMedia(uri, isVideo = mimeType.startsWith("video/")))
-            }
-        }
-
-        if (oversized.isNotEmpty()) {
-            _error.value = if (oversized.size == 1) {
-                "Файл слишком большой (${oversized[0]} МБ). Supabase не поддерживает файлы больше 50 МБ — загрузка отменена."
-            } else {
-                "${oversized.size} файла(ов) не загружены: размер превышает 50 МБ. Supabase не поддерживает файлы больше 50 МБ."
-            }
+            validItems.add(StagedMedia(uri, isVideo = mimeType.startsWith("video/")))
         }
 
         if (validItems.isNotEmpty()) {
@@ -1655,12 +1644,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 if (nameIdx >= 0) c.getString(nameIdx) else null
             } ?: "video_${System.currentTimeMillis()}.mp4"
         } catch (e: Exception) { "video_${System.currentTimeMillis()}.mp4" }
-    }
-
-    private fun getUriFileSize(uri: Uri, context: Context): Long {
-        return try {
-            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: 0L
-        } catch (e: Exception) { 0L }
     }
 
     /** Send all staged content (photos as album, videos individually, + optional text).
@@ -1744,13 +1727,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val mimeType = context.contentResolver.getType(staged.uri) ?: "video/mp4"
         val name = getVideoNameFromUri(staged.uri, context)
 
-        // Проверка лимита через openAssetFileDescriptor (надёжнее, чем OpenableColumns.SIZE)
-        val fileSize = getUriFileSize(staged.uri, context)
-        if (fileSize > 0 && fileSize > 50 * 1024 * 1024) {
-            _error.value = "Видео слишком большое. Максимальный размер — 50 МБ."
-            return
-        }
-
         val pendingId = "pending_${java.util.UUID.randomUUID()}"
         val now = java.time.Instant.now().toString()
         val pendingMsg = Message(id = pendingId, chatId = chatId, senderId = myId, type = "video",
@@ -1761,6 +1737,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _scrollToOwnMessageEvent.value++
 
         val displayName = profileCache[myId]?.displayName ?: ""
+        _uploadProgresses.value = listOf(0f)
         if (activeUploadCount.incrementAndGet() == 1) {
             if (canUseForegroundNetwork()) {
                 viewModelScope.launch { messageRepo.setTyping(chatId, myId, displayName, "uploading_media") }
@@ -1784,6 +1761,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     silent = silent,
                     context = context
                 )
+            } catch (e: OutOfMemoryError) {
+                markMediaFailed(pendingId, PendingMediaContext(
+                    uris = listOf(staged.uri.toString()), isVideo = true,
+                    caption = caption, replyToId = replyId, silent = silent,
+                    mimeType = mimeType, originalFileName = name
+                ))
+                _error.value = "Не удалось загрузить файл. Попробуйте файл меньшего размера или повторите позже."
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 markMediaFailed(pendingId, PendingMediaContext(
@@ -1792,6 +1776,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     mimeType = mimeType, originalFileName = name
                 ))
             } finally {
+                _uploadProgresses.value = emptyList()
                 if (activeUploadCount.decrementAndGet() == 0 && canUseForegroundNetwork()) {
                     messageRepo.clearTyping(chatId, myId)
                 }
@@ -1882,38 +1867,83 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         silent: Boolean,
         context: Context
     ) {
-        val bytes = context.contentResolver.openInputStream(uri)?.readBytes()
-        if (bytes == null) {
-            markMediaFailed(pendingId, PendingMediaContext(
-                uris = listOf(uri.toString()), isVideo = true,
-                caption = caption, replyToId = replyId, silent = silent,
-                mimeType = mimeType, originalFileName = name
-            ))
-            _error.value = "Не удалось прочитать видео"
+        val pendingContext = PendingMediaContext(
+            uris = listOf(uri.toString()), isVideo = true,
+            caption = caption, replyToId = replyId, silent = silent,
+            mimeType = mimeType, originalFileName = name
+        )
+        val tempFile = try {
+            copyVideoUriToCache(uri, name, context)
+        } catch (e: IOException) {
+            markMediaFailed(pendingId, pendingContext)
+            _error.value = "Не удалось загрузить файл"
+            return
+        } catch (e: OutOfMemoryError) {
+            markMediaFailed(pendingId, pendingContext)
+            _error.value = "Не удалось загрузить файл. Попробуйте файл меньшего размера или повторите позже."
             return
         }
-        if (bytes.size > 50 * 1024 * 1024) {
-            // Over limit after reading — just remove (can't retry, file won't shrink)
-            _messages.value = _messages.value.filter { it.message.id != pendingId }
-            _error.value = "Видео слишком большое. Максимальный размер — 50 МБ."
-            return
-        }
-        val ext = name.substringAfterLast('.', "mp4")
-        val fileName = "video_${System.currentTimeMillis()}.$ext"
-        val url = messageRepo.uploadFile(chatId, fileName, bytes)
-        if (url != null) {
-            messageRepo.sendVideoMessage(chatId, url, name, bytes.size.toLong(), mimeType, replyId, caption, silent)
-            // Mark as sent with CDN URL — same race-free pattern as photos
-            _messages.value = _messages.value.map { item ->
-                if (item.message.id != pendingId) item
-                else item.copy(message = item.message.copy(fileUrl = url, content = caption), isPending = false)
+        val ext = name.substringAfterLast('.', "mp4").ifBlank { "mp4" }
+        var uploadSucceeded = false
+        try {
+            val fileName = "video_${System.currentTimeMillis()}.$ext"
+            val fileSize = tempFile.length()
+            val useResumable = fileSize > VIDEO_RESUMABLE_THRESHOLD_BYTES
+            val onProgress: (Float) -> Unit = { progress ->
+                _uploadProgresses.value = listOf(progress.coerceIn(0f, 1f))
             }
-        } else {
-            markMediaFailed(pendingId, PendingMediaContext(
-                uris = listOf(uri.toString()), isVideo = true,
-                caption = caption, replyToId = replyId, silent = silent,
-                mimeType = mimeType, originalFileName = name
-            ))
+            val url = if (useResumable) {
+                messageRepo.uploadFileResumable(chatId, fileName, tempFile, onProgress)
+            } else {
+                messageRepo.uploadFileFromDisk(chatId, fileName, tempFile, onProgress)
+            }
+            if (url != null) {
+                uploadSucceeded = true
+                messageRepo.sendVideoMessage(chatId, url, name, fileSize, mimeType, replyId, caption, silent)
+                // Mark as sent with CDN URL — same race-free pattern as photos
+                _messages.value = _messages.value.map { item ->
+                    if (item.message.id != pendingId) item
+                    else item.copy(message = item.message.copy(fileUrl = url, content = caption), isPending = false)
+                }
+            } else {
+                markMediaFailed(pendingId, pendingContext)
+                _error.value = "Не удалось загрузить файл"
+            }
+        } catch (e: OutOfMemoryError) {
+            markMediaFailed(pendingId, pendingContext)
+            _error.value = "Не удалось загрузить файл. Попробуйте файл меньшего размера или повторите позже."
+        } finally {
+            if (uploadSucceeded) {
+                Log.d("VideoUpload", "deleting temp after verified success")
+            } else {
+                Log.d("VideoUpload", "deleting temp after final failed/cancelled")
+            }
+            tempFile.delete()
+        }
+    }
+
+    private fun copyVideoUriToCache(uri: Uri, name: String, context: Context): File {
+        val ext = name.substringAfterLast('.', "mp4").ifBlank { "mp4" }
+            .filter { it.isLetterOrDigit() }
+            .ifBlank { "mp4" }
+        val uploadDir = File(context.cacheDir, "video_uploads").apply { mkdirs() }
+        val tempFile = File.createTempFile("upload_video_", ".$ext", uploadDir)
+        try {
+            val input = context.contentResolver.openInputStream(uri)
+                ?: throw IOException("Unable to open selected video")
+            input.use { source ->
+                tempFile.outputStream().use { target ->
+                    source.copyTo(target, bufferSize = VIDEO_UPLOAD_BUFFER_SIZE)
+                }
+            }
+            Log.d(
+                "VideoUpload",
+                "temp created path=${tempFile.absolutePath} exists=${tempFile.exists()} size=${tempFile.length()}"
+            )
+            return tempFile
+        } catch (e: Throwable) {
+            tempFile.delete()
+            throw e
         }
     }
 
@@ -1943,9 +1973,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (it.message.id == localId) it.copy(isPending = true, isFailed = false, pendingMediaContext = null)
             else it
         }
-        if (!ctx.isVideo) {
-            _uploadProgresses.value = List(ctx.uris.size) { 0f }
-        }
+        _uploadProgresses.value = List(ctx.uris.size) { 0f }
 
         val myId = currentUserId
         if (activeUploadCount.incrementAndGet() == 1) {
@@ -1959,6 +1987,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isSending.value = true
             try {
                 if (ctx.isVideo) {
+                    Log.d("VideoUpload", "retry will recreate temp from original Uri")
                     doUploadAndSendVideo(
                         pendingId = localId,
                         uri = firstUri,
@@ -1979,6 +2008,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         context = context
                     )
                 }
+            } catch (e: OutOfMemoryError) {
+                markMediaFailed(localId, ctx)
+                _error.value = "Не удалось загрузить файл. Попробуйте файл меньшего размера или повторите позже."
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 markMediaFailed(localId, ctx)

@@ -668,7 +668,9 @@ fun ChatScreen(
                 val firstVideoUrl = layoutInfo.visibleItemsInfo.asReversed().firstNotNullOfOrNull { info ->
                     val e = currentDisplayEntries.getOrNull(info.index) as? ChatEntry.Msg
                         ?: return@firstNotNullOfOrNull null
-                    if (e.item.message.type != "video") return@firstNotNullOfOrNull null
+                    if (e.item.message.type != "video" || e.item.isPending || e.item.isFailed) {
+                        return@firstNotNullOfOrNull null
+                    }
                     val visible = minOf(info.offset + info.size, viewportH) - maxOf(info.offset, 0)
                     if (visible.toFloat() / info.size >= 0.5f) e.item.message.fileUrl else null
                 }
@@ -2500,7 +2502,11 @@ private fun ChatMessageBox(
                                         val itemUploadProgresses =
                                             if (entry.item.isPending) uploadProgresses else emptyList()
                                         val itemIsActiveVideo =
-                                            isVideoMessage && msg.fileUrl != null && msg.fileUrl == activeVideoUrl
+                                            isVideoMessage &&
+                                                !entry.item.isPending &&
+                                                !entry.item.isFailed &&
+                                                msg.fileUrl != null &&
+                                                msg.fileUrl == activeVideoUrl
                                         val itemIsVideoMuted =
                                             if (itemIsActiveVideo) isVideoMuted else true
                                         val itemVideoAspectRatio = msg.fileUrl
@@ -3911,16 +3917,18 @@ private fun VideoMessageContent(
     onVideoMuteToggle: () -> Unit,
     onVideoSizeDetected: (url: String, ratio: Float) -> Unit
 ) {
-    if (msg.fileUrl != null) {
+    val isPlayable = !item.isPending && !item.isFailed && msg.fileUrl != null
+    if (isPlayable) {
+        val videoUrl = msg.fileUrl!!
         InlineVideoPlayer(
-            url = msg.fileUrl,
+            url = videoUrl,
             isActive = isActiveVideo,
             exoPlayer = exoPlayer,
             isMuted = isMuted,
             aspectRatio = videoAspectRatio,
-            onTap = { onVideoTap(msg.fileUrl) },
+            onTap = { onVideoTap(videoUrl) },
             onMuteToggle = onVideoMuteToggle,
-            onVideoSizeDetected = { ratio -> onVideoSizeDetected(msg.fileUrl, ratio) }
+            onVideoSizeDetected = { ratio -> onVideoSizeDetected(videoUrl, ratio) }
         )
     } else {
         Box(
