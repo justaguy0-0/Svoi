@@ -112,6 +112,7 @@ dependencies {
 
     // Image editor (crop + rotate + flip)
     implementation("com.vanniktech:android-image-cropper:4.6.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
 
     // Security
     implementation(libs.security.crypto)

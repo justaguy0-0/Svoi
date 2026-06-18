@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
-import com.canhub.cropper.CropImageContract
 import com.canhub.cropper.CropImageContractOptions
 import com.canhub.cropper.CropImageOptions
 import android.os.Environment
@@ -1799,8 +1798,11 @@ private fun ChatInputArea(
     val cropOnBarColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val cropBgColor = MaterialTheme.colorScheme.surfaceContainerLow.toArgb()
     val cropAccentColor = MaterialTheme.colorScheme.primary.toArgb()
+    val cropDensity = LocalDensity.current
+    val cropTouchRadius = with(cropDensity) { 32.dp.toPx() }
+    val minCropWindowSize = with(cropDensity) { 72.dp.roundToPx() }
     var cropEditIndex by remember { mutableStateOf(-1) }
-    val cropEditLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
+    val cropEditLauncher = rememberLauncherForActivityResult(PhotoCropContract()) { result ->
         if (result.isSuccessful) {
             result.uriContent?.let { uri ->
                 viewModel.replaceStagedMedia(cropEditIndex, uri, context)
@@ -1846,6 +1848,10 @@ private fun ChatInputArea(
                                 activityMenuTextColor = cropOnBarColor,
                                 activityBackgroundColor = cropBgColor,
                                 borderCornerColor = cropAccentColor,
+                                touchRadius = cropTouchRadius,
+                                minCropWindowWidth = minCropWindowSize,
+                                minCropWindowHeight = minCropWindowSize,
+                                initialCropWindowPaddingRatio = 0.08f,
                                 outputCompressQuality = 95
                             )
                         )

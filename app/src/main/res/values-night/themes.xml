@@ -3,4 +3,10 @@
     <style name="Theme.Svoi" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/background_dark</item>
     </style>
+
+    <style name="Theme.Svoi.Cropper" parent="Theme.AppCompat.DayNight">
+        <item name="android:windowBackground">@color/background_dark</item>
+        <item name="android:colorBackground">@color/background_dark</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
 </resources>
