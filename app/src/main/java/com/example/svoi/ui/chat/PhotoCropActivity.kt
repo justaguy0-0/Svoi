@@ -11,16 +11,17 @@ import androidx.core.graphics.Insets
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import com.canhub.cropper.CropImage
 import com.example.svoi.R
 import com.example.svoi.SvoiApp
 import com.example.svoi.data.local.ThemeMode
 import com.canhub.cropper.CropImageActivity
 import com.canhub.cropper.CropImageView
+import com.canhub.cropper.parcelable
 import kotlin.math.max
 
 class PhotoCropActivity : CropImageActivity() {
@@ -38,19 +39,17 @@ class PhotoCropActivity : CropImageActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         isDarkTheme = resolveIsDarkTheme()
-        delegate.localNightMode = when ((application as? SvoiApp)?.themeManager?.getThemeMode()) {
-            ThemeMode.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
-            ThemeMode.DARK -> AppCompatDelegate.MODE_NIGHT_YES
-            ThemeMode.SYSTEM, null -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
-        }
         cropBackgroundColor = ContextCompat.getColor(
             this,
             if (isDarkTheme) R.color.background_dark else R.color.background_light
         )
+        Log.d("PhotoCrop", "onCreate savedInstanceState=${savedInstanceState != null}")
+        Log.d("PhotoCrop", "effectiveTheme dark=$isDarkTheme")
+        Log.d("PhotoCrop", "inputUri present=${inputUriFromIntent() != null}")
         WindowCompat.setDecorFitsSystemWindows(window, true)
         super.onCreate(savedInstanceState)
         updateSystemBars()
-        Log.d("PhotoCrop", "theme dark=$isDarkTheme")
+        Log.d("PhotoCrop", "image load requested")
         Log.d("PhotoCrop", "backgroundColor=${String.format("#%08X", cropBackgroundColor)}")
     }
 
@@ -120,6 +119,11 @@ class PhotoCropActivity : CropImageActivity() {
                 nightMode == Configuration.UI_MODE_NIGHT_YES
             }
         }
+
+    private fun inputUriFromIntent(): Uri? {
+        val bundle = intent.getBundleExtra(CropImage.CROP_IMAGE_EXTRA_BUNDLE)
+        return bundle?.parcelable(CropImage.CROP_IMAGE_EXTRA_SOURCE)
+    }
 
     override fun onSetImageUriComplete(view: CropImageView, uri: Uri, error: Exception?) {
         super.onSetImageUriComplete(view, uri, error)

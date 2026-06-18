@@ -1,6 +1,7 @@
 package com.example.svoi.ui.chat
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -13,6 +14,11 @@ import com.canhub.cropper.parcelable
 class PhotoCropContract : ActivityResultContract<CropImageContractOptions, CropImageView.CropResult>() {
     override fun createIntent(context: Context, input: CropImageContractOptions): Intent =
         Intent(context, PhotoCropActivity::class.java).apply {
+            data = input.uri
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            input.uri?.let { uri ->
+                clipData = ClipData.newUri(context.contentResolver, "crop_input", uri)
+            }
             putExtra(
                 CropImage.CROP_IMAGE_EXTRA_BUNDLE,
                 Bundle(2).apply {
