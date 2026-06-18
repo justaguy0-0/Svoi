@@ -177,6 +177,7 @@ class SvoiApp : Application() {
     val appAnnouncementRepository by lazy { AppAnnouncementRepository(supabase) }
     val globalVoicePlayer by lazy {
         GlobalVoicePlayer(
+            context = this,
             cacheDir = java.io.File(filesDir, "cache"),
             initialSpeed = themeManager.getVoicePlaybackSpeed(),
             onSpeedChanged = { speed -> themeManager.setVoicePlaybackSpeed(speed) }
