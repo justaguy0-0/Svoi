@@ -1,11 +1,15 @@
 ﻿package com.example.svoi.ui.settings
 
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,7 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
@@ -29,7 +32,9 @@ import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Wallpaper
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -64,7 +69,6 @@ import java.io.File
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -79,6 +83,7 @@ import com.example.svoi.SvoiApp
 import com.example.svoi.data.local.AppTextSizePreset
 import com.example.svoi.data.local.ChatSwipeLeftAction
 import com.example.svoi.data.model.AppVersion
+import com.example.svoi.data.model.HiddenOnlineStyle
 import com.example.svoi.data.repository.AppUpdateInstaller
 import com.example.svoi.ui.components.MainBottomBar
 import com.example.svoi.ui.components.OfflineBanner
@@ -106,6 +111,11 @@ fun SettingsScreen(
     profileViewModel: ProfileViewModel = viewModel()
 ) {
     val currentProfile by profileViewModel.profile.collectAsState()
+    val isSavingHiddenFromSearch by profileViewModel.isSavingHiddenFromSearch.collectAsState()
+    val isSavingOnlinePrivacy by profileViewModel.isSavingOnlinePrivacy.collectAsState()
+    val profileIsOnline by profileViewModel.isOnline.collectAsState()
+    val profileError by profileViewModel.error.collectAsState()
+    val profileSuccessMessage by profileViewModel.successMessage.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -147,6 +157,19 @@ fun SettingsScreen(
     val isOnline by app.isOnline.collectAsState()
     val isReachable by app.supabaseChecker.isReachable.collectAsState()
     val shouldShowOfflineBanner by app.supabaseChecker.shouldShowOfflineBanner.collectAsState()
+
+    LaunchedEffect(profileError) {
+        profileError?.let {
+            snackbarHostState.showSnackbar(it)
+            profileViewModel.clearMessages()
+        }
+    }
+    LaunchedEffect(profileSuccessMessage) {
+        profileSuccessMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            profileViewModel.clearMessages()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -197,95 +220,105 @@ fun SettingsScreen(
                 Spacer(Modifier.height(4.dp))
             }
 
-            // ── Внешний вид приложения ────────────────────────────────────────
-            Surface(
-                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
-                shape = SvoiShapes.Card,
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp
-            ) {
-                Column {
-                    SectionHeader("Внешний вид приложения")
-                    NavRow(
+            SettingsSection(title = "Приватность") {
+                    SettingsToggleRow(
+                        icon = Icons.Default.VisibilityOff,
+                        title = "Скрыть из поиска",
+                        subtitle = "Другие пользователи не смогут найти тебя через поиск.",
+                        checked = currentProfile?.hiddenFromSearch ?: false,
+                        enabled = profileIsOnline && !isSavingHiddenFromSearch && currentProfile != null,
+                        onCheckedChange = { profileViewModel.setHiddenFromSearch(it) }
+                    )
+                    SettingsDivider()
+                    SettingsToggleRow(
+                        icon = Icons.Default.WifiOff,
+                        title = "Скрывать статус в сети",
+                        subtitle = "Твой точный онлайн-статус не будет отображаться другим.",
+                        checked = currentProfile?.hideOnlineStatus ?: false,
+                        enabled = profileIsOnline && !isSavingOnlinePrivacy && currentProfile != null,
+                        onCheckedChange = { profileViewModel.setOnlinePrivacy(it) }
+                    )
+
+                    if (currentProfile?.hideOnlineStatus == true) {
+                        SettingsDivider()
+                        val selectedStyle = HiddenOnlineStyle.fromDb(currentProfile?.hiddenOnlineStyle)
+                        Column(
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Стиль скрытого статуса",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            HiddenOnlineStyleRow(
+                                title = "Приблизительный",
+                                preview = "Активен недавно",
+                                selected = selectedStyle == HiddenOnlineStyle.APPROXIMATE,
+                                enabled = profileIsOnline && !isSavingOnlinePrivacy,
+                                onClick = {
+                                    profileViewModel.setOnlinePrivacy(
+                                        hideOnlineStatus = true,
+                                        style = HiddenOnlineStyle.APPROXIMATE
+                                    )
+                                }
+                            )
+                            HiddenOnlineStyleRow(
+                                title = "Загадочный",
+                                preview = "[???]",
+                                selected = selectedStyle == HiddenOnlineStyle.MYSTERY,
+                                enabled = profileIsOnline && !isSavingOnlinePrivacy,
+                                onClick = {
+                                    profileViewModel.setOnlinePrivacy(
+                                        hideOnlineStatus = true,
+                                        style = HiddenOnlineStyle.MYSTERY
+                                    )
+                                }
+                            )
+                        }
+                    }
+            }
+
+            SettingsSection(title = "Внешний вид") {
+                    SettingsNavigationRow(
                         icon = Icons.Default.Palette,
                         title = "Настройка оформления",
                         subtitle = "Тема и цветовая палитра",
                         onClick = onAppearanceClick
                     )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        thickness = 0.4.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                    )
-                    NavRow(
+                    SettingsDivider()
+                    SettingsNavigationRow(
                         icon = Icons.Default.Wallpaper,
                         title = "Фон чата",
                         subtitle = "Установить фоновое изображение",
                         onClick = onWallpaperClick
                     )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        thickness = 0.4.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                    )
-                    NavRow(
+                    SettingsDivider()
+                    SettingsNavigationRow(
                         icon = Icons.Default.FormatSize,
                         title = "Размер текста",
                         subtitle = currentTextSizePreset.title,
                         onClick = onTextSizeClick
                     )
-                }
             }
 
-            // ── Медиа ─────────────────────────────────────────────────────────
-            Surface(
-                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
-                shape = SvoiShapes.Card,
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp
-            ) {
-                Column {
-                    SectionHeader("Медиа")
-
-                    ToggleRow(
+            SettingsSection(title = "Чаты и медиа") {
+                    SettingsToggleRow(
                         icon = Icons.Default.PlayCircle,
                         title = "Автовоспроизведение видео",
                         subtitle = "Запускать видео автоматически при прокрутке",
                         checked = autoPlayVideos,
                         onCheckedChange = onAutoPlayChanged
                     )
-                }
-            }
-
-            Surface(
-                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
-                shape = SvoiShapes.Card,
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp
-            ) {
-                Column {
-                    SectionHeader("Список чатов")
-
-                    NavRow(
+                    SettingsDivider()
+                    SettingsNavigationRow(
                         icon = Icons.Default.Gesture,
                         title = "Действие свайпа чата",
                         subtitle = chatSwipeLeftAction.title,
                         onClick = { showChatSwipeActionDialog = true }
                     )
-                }
-            }
-
-            // ── Уведомления ───────────────────────────────────────────────────
-            Surface(
-                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
-                shape = SvoiShapes.Card,
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp
-            ) {
-                Column {
-                    SectionHeader("Уведомления")
-
-                    ToggleRow(
+                    SettingsDivider()
+                    SettingsToggleRow(
                         icon = Icons.Default.NotificationsOff,
                         title = "Отключить все уведомления",
                         subtitle = if (globalNotifMuted) "Уведомления отключены во всём приложении"
@@ -300,20 +333,19 @@ fun SettingsScreen(
                             }
                         }
                     )
-                }
             }
 
-            // ── Данные ────────────────────────────────────────────────────────
-            Surface(
-                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
-                shape = SvoiShapes.Card,
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp
-            ) {
-                Column {
-                    SectionHeader("Данные")
+            SettingsSection(title = "Приложение") {
+                    SettingsNavigationRow(
+                        icon = Icons.Default.NewReleases,
+                        title = "Что нового",
+                        subtitle = "Обновления и важные новости приложения",
+                        onClick = onWhatsNewClick
+                    )
+            }
 
-                    ActionRow(
+            SettingsSection(title = "Данные") {
+                    SettingsActionRow(
                         icon = if (isClearingCache) null else Icons.Default.DeleteSweep,
                         isLoading = isClearingCache,
                         title = "Очистить кэш",
@@ -321,26 +353,6 @@ fun SettingsScreen(
                                    else "Сообщения, профили, превью · $cacheSizeText",
                         onClick = { showClearCacheDialog = true }
                     )
-                }
-            }
-
-            // ── Приложение ────────────────────────────────────────────────────
-            Surface(
-                modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 4.dp),
-                shape = SvoiShapes.Card,
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp
-            ) {
-                Column {
-                    SectionHeader("Приложение")
-
-                    NavRow(
-                        icon = Icons.Default.NewReleases,
-                        title = "Что нового",
-                        subtitle = "Обновления и важные новости приложения",
-                        onClick = onWhatsNewClick
-                    )
-                }
             }
 
             // ── Версия приложения ─────────────────────────────────────────────
@@ -479,6 +491,24 @@ private fun ChatSwipeActionDialog(
 }
 
 @Composable
+private fun SettingsSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        modifier = Modifier.padding(horizontal = SvoiDimens.ScreenHorizontalPadding, vertical = 5.dp),
+        shape = SvoiShapes.Card,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp
+    ) {
+        Column {
+            SectionHeader(title)
+            content()
+        }
+    }
+}
+
+@Composable
 private fun SectionHeader(title: String) {
     Text(
         text = title,
@@ -489,34 +519,116 @@ private fun SectionHeader(title: String) {
     )
 }
 
-
-// ── Строка с переключателем (Switch) ─────────────────────────────────────────
+@Composable
+private fun SettingsDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        thickness = 0.4.dp,
+        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+    )
+}
 
 @Composable
-private fun ToggleRow(
+private fun SettingsToggleRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val rowInteractionSource = remember(title) { MutableInteractionSource() }
+    val switchInteractionSource = remember(title) { MutableInteractionSource() }
+    val rowIndication = LocalIndication.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+            .clickable(
+                interactionSource = rowInteractionSource,
+                indication = rowIndication,
+                enabled = enabled
+            ) {
+                onCheckedChange(!checked)
+            }
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(end = 16.dp))
+        val contentAlpha = if (enabled) 1f else 0.5f
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+            modifier = Modifier.padding(end = 16.dp)
+        )
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
+            )
         }
         Spacer(Modifier.width(8.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            interactionSource = switchInteractionSource
+        )
+    }
+}
+
+@Composable
+private fun HiddenOnlineStyleRow(
+    title: String,
+    preview: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val borderColor = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(SvoiShapes.Card)
+            .clickable(enabled = enabled, onClick = onClick)
+            .border(1.dp, borderColor, SvoiShapes.Card),
+        shape = SvoiShapes.Card,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(
+                selected = selected,
+                onClick = onClick,
+                enabled = enabled
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = preview,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -892,7 +1004,7 @@ private fun VersionChip(label: String, version: String, isNew: Boolean) {
 // ── Строка-ссылка (стрелка вправо) ───────────────────────────────────────────
 
 @Composable
-private fun NavRow(
+private fun SettingsNavigationRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
@@ -928,7 +1040,7 @@ private fun NavRow(
 // ── Строка действия (кнопка / loader) ────────────────────────────────────────
 
 @Composable
-private fun ActionRow(
+private fun SettingsActionRow(
     icon: ImageVector?,
     title: String,
     subtitle: String,

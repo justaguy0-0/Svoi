@@ -28,6 +28,12 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     private val _isSaving = MutableStateFlow(false)
     val isSaving: StateFlow<Boolean> = _isSaving
 
+    private val _isSavingHiddenFromSearch = MutableStateFlow(false)
+    val isSavingHiddenFromSearch: StateFlow<Boolean> = _isSavingHiddenFromSearch
+
+    private val _isSavingOnlinePrivacy = MutableStateFlow(false)
+    val isSavingOnlinePrivacy: StateFlow<Boolean> = _isSavingOnlinePrivacy
+
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
@@ -131,6 +137,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         _profile.value = updated
         cache.saveOwnProfile(updated)
         viewModelScope.launch {
+            _isSaving.value = true
+            _isSavingHiddenFromSearch.value = true
             val err = userRepo.updateHiddenFromSearch(hidden)
             if (err != null) {
                 // Revert on failure
@@ -141,6 +149,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 }
                 _error.value = "Не удалось сохранить настройку"
             }
+            _isSavingHiddenFromSearch.value = false
+            _isSaving.value = false
         }
     }
 
@@ -154,12 +164,16 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         _profile.value = updated
         cache.saveOwnProfile(updated)
         viewModelScope.launch {
+            _isSaving.value = true
+            _isSavingOnlinePrivacy.value = true
             val err = userRepo.updateOnlinePrivacy(hideOnlineStatus, nextStyle)
             if (err != null) {
                 _profile.value = current
                 cache.saveOwnProfile(current)
                 _error.value = "Не удалось сохранить настройку"
             }
+            _isSavingOnlinePrivacy.value = false
+            _isSaving.value = false
         }
     }
 
