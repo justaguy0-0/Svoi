@@ -101,6 +101,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -778,6 +779,22 @@ private fun ChatListItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val lastMessageTimeText = remember(item.lastMessageTime) {
+        item.lastMessageTime.toChatListTime()
+    }
+    val draftBodyColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val draftPreviewText: AnnotatedString? = remember(draftText, draftBodyColor) {
+        draftText?.let { text ->
+            buildAnnotatedString {
+                withStyle(SpanStyle(color = DraftRed)) {
+                    append("Черновик: ")
+                }
+                withStyle(SpanStyle(color = draftBodyColor)) {
+                    append(text)
+                }
+            }
+        }
+    }
     val rowModifier = if (item.isPinned) {
         Modifier
             .fillMaxWidth()
@@ -864,7 +881,7 @@ private fun ChatListItem(
                         )
                     }
                     Text(
-                        text = item.lastMessageTime.toChatListTime(),
+                        text = lastMessageTimeText,
                         style = MaterialTheme.typography.bodySmall,
                         color = if (item.unreadCount > 0) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant
@@ -880,14 +897,7 @@ private fun ChatListItem(
                 val hasDraft = typingText == null && !draftText.isNullOrBlank()
                 if (hasDraft) {
                     Text(
-                        text = buildAnnotatedString {
-                            withStyle(SpanStyle(color = DraftRed)) {
-                                append("Черновик: ")
-                            }
-                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
-                                append(draftText!!)
-                            }
-                        },
+                        text = draftPreviewText ?: AnnotatedString(""),
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

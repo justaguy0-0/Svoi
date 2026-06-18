@@ -1801,6 +1801,29 @@ private fun ChatInputArea(
     val cropDensity = LocalDensity.current
     val cropTouchRadius = with(cropDensity) { 32.dp.toPx() }
     val minCropWindowSize = with(cropDensity) { 72.dp.roundToPx() }
+    val cropImageOptions = remember(
+        cropBarColor,
+        cropOnBarColor,
+        cropBgColor,
+        cropAccentColor,
+        cropTouchRadius,
+        minCropWindowSize
+    ) {
+        CropImageOptions(
+            toolbarColor = cropBarColor,
+            toolbarTitleColor = cropOnBarColor,
+            toolbarBackButtonColor = cropOnBarColor,
+            activityMenuIconColor = cropOnBarColor,
+            activityMenuTextColor = cropOnBarColor,
+            activityBackgroundColor = cropBgColor,
+            borderCornerColor = cropAccentColor,
+            touchRadius = cropTouchRadius,
+            minCropWindowWidth = minCropWindowSize,
+            minCropWindowHeight = minCropWindowSize,
+            initialCropWindowPaddingRatio = 0.08f,
+            outputCompressQuality = 95
+        )
+    }
     var cropEditIndex by remember { mutableStateOf(-1) }
     val cropEditLauncher = rememberLauncherForActivityResult(PhotoCropContract()) { result ->
         if (result.isSuccessful) {
@@ -1840,20 +1863,7 @@ private fun ChatInputArea(
                     cropEditLauncher.launch(
                         CropImageContractOptions(
                             uri = uri,
-                            cropImageOptions = CropImageOptions(
-                                toolbarColor = cropBarColor,
-                                toolbarTitleColor = cropOnBarColor,
-                                toolbarBackButtonColor = cropOnBarColor,
-                                activityMenuIconColor = cropOnBarColor,
-                                activityMenuTextColor = cropOnBarColor,
-                                activityBackgroundColor = cropBgColor,
-                                borderCornerColor = cropAccentColor,
-                                touchRadius = cropTouchRadius,
-                                minCropWindowWidth = minCropWindowSize,
-                                minCropWindowHeight = minCropWindowSize,
-                                initialCropWindowPaddingRatio = 0.08f,
-                                outputCompressQuality = 95
-                            )
+                            cropImageOptions = cropImageOptions
                         )
                     )
                 }
@@ -3372,13 +3382,22 @@ private fun MessageItem(
     val bubbleColor = if (item.isOwn) MaterialTheme.colorScheme.primary else if (isDark) DarkBubbleOther else BubbleOther
     val textColor = if (item.isOwn) BubbleOwnText else if (isDark) DarkBubbleOtherText else BubbleOtherText
     val bubbleShape = if (item.isOwn) SvoiShapes.BubbleOwn else SvoiShapes.BubbleOther
+    val messageTime = remember(msg.createdAt) { msg.createdAt?.toMessageTime().orEmpty() }
 
     // Big-emoji mode: 1–3 emoji with no text, no reply, no forward → no bubble
-    val isEmojiOnlyMsg = msg.type == "text" &&
-        !msg.content.isNullOrBlank() &&
-        item.replyToMessage == null &&
-        item.forwardedFromProfile == null &&
-        isEmojiOnly(msg.content)
+    val isEmojiOnlyMsg = remember(
+        msg.type,
+        msg.content,
+        item.replyToMessage,
+        item.forwardedFromProfile
+    ) {
+        val content = msg.content
+        msg.type == "text" &&
+            !content.isNullOrBlank() &&
+            item.replyToMessage == null &&
+            item.forwardedFromProfile == null &&
+            isEmojiOnly(content)
+    }
 
     // Highlight animation
     val highlightColor by animateColorAsState(
@@ -3522,7 +3541,7 @@ private fun MessageItem(
                                 )
                             }
                             Text(
-                                text = msg.createdAt?.toMessageTime() ?: "",
+                                text = messageTime,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 10.sp
@@ -3789,7 +3808,7 @@ private fun MessageItem(
                                 )
                             }
                             Text(
-                                text = msg.createdAt?.toMessageTime() ?: "",
+                                text = messageTime,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = textColor.copy(0.7f),
                                 fontSize = 10.sp
