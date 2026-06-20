@@ -248,6 +248,19 @@ class AuthRepository(
         }
     }
 
+    suspend fun requestEmailChange(newEmail: String): String? {
+        return try {
+            supabase.auth.updateUser(redirectUrl = EMAIL_CHANGE_REDIRECT_URL) {
+                email = newEmail
+            }
+            Log.d("EmailChange", "request sent")
+            null
+        } catch (e: Exception) {
+            Log.w("EmailChange", "request failed")
+            translateEmailChangeError(e.message)
+        }
+    }
+
     private fun translateAuthError(msg: String?): String {
         if (msg == null) return "Произошла ошибка. Попробуйте снова."
         return when {
@@ -289,6 +302,23 @@ class AuthRepository(
             msg.contains("invalid email", ignoreCase = true) ->
                 "Некорректный email-адрес"
             else -> "Не удалось отправить ссылку. Попробуйте снова."
+        }
+    }
+
+    private fun translateEmailChangeError(msg: String?): String {
+        if (msg == null) {
+            return "Не удалось отправить письмо подтверждения. Проверьте email и попробуйте снова."
+        }
+        return when {
+            msg.contains("network", ignoreCase = true) ||
+            msg.contains("connect", ignoreCase = true) ||
+            msg.contains("timeout", ignoreCase = true) ||
+            msg.contains("UnknownHostException", ignoreCase = true) ->
+                "Нет соединения с сервером. Проверьте интернет"
+            msg.contains("Too many requests", ignoreCase = true) ||
+            msg.contains("rate limit", ignoreCase = true) ->
+                "Слишком много попыток. Подождите немного и попробуйте снова"
+            else -> "Не удалось отправить письмо подтверждения. Проверьте email и попробуйте снова."
         }
     }
 
@@ -337,6 +367,17 @@ class AuthRepository(
         }
     }
 
+    suspend fun refreshUserAfterEmailChange(): Boolean {
+        return try {
+            supabase.auth.retrieveUserForCurrentSession(updateSession = true)
+            Log.d("EmailChange", "user refreshed")
+            true
+        } catch (e: Exception) {
+            Log.w("EmailChange", "user refresh failed")
+            false
+        }
+    }
+
     fun isLoggedIn(): Boolean = supabase.auth.currentUserOrNull() != null
 
     companion object {
@@ -344,5 +385,7 @@ class AuthRepository(
         const val PASSWORD_RESET_HOST = "auth"
         const val PASSWORD_RESET_PATH = "/reset-password"
         const val PASSWORD_RESET_REDIRECT_URL = "$PASSWORD_RESET_SCHEME://$PASSWORD_RESET_HOST$PASSWORD_RESET_PATH"
+        const val EMAIL_CHANGE_PATH = "/email-change"
+        const val EMAIL_CHANGE_REDIRECT_URL = "$PASSWORD_RESET_SCHEME://$PASSWORD_RESET_HOST$EMAIL_CHANGE_PATH"
     }
 }

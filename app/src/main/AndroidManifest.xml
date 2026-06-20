@@ -77,6 +77,10 @@
                     android:scheme="svoi"
                     android:host="auth"
                     android:path="/reset-password" />
+                <data
+                    android:scheme="svoi"
+                    android:host="auth"
+                    android:path="/email-change" />
             </intent-filter>
         </activity>
 

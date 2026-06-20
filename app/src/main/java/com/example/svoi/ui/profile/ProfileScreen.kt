@@ -53,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -80,6 +81,12 @@ fun ProfileScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isSaving by viewModel.isSaving.collectAsState()
     val isSendingPasswordReset by viewModel.isSendingPasswordReset.collectAsState()
+    val emailChangeDialogVisible by viewModel.emailChangeDialogVisible.collectAsState()
+    val currentEmail by viewModel.currentEmail.collectAsState()
+    val newEmail by viewModel.newEmail.collectAsState()
+    val emailChangeLoading by viewModel.emailChangeLoading.collectAsState()
+    val emailChangeError by viewModel.emailChangeError.collectAsState()
+    val emailChangeSuccessMessage by viewModel.emailChangeSuccessMessage.collectAsState()
     val isOnline by viewModel.isOnline.collectAsState()
     val error by viewModel.error.collectAsState()
 
@@ -110,6 +117,12 @@ fun ProfileScreen(
     }
     LaunchedEffect(successMessage) {
         successMessage?.let { snackbarHostState.showSnackbar(it); viewModel.clearMessages() }
+    }
+    LaunchedEffect(emailChangeSuccessMessage) {
+        emailChangeSuccessMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearMessages()
+        }
     }
 
     Scaffold(
@@ -283,6 +296,17 @@ fun ProfileScreen(
                     ) {
                         Text("Изменить пароль")
                     }
+
+                    OutlinedButton(
+                        onClick = { viewModel.openEmailChangeDialog() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(SvoiDimens.ButtonHeight),
+                        enabled = !emailChangeLoading,
+                        shape = SvoiShapes.Button
+                    ) {
+                        Text("Изменить email")
+                    }
                 }
             }
 
@@ -424,6 +448,66 @@ fun ProfileScreen(
                 TextButton(
                     onClick = { showPasswordDialog = false },
                     enabled = !isSendingPasswordReset
+                ) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
+
+    // ── Email change confirmation dialog ───────────────────────────────────
+    if (emailChangeDialogVisible) {
+        AlertDialog(
+            onDismissRequest = { viewModel.closeEmailChangeDialog() },
+            title = { Text("Изменить email?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Мы отправим письмо для подтверждения смены email. Для безопасности может потребоваться подтверждение на текущей и новой почте.")
+                    currentEmail?.let { email ->
+                        Text(
+                            text = "Текущий email: $email",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    OutlinedTextField(
+                        value = newEmail,
+                        onValueChange = viewModel::updateNewEmail,
+                        label = { Text("Новый email") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        enabled = !emailChangeLoading,
+                        isError = emailChangeError != null,
+                        supportingText = {
+                            emailChangeError?.let { Text(it) }
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Email,
+                            imeAction = ImeAction.Done
+                        ),
+                        shape = SvoiShapes.TextField
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = viewModel::requestEmailChange,
+                    enabled = !emailChangeLoading
+                ) {
+                    if (emailChangeLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Отправить подтверждение")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = viewModel::closeEmailChangeDialog,
+                    enabled = !emailChangeLoading
                 ) {
                     Text("Отмена")
                 }

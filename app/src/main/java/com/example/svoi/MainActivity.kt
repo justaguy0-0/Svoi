@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         pendingChatId.value = intent.getStringExtra("chat_id")
-        handlePasswordResetDeeplink(intent)
+        handleAuthDeeplink(intent)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -164,20 +164,27 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingChatId.value = intent.getStringExtra("chat_id")
-        handlePasswordResetDeeplink(intent)
+        handleAuthDeeplink(intent)
     }
 
-    private fun handlePasswordResetDeeplink(intent: Intent) {
+    private fun handleAuthDeeplink(intent: Intent) {
         val data = intent.data ?: return
         val path = data.path.orEmpty()
-        val isResetPasswordLink = data.scheme == AuthRepository.PASSWORD_RESET_SCHEME &&
-            data.host == AuthRepository.PASSWORD_RESET_HOST &&
-            path == AuthRepository.PASSWORD_RESET_PATH
-        if (!isResetPasswordLink) return
+        val isAuthLink = data.scheme == AuthRepository.PASSWORD_RESET_SCHEME &&
+            data.host == AuthRepository.PASSWORD_RESET_HOST
+        if (!isAuthLink) return
 
-        Log.d("PasswordReset", "deeplink received path=$path")
-        pendingPasswordReset.value = true
-        passwordResetRecoveryReady.value = false
+        val isResetPasswordLink = path == AuthRepository.PASSWORD_RESET_PATH
+        val isEmailChangeLink = path == AuthRepository.EMAIL_CHANGE_PATH
+        if (!isResetPasswordLink && !isEmailChangeLink) return
+
+        if (isResetPasswordLink) {
+            Log.d("PasswordReset", "deeplink received path=$path")
+            pendingPasswordReset.value = true
+            passwordResetRecoveryReady.value = false
+        } else {
+            Log.d("EmailChange", "deeplink received")
+        }
         try {
             app.supabase.handleDeeplinks(intent) { session ->
                 app.prefs.saveSession(
@@ -185,12 +192,22 @@ class MainActivity : ComponentActivity() {
                     refreshToken = session.refreshToken,
                     expiresAt = session.expiresAt.epochSeconds
                 )
-                runOnUiThread {
-                    passwordResetRecoveryReady.value = true
+                if (isResetPasswordLink) {
+                    runOnUiThread {
+                        passwordResetRecoveryReady.value = true
+                    }
+                } else {
+                    lifecycleScope.launch {
+                        app.authRepository.refreshUserAfterEmailChange()
+                    }
                 }
             }
         } catch (e: Exception) {
-            Log.w("PasswordReset", "invalid recovery link: ${e.message}")
+            if (isResetPasswordLink) {
+                Log.w("PasswordReset", "invalid recovery link: ${e.message}")
+            } else {
+                Log.w("EmailChange", "request failed")
+            }
         }
     }
 

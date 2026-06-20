@@ -2,6 +2,7 @@ package com.example.svoi.ui.profile
 
 import android.app.Application
 import android.util.Log
+import android.util.Patterns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.svoi.SvoiApp
@@ -31,6 +32,24 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     private val _isSendingPasswordReset = MutableStateFlow(false)
     val isSendingPasswordReset: StateFlow<Boolean> = _isSendingPasswordReset
+
+    private val _emailChangeDialogVisible = MutableStateFlow(false)
+    val emailChangeDialogVisible: StateFlow<Boolean> = _emailChangeDialogVisible
+
+    private val _currentEmail = MutableStateFlow<String?>(null)
+    val currentEmail: StateFlow<String?> = _currentEmail
+
+    private val _newEmail = MutableStateFlow("")
+    val newEmail: StateFlow<String> = _newEmail
+
+    private val _emailChangeLoading = MutableStateFlow(false)
+    val emailChangeLoading: StateFlow<Boolean> = _emailChangeLoading
+
+    private val _emailChangeError = MutableStateFlow<String?>(null)
+    val emailChangeError: StateFlow<String?> = _emailChangeError
+
+    private val _emailChangeSuccessMessage = MutableStateFlow<String?>(null)
+    val emailChangeSuccessMessage: StateFlow<String?> = _emailChangeSuccessMessage
 
     private val _isSavingHiddenFromSearch = MutableStateFlow(false)
     val isSavingHiddenFromSearch: StateFlow<Boolean> = _isSavingHiddenFromSearch
@@ -157,6 +176,64 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun openEmailChangeDialog() {
+        Log.d("EmailChange", "clicked")
+        if (_emailChangeLoading.value) return
+        viewModelScope.launch {
+            _currentEmail.value = authRepo.currentUserEmail()
+            _newEmail.value = ""
+            _emailChangeError.value = null
+            _emailChangeDialogVisible.value = true
+            Log.d("EmailChange", "confirmation shown")
+        }
+    }
+
+    fun closeEmailChangeDialog() {
+        if (_emailChangeLoading.value) return
+        _emailChangeDialogVisible.value = false
+        _emailChangeError.value = null
+        _newEmail.value = ""
+    }
+
+    fun updateNewEmail(value: String) {
+        _newEmail.value = value
+        _emailChangeError.value = null
+    }
+
+    fun requestEmailChange() {
+        if (_emailChangeLoading.value) return
+        val targetEmail = _newEmail.value.trim()
+        val currentEmail = _currentEmail.value?.trim()
+        when {
+            targetEmail.isBlank() -> {
+                _emailChangeError.value = "Введите новый email"
+                return
+            }
+            !Patterns.EMAIL_ADDRESS.matcher(targetEmail).matches() -> {
+                _emailChangeError.value = "Введите корректный email"
+                return
+            }
+            currentEmail != null && targetEmail.equals(currentEmail, ignoreCase = true) -> {
+                _emailChangeError.value = "Новый email совпадает с текущим"
+                return
+            }
+        }
+
+        viewModelScope.launch {
+            _emailChangeLoading.value = true
+            val err = authRepo.requestEmailChange(targetEmail)
+            if (err == null) {
+                _emailChangeDialogVisible.value = false
+                _newEmail.value = ""
+                _emailChangeError.value = null
+                _emailChangeSuccessMessage.value = "Письмо для подтверждения смены email отправлено"
+            } else {
+                _emailChangeError.value = err
+            }
+            _emailChangeLoading.value = false
+        }
+    }
+
     /**
      * Toggles the "hidden from search" flag. Uses an optimistic update:
      * the UI changes immediately and reverts if the server call fails.
@@ -216,5 +293,6 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     fun clearMessages() {
         _error.value = null
         _successMessage.value = null
+        _emailChangeSuccessMessage.value = null
     }
 }
