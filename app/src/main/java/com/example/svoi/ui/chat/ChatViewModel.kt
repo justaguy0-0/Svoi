@@ -72,6 +72,8 @@ data class VoicePlayState(
 private const val OG_FAILURE_TTL_MS = 30 * 60 * 1_000L
 private const val VIDEO_UPLOAD_BUFFER_SIZE = 64 * 1024
 private const val VIDEO_RESUMABLE_THRESHOLD_BYTES = 20L * 1024 * 1024
+private const val CHAT_OPEN_LOG = "ChatOpen"
+private const val SECONDARY_DUPLICATE_GUARD_MS = 2_000L
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -239,6 +241,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var typingJob: Job? = null
     private val activeUploadCount = AtomicInteger(0)
     private var historyFrom: String? = null  // null = see all; timestamp = restricted to messages after join
+    private val serverLoadApplyMutex = Mutex()
+    private var lastAppliedServerMessageSignature: String? = null
+    private var lastAppliedServerMessageAtMs: Long = 0L
+    private var completedSecondaryMessageIds: List<String> = emptyList()
+    private var completedSecondaryAtMs: Long = 0L
+    private var inFlightSecondaryMessageIds: List<String>? = null
     private var messageInsertJob: Job? = null
     private var messageUpdateJob: Job? = null
     private var readReceiptJob: Job? = null
@@ -465,8 +473,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun init(chatId: String) {
-        if (this.chatId == chatId) return
+        if (this.chatId == chatId) {
+            completedSecondaryMessageIds = emptyList()
+            completedSecondaryAtMs = 0L
+            if (canUseForegroundNetwork()) {
+                viewModelScope.launch { loadMessages(scrollAfter = false) }
+            }
+            return
+        }
+        Log.d(CHAT_OPEN_LOG, "start chatId=$chatId")
         this.chatId = chatId
+        lastAppliedServerMessageSignature = null
+        lastAppliedServerMessageAtMs = 0L
+        completedSecondaryMessageIds = emptyList()
+        completedSecondaryAtMs = 0L
+        inFlightSecondaryMessageIds = null
         readReceiptBaselineReady = false
         markAsReadAfterBaseline = false
         pendingReadReceiptIds.clear()
@@ -543,6 +564,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _firstUnreadIndex.value = -1
                 _isLoading.value = false
                 _scrollToBottomEvent.value++
+                Log.d(CHAT_OPEN_LOG, "messages loaded count=${items.size} source=cache")
                 revealDone = true
             }
 
@@ -621,6 +643,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             observeReactions()
             startTypingPolling()
             startChatDeletionWatch()
+            Log.d(CHAT_OPEN_LOG, "ready")
 
             // Restore failed messages from persistent outbox (survive app restarts)
             val failedOutbox = app.outboxManager.getForChat(chatId)
@@ -935,46 +958,130 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val raw = messageRepo.getMessages(chatId, limit = 50, historyFrom = historyFrom)
         if (raw.isEmpty()) return  // offline — keep cached messages shown
 
-        val enriched = enrichMessages(raw)
+        val serverMessageIds = raw.map { it.id }
+        val serverSignature = raw.joinToString(separator = "|") { msg ->
+            "${msg.id}:${msg.updatedAt}:${msg.editedAt}:${msg.deletedForAll}"
+        }
+        val cachedReactions = cache.loadReactions(chatId) ?: emptyMap()
+        val cachedVoiceListens = cache.loadVoiceListens(chatId)
+        val cachedReadIds = cache.loadReadIds(chatId) ?: emptySet()
+        val quickItems = buildUiItems(
+            raw,
+            cachedReactions,
+            cachedVoiceListens?.myListened ?: emptySet(),
+            cachedVoiceListens?.otherListened ?: emptySet(),
+            cachedReadIds
+        )
         val newLastId = raw.lastOrNull()?.id
+        val nowMs = System.currentTimeMillis()
 
-        // Find first unread incoming message (before markAsRead runs) — set only once on initial load
-        if (_firstUnreadIndex.value < 0) {
-            val myId = currentUserId
-            val incomingIds = raw.filter { it.senderId != myId }.map { it.id }
-            val alreadyReadByMe = messageRepo.getReadMessageIdsByUser(incomingIds, myId)
-            val idx = raw.indexOfFirst { it.senderId != myId && it.id !in alreadyReadByMe }
-            _firstUnreadIndex.value = idx
-            _myReadMessageIds.value = alreadyReadByMe
-            Log.d("UnreadSep", "firstUnreadIndex=$idx, incoming=${incomingIds.size}, alreadyRead=${alreadyReadByMe.size}")
-        }
+        val shouldStartSecondary = serverLoadApplyMutex.withLock {
+            val isImmediateDuplicateServerResult =
+                serverSignature == lastAppliedServerMessageSignature &&
+                    nowMs - lastAppliedServerMessageAtMs < SECONDARY_DUPLICATE_GUARD_MS
+            if (isImmediateDuplicateServerResult) {
+                Log.d(CHAT_OPEN_LOG, "skip duplicate server result count=${raw.size}")
+                false
+            } else {
+                val isSameServerSignature = serverSignature == lastAppliedServerMessageSignature
+                lastAppliedServerMessageSignature = serverSignature
+                lastAppliedServerMessageAtMs = nowMs
 
-        // Smart merge: only replace items that actually changed
-        val current = _messages.value
-        val merged = if (current.isNotEmpty() && current.map { it.message.id } == raw.map { it.id }) {
-            val enrichedById = enriched.associateBy { it.message.id }
-            current.map { old ->
-                val updated = enrichedById[old.message.id]
-                if (updated != null && updated != old) updated else old
+                // Fast merge: show message structure before secondary enrichment finishes.
+                val current = _messages.value
+                val shouldApplyQuickMerge = !isSameServerSignature || current.isEmpty()
+                val merged = if (!shouldApplyQuickMerge) {
+                    current
+                } else if (current.isNotEmpty() && current.map { it.message.id } == serverMessageIds) {
+                    val quickById = quickItems.associateBy { it.message.id }
+                    current.map { old ->
+                        val updated = quickById[old.message.id]
+                        if (updated != null && updated != old) updated else old
+                    }
+                } else {
+                    quickItems
+                }
+                if (merged != current) {
+                    _messages.value = merged
+                }
+
+                lastKnownMessageId = newLastId
+                if (scrollAfter) _scrollToBottomEvent.value++
+                Log.d(CHAT_OPEN_LOG, "messages loaded count=${raw.size} source=server")
+
+                val isRecentlyCompletedSecondary =
+                    completedSecondaryMessageIds == serverMessageIds &&
+                        nowMs - completedSecondaryAtMs < SECONDARY_DUPLICATE_GUARD_MS
+                when {
+                    inFlightSecondaryMessageIds == serverMessageIds -> {
+                        Log.d(CHAT_OPEN_LOG, "skip duplicate secondary data in-flight count=${raw.size}")
+                        false
+                    }
+                    isRecentlyCompletedSecondary -> {
+                        Log.d(CHAT_OPEN_LOG, "skip duplicate secondary data completed count=${raw.size}")
+                        false
+                    }
+                    else -> {
+                        inFlightSecondaryMessageIds = serverMessageIds
+                        Log.d(CHAT_OPEN_LOG, "secondary data started")
+                        true
+                    }
+                }
             }
-        } else {
-            enriched
-        }
-        if (merged != current) {
-            _messages.value = merged
         }
 
-        lastKnownMessageId = newLastId
-        if (scrollAfter) _scrollToBottomEvent.value++
-        readReceiptBaselineReady = true
-        if (markAsReadAfterBaseline) {
-            markAsReadAfterBaseline = false
-            markAsRead()
-        }
-
-        // Save immediately — don't wait for OG prefetch
+        // Save immediately — don't wait for secondary data or OG prefetch.
         cache.saveMessages(chatId, raw)
         cache.saveProfiles(profileCache.values)
+
+        if (!shouldStartSecondary) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val secondaryResult = runCatching {
+                // Find first unread incoming message after the list is already visible.
+                if (_firstUnreadIndex.value < 0) {
+                    val myId = currentUserId
+                    val incomingIds = raw.filter { it.senderId != myId }.map { it.id }
+                    val alreadyReadByMe = messageRepo.getReadMessageIdsByUser(incomingIds, myId)
+                    val idx = raw.indexOfFirst { it.senderId != myId && it.id !in alreadyReadByMe }
+                    _firstUnreadIndex.value = idx
+                    _myReadMessageIds.value = alreadyReadByMe
+                    Log.d("UnreadSep", "firstUnreadIndex=$idx, incoming=${incomingIds.size}, alreadyRead=${alreadyReadByMe.size}")
+                }
+
+                val enriched = enrichMessages(raw)
+                val latest = _messages.value
+                val enrichedMerged = if (latest.isNotEmpty() && latest.map { it.message.id } == raw.map { it.id }) {
+                    val enrichedById = enriched.associateBy { it.message.id }
+                    latest.map { old ->
+                        val updated = enrichedById[old.message.id]
+                        if (updated != null && updated != old) updated else old
+                    }
+                } else {
+                    enriched
+                }
+                if (enrichedMerged != latest) {
+                    _messages.value = enrichedMerged
+                }
+            }
+            secondaryResult.exceptionOrNull()?.let { e ->
+                Log.w(CHAT_OPEN_LOG, "secondary data failed: ${e.message}")
+            }
+            serverLoadApplyMutex.withLock {
+                if (inFlightSecondaryMessageIds == serverMessageIds) {
+                    if (secondaryResult.isSuccess) {
+                        completedSecondaryMessageIds = serverMessageIds
+                        completedSecondaryAtMs = System.currentTimeMillis()
+                    }
+                    inFlightSecondaryMessageIds = null
+                }
+            }
+            readReceiptBaselineReady = true
+            if (markAsReadAfterBaseline) {
+                markAsReadAfterBaseline = false
+                markAsRead()
+            }
+        }
 
         // OG previews are fetched lazily from visible messages after the first chat frame.
     }

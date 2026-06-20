@@ -348,6 +348,11 @@ fun ChatScreen(
     val globalVoiceState by app.globalVoicePlayer.state.collectAsState()
     val cachedVoiceIds by app.globalVoicePlayer.cachedVoiceIds.collectAsState()
 
+    LaunchedEffect(chatId) {
+        androidx.compose.runtime.withFrameNanos { }
+        Log.d("ChatOpen", "first frame/shell rendered")
+    }
+
     // Draft: load saved draft when opening chat
     LaunchedEffect(chatId) {
         val saved = app.draftManager.getDraft(chatId)
@@ -383,16 +388,16 @@ fun ChatScreen(
         animationSpec = tween(durationMillis = 150),
         label = "chatReveal"
     )
-    LaunchedEffect(isLoading) { if (isLoading) chatReady = false }
+    LaunchedEffect(isLoading) { if (isLoading && messages.isEmpty()) chatReady = false }
     var mediaLoadAllowed by remember(chatId) { mutableStateOf(false) }
     LaunchedEffect(chatId, chatReady) {
         if (!chatReady) {
             mediaLoadAllowed = false
             return@LaunchedEffect
         }
-        Log.d("ChatScreen", "defer media load")
         delay(250L)
         mediaLoadAllowed = true
+        Log.d("ChatOpen", "media placeholders stable")
     }
 
     // True when opening chat with a target message — suppress normal reveal until positioned.
@@ -400,7 +405,7 @@ fun ChatScreen(
     // True when the search loop is loading history for a pinned/searched message.
     var isScrollSearchLoading by remember { mutableStateOf(false) }
     val loadingOverlayAlpha by animateFloatAsState(
-        targetValue = if (isLoading || !chatReady || isScrollSearchLoading) 1f else 0f,
+        targetValue = if ((messages.isNotEmpty() && !chatReady) || isScrollSearchLoading) 1f else 0f,
         animationSpec = tween(durationMillis = 300),
         label = "loadingOverlayFade"
     )
@@ -538,18 +543,6 @@ fun ChatScreen(
         if (shouldMarkRead) viewModel.markAsRead()
     }
 
-    // Когда загружается OG-превью ссылки, карточка расширяет сообщение «вниз».
-    // Если пользователь был у низа — скроллим вниз вслед за расширением.
-    val ogCacheSize = viewModel.ogCache.size
-    LaunchedEffect(ogCacheSize) {
-        if (ogCacheSize == 0 || !initialScrollDone) return@LaunchedEffect
-        if (!isNearBottom) return@LaunchedEffect
-        delay(150) // ждём пока LazyColumn пересчитает layout после появления карточки
-        val last = currentDisplayEntries.size - 1
-        if (last >= 0) listState.animateScrollToItem(last)
-    }
-
-
     // Восстанавливаем позицию скролла после того как старые сообщения prepend'нуты вверх.
     // Восстанавливаем позицию только при обычной подгрузке (не при поиске закреплённого).
     LaunchedEffect(messages.size) {
@@ -658,6 +651,11 @@ fun ChatScreen(
             .filter { !it }
             .collect {
                 if (!currentAutoPlay) {
+                    activeVideoUrl = null
+                    exoPlayer?.pause()
+                    return@collect
+                }
+                if (!mediaLoadAllowed) {
                     activeVideoUrl = null
                     exoPlayer?.pause()
                     return@collect
@@ -2415,6 +2413,7 @@ private fun ChatMessageBox(
     val app = LocalContext.current.applicationContext as SvoiApp
     val haptic = LocalHapticFeedback.current
     Box(modifier = modifier) {
+        val showInitialSkeleton = isLoading && messages.isEmpty()
         if (!isLoading && chatReady && messages.isEmpty()) {
             Text(
                 text = "Начните общение сегодня",
@@ -2423,15 +2422,23 @@ private fun ChatMessageBox(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        if (!isLoading) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 8.dp)
-                    .graphicsLayer { alpha = chatAlpha },
+                    .graphicsLayer { alpha = if (showInitialSkeleton) 1f else chatAlpha },
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
+                if (showInitialSkeleton) {
+                    items(
+                        count = 8,
+                        key = { index -> "chat_open_skeleton_$index" },
+                        contentType = { "skeleton" }
+                    ) { index ->
+                        ChatMessageSkeletonRow(isOwn = index % 3 == 0)
+                    }
+                } else {
                 if (isLoadingMore) {
                     item(key = "loading_more") {
                         Box(
@@ -2718,6 +2725,51 @@ private fun ChatMessageBox(
 }
 
 // ── Bottom sheet action row ──────────────────────────────────────────────────
+
+@Composable
+private fun ChatMessageSkeletonRow(isOwn: Boolean) {
+    val color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+    val bubbleWidth = if (isOwn) 220.dp else 260.dp
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = if (isOwn) Arrangement.End else Arrangement.Start
+    ) {
+        Column(
+            modifier = Modifier
+                .width(bubbleWidth)
+                .clip(RoundedCornerShape(14.dp))
+                .background(color)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.82f)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.58f)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            )
+            if (!isOwn) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(4f / 3f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun BottomSheetAction(
@@ -3709,6 +3761,7 @@ private fun MessageItem(
                                     isActiveVideo = isActiveVideo,
                                     isMuted = isVideoMuted,
                                     videoAspectRatio = videoAspectRatio,
+                                    mediaLoadAllowed = mediaLoadAllowed,
                                     textColor = textColor,
                                     onTap = onTap,
                                     onVideoTap = onVideoTap,
@@ -3936,6 +3989,7 @@ private fun VideoMessageContent(
     isActiveVideo: Boolean,
     isMuted: Boolean,
     videoAspectRatio: Float,
+    mediaLoadAllowed: Boolean,
     textColor: Color,
     onTap: () -> Unit,
     onVideoTap: (String) -> Unit,
@@ -3943,7 +3997,7 @@ private fun VideoMessageContent(
     onVideoSizeDetected: (url: String, ratio: Float) -> Unit
 ) {
     val isPlayable = !item.isPending && !item.isFailed && msg.fileUrl != null
-    if (isPlayable) {
+    if (isPlayable && mediaLoadAllowed) {
         val videoUrl = msg.fileUrl!!
         InlineVideoPlayer(
             url = videoUrl,
@@ -3959,7 +4013,7 @@ private fun VideoMessageContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(16f / 9f)
+                .aspectRatio(videoAspectRatio.coerceIn(0.75f, 1.8f))
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color.Black.copy(alpha = 0.55f)),
             contentAlignment = Alignment.Center
@@ -4073,9 +4127,10 @@ private fun TextMessageContent(
         delay(250L)
         firstUrl?.let { onFetchOg(it) }
     }
-    if (ogData != null) {
+    if (firstUrl != null) {
         OgPreviewCard(
             ogData = ogData,
+            url = firstUrl,
             isOwn = isOwn,
             modifier = Modifier.padding(top = 6.dp)
         )
@@ -4223,7 +4278,8 @@ private fun LinkText(
 
 @Composable
 private fun OgPreviewCard(
-    ogData: OgData,
+    ogData: OgData?,
+    url: String,
     isOwn: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -4236,9 +4292,11 @@ private fun OgPreviewCard(
         color = bgColor,
         modifier = modifier
             .fillMaxWidth()
+            .height(88.dp)
             .clickable {
                 try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ogData.url)))
+                    val target = if (url.startsWith("www.")) "https://$url" else url
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
                 } catch (_: Exception) {}
             }
     ) {
@@ -4250,8 +4308,18 @@ private fun OgPreviewCard(
                     .heightIn(min = 48.dp)
                     .background(accentColor)
             )
-            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).weight(1f)) {
-                ogData.siteName?.takeIf { it.isNotBlank() }?.let { site ->
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .weight(1f)
+            ) {
+                val siteFallback = remember(url) {
+                    runCatching {
+                        val target = if (url.startsWith("www.")) "https://$url" else url
+                        Uri.parse(target).host?.removePrefix("www.")
+                    }.getOrNull()
+                }
+                (ogData?.siteName?.takeIf { it.isNotBlank() } ?: siteFallback)?.let { site ->
                     Text(
                         text = site,
                         style = MaterialTheme.typography.labelSmall,
@@ -4261,35 +4329,74 @@ private fun OgPreviewCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                ogData.title?.takeIf { it.isNotBlank() }?.let { title ->
+                val title = ogData?.title?.takeIf { it.isNotBlank() } ?: url
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isOwn) Color.White else MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (ogData == null) {
                     Text(
-                        text = title,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (isOwn) Color.White else MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                ogData.description?.takeIf { it.isNotBlank() }?.let { desc ->
-                    Text(
-                        text = desc,
+                        text = "Предпросмотр ссылки",
                         style = MaterialTheme.typography.bodySmall,
                         color = if (isOwn) Color.White.copy(0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                } else {
+                    ogData.description?.takeIf { it.isNotBlank() }?.let { desc ->
+                        Text(
+                            text = desc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isOwn) Color.White.copy(0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
-            ogData.imageUrl?.takeIf { it.isNotBlank() }?.let { imgUrl ->
-                AsyncImage(
-                    model = imgUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
+            if (ogData == null) {
+                Box(
                     modifier = Modifier
                         .size(72.dp)
                         .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
-                )
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AttachFile,
+                        contentDescription = null,
+                        tint = if (isOwn) Color.White.copy(0.55f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            } else {
+                ogData.imageUrl?.takeIf { it.isNotBlank() }?.let { imgUrl ->
+                    AsyncImage(
+                        model = imgUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
+                    )
+                } ?: Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AttachFile,
+                        contentDescription = null,
+                        tint = if (isOwn) Color.White.copy(0.55f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
     }

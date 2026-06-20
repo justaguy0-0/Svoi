@@ -181,9 +181,6 @@ fun InlineVideoPlayer(
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                LaunchedEffect(url) {
-                    Log.d("VideoPlayer", "preview only, no ExoPlayer created")
-                }
                 // Thumbnail frame extracted from the video via Coil VideoFrameDecoder
                 val context = LocalContext.current
                 AsyncImage(
