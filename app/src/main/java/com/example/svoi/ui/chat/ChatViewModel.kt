@@ -19,6 +19,7 @@ import com.example.svoi.data.model.Profile
 import com.example.svoi.data.model.ReactionGroup
 import com.example.svoi.data.model.UserPresence
 import com.example.svoi.data.model.isTrulyOnline
+import com.example.svoi.data.repository.MessageAnchorWindowResult
 import com.example.svoi.ui.voice.VoiceQueueItem
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.Dispatchers
@@ -43,9 +44,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 
 data class TypingInfo(val userId: String, val displayName: String, val status: String = "typing")
 data class StagedMedia(val uri: Uri, val isVideo: Boolean)
+data class PinnedScrollRequest(
+    val requestId: Long,
+    val messageId: String,
+    val highlight: Boolean = true
+)
 
 @kotlinx.serialization.Serializable
 data class OgData(
@@ -118,11 +125,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _pinnedSenderProfile = MutableStateFlow<Profile?>(null)
     val pinnedSenderProfile: StateFlow<Profile?> = _pinnedSenderProfile
 
+    private val _pinnedNavigationLoadingMessageId = MutableStateFlow<String?>(null)
+    val pinnedNavigationLoadingMessageId: StateFlow<String?> = _pinnedNavigationLoadingMessageId
+
     private val _highlightedMessageId = MutableStateFlow<String?>(null)
     val highlightedMessageId: StateFlow<String?> = _highlightedMessageId
 
-    private val _scrollToMessageEvent = MutableStateFlow<String?>(null)
-    val scrollToMessageEvent: StateFlow<String?> = _scrollToMessageEvent
+    private val _scrollToMessageRequest = MutableStateFlow<PinnedScrollRequest?>(null)
+    val scrollToMessageRequest: StateFlow<PinnedScrollRequest?> = _scrollToMessageRequest
 
     private val _replyTo = MutableStateFlow<Message?>(null)
     val replyTo: StateFlow<Message?> = _replyTo
@@ -253,6 +263,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var voiceListenJob: Job? = null
     private var reactionInsertJob: Job? = null
     private var reactionDeleteJob: Job? = null
+    private var pinnedNavigationJob: Job? = null
+    private var pinnedScrollRequestId: Long = 0L
     private var typingPollingJob: Job? = null
     private var personalPresencePollingJob: Job? = null
     private var personalPresenceRealtimeJob: Job? = null
@@ -473,6 +485,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun init(chatId: String) {
+        pinnedNavigationJob?.cancel()
+        pinnedNavigationJob = null
+        _pinnedNavigationLoadingMessageId.value = null
+        _scrollToMessageRequest.value = null
         if (this.chatId == chatId) {
             completedSecondaryMessageIds = emptyList()
             completedSecondaryAtMs = 0L
@@ -1223,16 +1239,85 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun scrollToMessage(messageId: String) {
-        _scrollToMessageEvent.value = messageId
-        _highlightedMessageId.value = messageId
-        viewModelScope.launch {
-            delay(2_000L)
-            _highlightedMessageId.value = null
+        Log.d("PinnedNav", "requested messageId=$messageId")
+        val current = _messages.value
+        if (current.any { it.message.id == messageId }) {
+            Log.d("PinnedNav", "found in current messages messageId=$messageId")
+            emitPinnedScrollRequest(messageId)
+            return
+        }
+
+        if (pinnedNavigationJob?.isActive == true &&
+            _pinnedNavigationLoadingMessageId.value == messageId
+        ) {
+            return
+        }
+
+        pinnedNavigationJob?.cancel()
+        val requestedChatId = chatId
+        _pinnedNavigationLoadingMessageId.value = messageId
+        Log.d("PinnedNav", "loading anchor window messageId=$messageId")
+        pinnedNavigationJob = viewModelScope.launch {
+            try {
+                when (val result = messageRepo.loadMessagesAround(
+                    chatId = requestedChatId,
+                    targetMessageId = messageId,
+                    beforeLimit = 25,
+                    afterLimit = 25,
+                    historyFrom = historyFrom
+                )) {
+                    is MessageAnchorWindowResult.Found -> {
+                        if (chatId != requestedChatId) return@launch
+                        val containsTarget = result.messages.any { it.id == messageId }
+                        Log.d(
+                            "PinnedNav",
+                            "anchor loaded count=${result.messages.size}, containsTarget=$containsTarget"
+                        )
+                        if (!containsTarget) {
+                            Log.d("PinnedNav", "not found / unavailable")
+                            _error.value = "Закреплённое сообщение недоступно"
+                            return@launch
+                        }
+
+                        val mergedRaw = (_messages.value.map { it.message } + result.messages)
+                            .distinctBy { it.id }
+                            .sortedWith(compareBy<Message> { it.createdAt ?: "" }.thenBy { it.id })
+                        _messages.value = enrichMessages(mergedRaw)
+                        emitPinnedScrollRequest(messageId)
+                    }
+
+                    MessageAnchorWindowResult.NotFound -> {
+                        if (chatId != requestedChatId) return@launch
+                        Log.d("PinnedNav", "not found / unavailable")
+                        _error.value = "Закреплённое сообщение недоступно"
+                    }
+                }
+            } finally {
+                if (_pinnedNavigationLoadingMessageId.value == messageId) {
+                    _pinnedNavigationLoadingMessageId.value = null
+                }
+                if (pinnedNavigationJob == coroutineContext[Job]) {
+                    pinnedNavigationJob = null
+                }
+            }
         }
     }
 
     fun clearScrollToMessageEvent() {
-        _scrollToMessageEvent.value = null
+        _scrollToMessageRequest.value = null
+    }
+
+    private fun emitPinnedScrollRequest(messageId: String) {
+        val request = PinnedScrollRequest(
+            requestId = ++pinnedScrollRequestId,
+            messageId = messageId,
+            highlight = true
+        )
+        Log.d(
+            "PinnedNav",
+            "emitting scroll request requestId=${request.requestId} messageId=$messageId"
+        )
+        _scrollToMessageRequest.value = request
     }
 
     /** Re-starts the 2-second highlight timer. Call this when the message is actually visible
@@ -2247,9 +2332,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLoadingMore.value = true
             val current = _messages.value
-            val older = messageRepo.getMessages(
-                chatId, limit = 30, offset = current.size, historyFrom = historyFrom
-            )
+            val oldestCreatedAt = current.firstOrNull()?.message?.createdAt
+            val older = if (oldestCreatedAt != null) {
+                messageRepo.getMessagesBefore(
+                    chatId = chatId,
+                    beforeCreatedAt = oldestCreatedAt,
+                    limit = 30,
+                    historyFrom = historyFrom
+                )
+            } else {
+                messageRepo.getMessages(
+                    chatId, limit = 30, offset = current.size, historyFrom = historyFrom
+                )
+            }
             if (older.isEmpty()) {
                 _hasMoreMessages.value = false
             } else {

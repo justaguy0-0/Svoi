@@ -312,7 +312,8 @@ fun ChatScreen(
     val firstUnreadIndex by viewModel.firstUnreadIndex.collectAsState()
     val typingUsers by viewModel.typingUsers.collectAsState()
     val highlightedMessageId by viewModel.highlightedMessageId.collectAsState()
-    val scrollToMessageEvent by viewModel.scrollToMessageEvent.collectAsState()
+    val scrollToMessageRequest by viewModel.scrollToMessageRequest.collectAsState()
+    val pinnedNavigationLoadingMessageId by viewModel.pinnedNavigationLoadingMessageId.collectAsState()
     val isSelectionMode by viewModel.isSelectionMode.collectAsState()
     val selectedMessageIds by viewModel.selectedMessageIds.collectAsState()
     val chatsForForward by viewModel.chatsForForward.collectAsState()
@@ -529,10 +530,10 @@ fun ChatScreen(
     var loadMoreSavedOffset by remember { mutableIntStateOf(0) }
     var loadMoreCountBefore by remember { mutableIntStateOf(0) }
     var pendingScrollRestore by remember { mutableStateOf(false) }
-
-    // Поиск закреплённого сообщения через подгрузку истории
     var pendingScrollToId by remember { mutableStateOf<String?>(null) }
     var searchTrigger by remember { mutableIntStateOf(0) }
+
+    // Поиск закреплённого сообщения через подгрузку истории
 
     // Помечаем прочитанными только когда пользователь САМ оказался у низа
     // (после завершения начального авто-скролла)
@@ -546,7 +547,7 @@ fun ChatScreen(
     // Восстанавливаем позицию скролла после того как старые сообщения prepend'нуты вверх.
     // Восстанавливаем позицию только при обычной подгрузке (не при поиске закреплённого).
     LaunchedEffect(messages.size) {
-        if (pendingScrollRestore && messages.size > loadMoreCountBefore && pendingScrollToId == null) {
+        if (pendingScrollRestore && messages.size > loadMoreCountBefore) {
             val prepended = messages.size - loadMoreCountBefore
             listState.scrollToItem(
                 index = (loadMoreSavedIndex + prepended).coerceAtLeast(0),
@@ -719,13 +720,23 @@ fun ChatScreen(
         if (last >= 0) listState.animateScrollToItem(last)
     }
 
-    // Scroll to specific message (pinned banner, system message click, reply jump).
-    // Если не загружено — запускает цикл подгрузки истории через searchTrigger.
-    LaunchedEffect(scrollToMessageEvent) {
-        val targetId = scrollToMessageEvent ?: return@LaunchedEffect
-        val idx = currentDisplayEntries.indexOfFirst { it is ChatEntry.Msg && it.item.message.id == targetId }
-        viewModel.clearScrollToMessageEvent()
-        if (idx >= 0) {
+    // Scroll to specific message only after ViewModel has loaded the target into messages.
+    LaunchedEffect(scrollToMessageRequest?.requestId) {
+        val request = scrollToMessageRequest ?: return@LaunchedEffect
+        val targetId = request.messageId
+        val requestId = request.requestId
+        Log.d("PinnedNav", "scroll event received requestId=$requestId messageId=$targetId")
+        Log.d("PinnedNav", "waiting for target in displayEntries requestId=$requestId")
+        val idx = withTimeoutOrNull(5_000L) {
+            snapshotFlow {
+                currentDisplayEntries.indexOfFirst {
+                    it is ChatEntry.Msg && it.item.message.id == targetId
+                }
+            }.first { it >= 0 }
+        }
+        if (idx != null) {
+            Log.d("PinnedNav", "display index resolved requestId=$requestId index=$idx")
+            Log.d("PinnedNav", "scrollToItem called requestId=$requestId index=$idx")
             viewModel.refreshHighlight(targetId)  // restart timer — message is now visible
             if (isRevealingToMessage) {
                 // Chat is still hidden — snap instantly then reveal
@@ -733,16 +744,20 @@ fun ChatScreen(
                 chatReady = true
                 isRevealingToMessage = false
             } else {
-                listState.smoothScrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
+                listState.scrollToItem(idx, scrollOffset = -(screenHeightPx / 3))
             }
-        } else if (hasMoreMessages) {
-            pendingScrollToId = targetId
-            searchTrigger++
-        } else if (isRevealingToMessage) {
+            androidx.compose.runtime.withFrameNanos { }
+            val visible = listState.layoutInfo.visibleItemsInfo.any { it.index == idx }
+            Log.d("PinnedNav", "scroll completed requestId=$requestId visible=$visible")
+        } else {
+            Log.d("PinnedNav", "target not found in displayEntries requestId=$requestId")
+        }
+        if (idx == null && isRevealingToMessage) {
             // Message not found and no more history — reveal anyway
             chatReady = true
             isRevealingToMessage = false
         }
+        viewModel.clearScrollToMessageEvent()
     }
 
     LaunchedEffect(editingMessage) {
@@ -785,6 +800,7 @@ fun ChatScreen(
                 isPresenceExactOnline = isPresenceExactOnline,
                 pinnedMessage = pinnedMessage,
                 pinnedContent = pinnedContent,
+                pinnedNavigationLoadingMessageId = pinnedNavigationLoadingMessageId,
                 typingUsers = typingUsers,
                 isSelectionMode = isSelectionMode,
                 selectedCount = selectedMessageIds.size,
@@ -1149,6 +1165,7 @@ private fun ChatHeaderContainer(
     isPresenceExactOnline: Boolean,
     pinnedMessage: PinnedMessage?,
     pinnedContent: Message?,
+    pinnedNavigationLoadingMessageId: String?,
     typingUsers: List<TypingInfo>,
     isSelectionMode: Boolean,
     selectedCount: Int,
@@ -1241,6 +1258,7 @@ private fun ChatHeaderContainer(
         PinnedMessageBanner(
             pinnedMessage = pinnedMessage,
             pinnedContent = pinnedContent,
+            isNavigating = pinnedMessage?.messageId == pinnedNavigationLoadingMessageId,
             onScrollToMessage = onScrollToMessage,
             onUnpinMessage = onUnpinMessage
         )
@@ -1394,6 +1412,7 @@ private fun ChatHeaderMenu(
 private fun PinnedMessageBanner(
     pinnedMessage: PinnedMessage?,
     pinnedContent: Message?,
+    isNavigating: Boolean,
     onScrollToMessage: (String) -> Unit,
     onUnpinMessage: () -> Unit
 ) {
@@ -1424,7 +1443,7 @@ private fun PinnedMessageBanner(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onScrollToMessage(pinned.messageId) },
+                    .clickable(enabled = !isNavigating) { onScrollToMessage(pinned.messageId) },
                 color = MaterialTheme.colorScheme.surfaceVariant
             ) {
                 Row(
@@ -1460,6 +1479,14 @@ private fun PinnedMessageBanner(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                    }
+                    if (isNavigating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(8.dp))
                     }
                     IconButton(
                         onClick = onUnpinMessage,

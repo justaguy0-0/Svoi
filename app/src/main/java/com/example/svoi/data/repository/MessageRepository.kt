@@ -138,6 +138,11 @@ private data class ForwardMessageInsert(
     @SerialName("forwarded_from_user_id") val forwardedFromUserId: String? = null
 )
 
+sealed class MessageAnchorWindowResult {
+    data class Found(val messages: List<Message>) : MessageAnchorWindowResult()
+    data object NotFound : MessageAnchorWindowResult()
+}
+
 class MessageRepository(private val supabase: SupabaseClient) {
     private data class TimedReadIds(val ids: Set<String>, val savedAtMs: Long)
 
@@ -161,6 +166,96 @@ class MessageRepository(private val supabase: SupabaseClient) {
                 .decodeList<Message>()
                 .reversed()
         } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getMessagesBefore(
+        chatId: String,
+        beforeCreatedAt: String,
+        limit: Int = 50,
+        historyFrom: String? = null
+    ): List<Message> {
+        return try {
+            supabase.from("messages")
+                .select {
+                    filter {
+                        eq("chat_id", chatId)
+                        eq("deleted_for_all", false)
+                        lt("created_at", beforeCreatedAt)
+                        if (historyFrom != null) gte("created_at", historyFrom)
+                    }
+                    order("created_at", Order.DESCENDING)
+                    limit(limit.toLong())
+                }
+                .decodeList<Message>()
+                .reversed()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun loadMessagesAround(
+        chatId: String,
+        targetMessageId: String,
+        beforeLimit: Int = 25,
+        afterLimit: Int = 25,
+        historyFrom: String? = null
+    ): MessageAnchorWindowResult {
+        val target = try {
+            supabase.from("messages")
+                .select {
+                    filter {
+                        eq("id", targetMessageId)
+                        eq("chat_id", chatId)
+                        eq("deleted_for_all", false)
+                        if (historyFrom != null) gte("created_at", historyFrom)
+                    }
+                    limit(1)
+                }
+                .decodeSingleOrNull<Message>()
+        } catch (e: Exception) {
+            null
+        } ?: return MessageAnchorWindowResult.NotFound
+
+        val targetCreatedAt = target.createdAt
+            ?: return MessageAnchorWindowResult.Found(listOf(target))
+
+        val olderOrTarget = try {
+            supabase.from("messages")
+                .select {
+                    filter {
+                        eq("chat_id", chatId)
+                        eq("deleted_for_all", false)
+                        lte("created_at", targetCreatedAt)
+                        if (historyFrom != null) gte("created_at", historyFrom)
+                    }
+                    order("created_at", Order.DESCENDING)
+                    limit((beforeLimit + 1).toLong())
+                }
+                .decodeList<Message>()
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        val newer = try {
+            supabase.from("messages")
+                .select {
+                    filter {
+                        eq("chat_id", chatId)
+                        eq("deleted_for_all", false)
+                        gt("created_at", targetCreatedAt)
+                        if (historyFrom != null) gte("created_at", historyFrom)
+                    }
+                    order("created_at", Order.ASCENDING)
+                    limit(afterLimit.toLong())
+                }
+                .decodeList<Message>()
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        val window = (olderOrTarget.reversed() + target + newer)
+            .distinctBy { it.id }
+            .sortedWith(compareBy<Message> { it.createdAt ?: "" }.thenBy { it.id })
+
+        return MessageAnchorWindowResult.Found(window)
     }
 
     /** Fetch all media messages (photo/album/video/voice) for a chat, newest first. */
