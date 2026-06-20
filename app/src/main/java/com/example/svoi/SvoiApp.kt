@@ -146,7 +146,10 @@ class SvoiApp : Application() {
 
     val supabase by lazy {
         createSupabaseClient(supabaseUrl = BuildConfig.SUPABASE_URL, supabaseKey = BuildConfig.SUPABASE_ANON_KEY) {
-            install(Auth)
+            install(Auth) {
+                scheme = AuthRepository.PASSWORD_RESET_SCHEME
+                host = AuthRepository.PASSWORD_RESET_HOST
+            }
             install(Postgrest)
             install(Realtime)
             install(Storage) {

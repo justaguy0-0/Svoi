@@ -24,8 +24,10 @@ import com.example.svoi.data.local.SvoiAccent
 import com.example.svoi.data.local.ThemeMode
 import com.example.svoi.ui.announcements.WhatsNewScreen
 import com.example.svoi.ui.auth.AuthViewModel
+import com.example.svoi.ui.auth.ForgotPasswordScreen
 import com.example.svoi.ui.auth.InviteKeyScreen
 import com.example.svoi.ui.auth.LoginScreen
+import com.example.svoi.ui.auth.ResetPasswordScreen
 import com.example.svoi.ui.auth.SetupStep1Screen
 import com.example.svoi.ui.auth.SetupStep2Screen
 import com.example.svoi.ui.auth.SetupStep3Screen
@@ -44,6 +46,8 @@ import com.example.svoi.ui.settings.WallpaperPickerScreen
 
 object Routes {
     const val LOGIN = "login"
+    const val FORGOT_PASSWORD = "forgot_password"
+    const val RESET_PASSWORD = "reset_password"
     const val INVITE_KEY = "invite_key"
     const val SETUP_STEP_1 = "setup_step1/{inviteKey}"
     const val SETUP_STEP_2 = "setup_step2"
@@ -75,6 +79,8 @@ object Routes {
 fun NavGraph(
     navController: NavHostController,
     startDestination: String,
+    passwordResetRecoveryReady: Boolean = false,
+    onPasswordResetConsumed: () -> Unit = {},
     onThemeChanged: (ThemeMode) -> Unit = {},
     currentThemeMode: ThemeMode = ThemeMode.SYSTEM,
     autoPlayVideos: Boolean = true,
@@ -112,6 +118,33 @@ fun NavGraph(
                     },
                     onInviteKeyClick = {
                         if (canNav()) navController.navigate(Routes.INVITE_KEY)
+                    },
+                    onForgotPasswordClick = {
+                        if (canNav()) navController.navigate(Routes.FORGOT_PASSWORD)
+                    }
+                )
+            }
+
+            composable(Routes.FORGOT_PASSWORD) {
+                ForgotPasswordScreen(
+                    onBackToLogin = {
+                        if (canNav()) navController.navigate(Routes.LOGIN) {
+                            popUpTo(Routes.LOGIN) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+
+            composable(Routes.RESET_PASSWORD) {
+                ResetPasswordScreen(
+                    recoverySessionReady = passwordResetRecoveryReady,
+                    onBackToLogin = {
+                        onPasswordResetConsumed()
+                        if (canNav()) navController.navigate(Routes.LOGIN) {
+                            popUpTo(0) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 )
             }

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,10 +19,12 @@ import com.example.svoi.data.local.SvoiAccent
 import com.example.svoi.data.local.ThemeMode
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.svoi.data.repository.AuthRepository
 import com.example.svoi.navigation.NavGraph
 import com.example.svoi.navigation.Routes
 import com.example.svoi.ui.theme.SvoiTheme
 import androidx.lifecycle.lifecycleScope
+import io.github.jan.supabase.auth.handleDeeplinks
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -32,6 +35,8 @@ class MainActivity : ComponentActivity() {
 
     // chat_id из уведомления — обновляется при onCreate и onNewIntent
     private val pendingChatId = mutableStateOf<String?>(null)
+    private val pendingPasswordReset = mutableStateOf(false)
+    private val passwordResetRecoveryReady = mutableStateOf(false)
 
     // Set to true after restoreSession() completes in LaunchedEffect.
     // Guards onResume from calling tryRestoreSessionSilently() concurrently with
@@ -46,6 +51,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         pendingChatId.value = intent.getStringExtra("chat_id")
+        handlePasswordResetDeeplink(intent)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -72,7 +78,11 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     val restored = app.authRepository.restoreSession()
                     initialRestoreCompleted = true
-                    startDestination = if (restored) Routes.CHAT_LIST else Routes.LOGIN
+                    startDestination = when {
+                        pendingPasswordReset.value -> Routes.RESET_PASSWORD
+                        restored -> Routes.CHAT_LIST
+                        else -> Routes.LOGIN
+                    }
                     // setOnline is handled by startPresenceHeartbeat() in onResume
                     if (restored) launch {
                         delay(1_000L)
@@ -105,10 +115,25 @@ class MainActivity : ComponentActivity() {
                     pendingChatId.value = null
                 }
 
+                val resetRequested by pendingPasswordReset
+                LaunchedEffect(currentBackStackEntry?.destination?.route, resetRequested) {
+                    val currentRoute = currentBackStackEntry?.destination?.route ?: return@LaunchedEffect
+                    if (resetRequested && currentRoute != Routes.RESET_PASSWORD) {
+                        navController.navigate(Routes.RESET_PASSWORD) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                }
+
                 startDestination?.let { start ->
                     NavGraph(
                         navController = navController,
                         startDestination = start,
+                        passwordResetRecoveryReady = passwordResetRecoveryReady.value,
+                        onPasswordResetConsumed = {
+                            pendingPasswordReset.value = false
+                            passwordResetRecoveryReady.value = false
+                        },
                         onThemeChanged = { mode ->
                             app.themeManager.setThemeMode(mode)
                             themeMode = mode
@@ -139,6 +164,34 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingChatId.value = intent.getStringExtra("chat_id")
+        handlePasswordResetDeeplink(intent)
+    }
+
+    private fun handlePasswordResetDeeplink(intent: Intent) {
+        val data = intent.data ?: return
+        val path = data.path.orEmpty()
+        val isResetPasswordLink = data.scheme == AuthRepository.PASSWORD_RESET_SCHEME &&
+            data.host == AuthRepository.PASSWORD_RESET_HOST &&
+            path == AuthRepository.PASSWORD_RESET_PATH
+        if (!isResetPasswordLink) return
+
+        Log.d("PasswordReset", "deeplink received path=$path")
+        pendingPasswordReset.value = true
+        passwordResetRecoveryReady.value = false
+        try {
+            app.supabase.handleDeeplinks(intent) { session ->
+                app.prefs.saveSession(
+                    accessToken = session.accessToken,
+                    refreshToken = session.refreshToken,
+                    expiresAt = session.expiresAt.epochSeconds
+                )
+                runOnUiThread {
+                    passwordResetRecoveryReady.value = true
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("PasswordReset", "invalid recovery link: ${e.message}")
+        }
     }
 
     override fun onResume() {

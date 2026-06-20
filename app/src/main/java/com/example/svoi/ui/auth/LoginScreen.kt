@@ -38,7 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -53,6 +52,7 @@ import kotlinx.coroutines.delay
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onInviteKeyClick: () -> Unit,
+    onForgotPasswordClick: () -> Unit,
     viewModel: AuthViewModel = viewModel()
 ) {
     val isLoading by viewModel.isLoading.collectAsState()
@@ -202,6 +202,12 @@ fun LoginScreen(
                     }
 
                     Spacer(Modifier.height(16.dp))
+
+                    TextButton(onClick = onForgotPasswordClick) {
+                        Text("Не помню пароль")
+                    }
+
+                    Spacer(Modifier.height(4.dp))
 
                     TextButton(onClick = onInviteKeyClick) {
                         Text("Есть пригласительный ключ?")

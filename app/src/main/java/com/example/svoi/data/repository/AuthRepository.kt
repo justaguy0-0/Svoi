@@ -234,6 +234,20 @@ class AuthRepository(
         }
     }
 
+    suspend fun sendPasswordResetEmail(email: String): String? {
+        return try {
+            supabase.auth.resetPasswordForEmail(
+                email = email,
+                redirectUrl = PASSWORD_RESET_REDIRECT_URL
+            )
+            Log.d("PasswordReset", "request email sent")
+            null
+        } catch (e: Exception) {
+            Log.e("PasswordReset", "send reset email failed: ${e.message}", e)
+            translatePasswordResetError(e.message)
+        }
+    }
+
     private fun translateAuthError(msg: String?): String {
         if (msg == null) return "Произошла ошибка. Попробуйте снова."
         return when {
@@ -260,6 +274,24 @@ class AuthRepository(
         }
     }
 
+    private fun translatePasswordResetError(msg: String?): String {
+        if (msg == null) return "Не удалось отправить ссылку. Попробуйте снова."
+        return when {
+            msg.contains("network", ignoreCase = true) ||
+            msg.contains("connect", ignoreCase = true) ||
+            msg.contains("timeout", ignoreCase = true) ||
+            msg.contains("UnknownHostException", ignoreCase = true) ->
+                "Нет соединения с сервером. Проверьте интернет"
+            msg.contains("Too many requests", ignoreCase = true) ||
+            msg.contains("rate limit", ignoreCase = true) ->
+                "Слишком много попыток. Подождите немного и попробуйте снова"
+            msg.contains("Unable to validate email", ignoreCase = true) ||
+            msg.contains("invalid email", ignoreCase = true) ->
+                "Некорректный email-адрес"
+            else -> "Не удалось отправить ссылку. Попробуйте снова."
+        }
+    }
+
     suspend fun signOut() {
         try {
             supabase.auth.signOut()
@@ -271,6 +303,7 @@ class AuthRepository(
     suspend fun changePassword(newPassword: String): String? {
         return try {
             supabase.auth.updateUser { password = newPassword }
+            Log.d("PasswordReset", "password update success")
             null
         } catch (e: Exception) {
             Log.e("Auth", "changePassword failed: ${e.message}", e)
@@ -288,4 +321,11 @@ class AuthRepository(
     fun currentUserId(): String? = supabase.auth.currentUserOrNull()?.id
 
     fun isLoggedIn(): Boolean = supabase.auth.currentUserOrNull() != null
+
+    companion object {
+        const val PASSWORD_RESET_SCHEME = "svoi"
+        const val PASSWORD_RESET_HOST = "auth"
+        const val PASSWORD_RESET_PATH = "/reset-password"
+        const val PASSWORD_RESET_REDIRECT_URL = "$PASSWORD_RESET_SCHEME://$PASSWORD_RESET_HOST$PASSWORD_RESET_PATH"
+    }
 }
