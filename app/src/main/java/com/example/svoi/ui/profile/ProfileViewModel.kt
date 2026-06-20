@@ -1,6 +1,7 @@
 package com.example.svoi.ui.profile
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.svoi.SvoiApp
@@ -27,6 +28,9 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     private val _isSaving = MutableStateFlow(false)
     val isSaving: StateFlow<Boolean> = _isSaving
+
+    private val _isSendingPasswordReset = MutableStateFlow(false)
+    val isSendingPasswordReset: StateFlow<Boolean> = _isSendingPasswordReset
 
     private val _isSavingHiddenFromSearch = MutableStateFlow(false)
     val isSavingHiddenFromSearch: StateFlow<Boolean> = _isSavingHiddenFromSearch
@@ -110,21 +114,46 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun changePassword(current: String, newPassword: String, confirm: String) {
-        if (newPassword.length < 6) {
-            _error.value = "Пароль должен быть не менее 6 символов"
-            return
+    private var passwordResetEmail: String? = null
+
+    fun preparePasswordReset(onConfirmationReady: () -> Unit) {
+        Log.d("PasswordChange", "profile request clicked")
+        if (_isSendingPasswordReset.value) return
+        viewModelScope.launch {
+            val email = authRepo.currentUserEmail()
+            if (email.isNullOrBlank()) {
+                Log.w("PasswordChange", "missing email")
+                _error.value = "У аккаунта нет email для восстановления пароля"
+                return@launch
+            }
+            passwordResetEmail = email
+            Log.d("PasswordChange", "confirmation shown")
+            onConfirmationReady()
         }
-        if (newPassword != confirm) {
-            _error.value = "Пароли не совпадают"
+    }
+
+    fun sendPasswordResetEmail(onSent: () -> Unit) {
+        if (_isSendingPasswordReset.value) return
+        val email = passwordResetEmail
+        if (email.isNullOrBlank()) {
+            Log.w("PasswordChange", "missing email")
+            _error.value = "У аккаунта нет email для восстановления пароля"
             return
         }
         viewModelScope.launch {
-            _isSaving.value = true
-            val err = authRepo.changePassword(newPassword)
-            if (err == null) _successMessage.value = "Пароль изменён"
-            else _error.value = err
-            _isSaving.value = false
+            _isSendingPasswordReset.value = true
+            Log.d("PasswordChange", "reset email requested")
+            val err = authRepo.sendPasswordResetEmail(email)
+            if (err == null) {
+                Log.d("PasswordChange", "reset email sent")
+                _successMessage.value = "Письмо для смены пароля отправлено"
+                passwordResetEmail = null
+                onSent()
+            } else {
+                Log.w("PasswordChange", "send failed")
+                _error.value = "Не удалось отправить письмо. Проверьте интернет и попробуйте снова."
+            }
+            _isSendingPasswordReset.value = false
         }
     }
 

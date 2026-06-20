@@ -53,8 +53,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -81,6 +79,7 @@ fun ProfileScreen(
     val profile by viewModel.profile.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isSaving by viewModel.isSaving.collectAsState()
+    val isSendingPasswordReset by viewModel.isSendingPasswordReset.collectAsState()
     val isOnline by viewModel.isOnline.collectAsState()
     val error by viewModel.error.collectAsState()
 
@@ -271,10 +270,15 @@ fun ProfileScreen(
                     }
 
                     OutlinedButton(
-                        onClick = { showPasswordDialog = true },
+                        onClick = {
+                            viewModel.preparePasswordReset {
+                                showPasswordDialog = true
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(SvoiDimens.ButtonHeight),
+                        enabled = !isSendingPasswordReset,
                         shape = SvoiShapes.Button
                     ) {
                         Text("Изменить пароль")
@@ -387,57 +391,42 @@ fun ProfileScreen(
         }
     }
 
-    // ── Change password dialog ───────────────────────────────────────────────
+    // ── Password reset confirmation dialog ──────────────────────────────────
     if (showPasswordDialog) {
-        var newPassword by remember { mutableStateOf("") }
-        var confirmPassword by remember { mutableStateOf("") }
-
         AlertDialog(
-            onDismissRequest = { showPasswordDialog = false },
-            title = { Text("Изменить пароль") },
+            onDismissRequest = {
+                if (!isSendingPasswordReset) showPasswordDialog = false
+            },
+            title = { Text("Изменить пароль?") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = newPassword,
-                        onValueChange = { newPassword = it },
-                        label = { Text("Новый пароль") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Next
-                        ),
-                        shape = SvoiShapes.TextField
-                    )
-                    OutlinedTextField(
-                        value = confirmPassword,
-                        onValueChange = { confirmPassword = it },
-                        label = { Text("Повторите пароль") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Done
-                        ),
-                        shape = SvoiShapes.TextField
-                    )
-                }
+                Text("Мы отправим письмо для смены пароля на почту вашего аккаунта. После перехода по ссылке вы сможете задать новый пароль.")
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.changePassword("", newPassword, confirmPassword)
-                        showPasswordDialog = false
+                        viewModel.sendPasswordResetEmail {
+                            showPasswordDialog = false
+                        }
                     },
-                    enabled = newPassword.isNotBlank()
+                    enabled = !isSendingPasswordReset
                 ) {
-                    Text("Сохранить")
+                    if (isSendingPasswordReset) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Отправить письмо")
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showPasswordDialog = false }) { Text("Отмена") }
+                TextButton(
+                    onClick = { showPasswordDialog = false },
+                    enabled = !isSendingPasswordReset
+                ) {
+                    Text("Отмена")
+                }
             }
         )
     }

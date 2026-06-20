@@ -320,6 +320,23 @@ class AuthRepository(
 
     fun currentUserId(): String? = supabase.auth.currentUserOrNull()?.id
 
+    suspend fun currentUserEmail(): String? {
+        val cachedEmail = supabase.auth.currentUserOrNull()?.email
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        if (cachedEmail != null) return cachedEmail
+
+        return try {
+            supabase.auth.retrieveUserForCurrentSession(updateSession = true)
+                .email
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            Log.w("PasswordChange", "missing email")
+            null
+        }
+    }
+
     fun isLoggedIn(): Boolean = supabase.auth.currentUserOrNull() != null
 
     companion object {
